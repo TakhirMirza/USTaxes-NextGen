@@ -1,0 +1,55 @@
+{
+  "build": {
+    "distDir": "../build",
+    "devPath": "http://localhost:3000",
+    "beforeDevCommand": "npm run start",
+    "beforeBuildCommand": "npm run build",
+    "withGlobalTauri": true
+  },
+  "tauri": {
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "ustaxes",
+      "icon": [
+        "./icons/favicon.ico"
+      ],
+      "resources": [],
+      "externalBin": [],
+      "copyright": "",
+      "category": "DeveloperTool",
+      "shortDescription": "",
+      "longDescription": "",
+      "deb": {
+        "depends": []
+      },
+      "macOS": {
+        "frameworks": [],
+        "exceptionDomain": "",
+        "signingIdentity": null,
+        "entitlements": null,
+        "minimumSystemVersion": ""
+      },
+      "windows": {
+        "certificateThumbprint": null,
+        "digestAlgorithm": "sha256",
+        "timestampUrl": ""
+      }
+    },
+    "allowlist": {
+      "all": true
+    },
+    "windows": [
+      {
+        "title": "US Taxes",
+        "width": 800,
+        "height": 600,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src blob: data: filesystem: ws: http: https: 'unsafe-eval' 'unsafe-inline' 'self'"
+    }
+  }
+}
