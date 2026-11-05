@@ -11,6 +11,7 @@ import {
   PDFDownloader
 } from 'ustaxes/core/pdfFiller/pdfHandler'
 import { F1040Error } from './errors'
+import { StateFormError } from './StateForms'
 import { CreateFormConfig, createYearConfigs } from './yearRegistry'
 import { validate } from './F1040Base'
 
