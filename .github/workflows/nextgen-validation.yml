@@ -26,16 +26,10 @@ jobs:
         with:
           node-version: '18'
           cache: npm
-      - name: Offline-capable architecture tests
-        run: npm run nextgen:test
-      - name: Presentation regression (no dependencies)
-        run: node tools/stage71-presentation-regression.js
-      - name: Stage 77 workflow safeguards (no dependencies)
-        run: node tools/stage77-ci-safeguards.test.js
-      - name: Verify shipped IRS 2025 runtime tax table against source CSV
-        run: npm run audit:2025:runtime-table
       - name: Audit npm lockfile before install
         run: npm run audit:lockfile && node tools/stage79-lockfile-audit.test.js
+      - name: Verify shipped IRS 2025 runtime tax table against source CSV
+        run: npm run audit:2025:runtime-table
       - name: Install locked dependencies
         id: npm_install
         run: |
@@ -44,6 +38,12 @@ jobs:
           npm ci --no-audit --no-fund 2>&1 | tee test-results/npm-ci.log
       - name: Dependency preflight
         run: npm run preflight:build:strict
+      - name: Offline-capable architecture tests
+        run: npm run nextgen:test
+      - name: Presentation regression (local TypeScript)
+        run: node tools/stage71-presentation-regression.js
+      - name: Stage 77 workflow safeguards
+        run: node tools/stage77-ci-safeguards.test.js
       - name: Form 1040 integration regression (local TypeScript)
         id: integration_regression
         run: |

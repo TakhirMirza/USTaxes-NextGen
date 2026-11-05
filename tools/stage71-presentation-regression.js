@@ -7,7 +7,9 @@ const path = require('node:path')
 const root = path.resolve(__dirname, '..')
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ustaxes-stage71-'))
 try {
-  execFileSync('tsc', ['--target','es2020','--module','commonjs','--skipLibCheck','--resolveJsonModule','--esModuleInterop','--outDir',tmp,'src/nextgen/taxYears/form1040ReviewPresentation2025.ts'], {cwd:root, stdio:'pipe'})
+  const compiler = path.join(root, 'node_modules', '.bin', 'tsc')
+  if (!fs.existsSync(compiler)) throw new Error('Local TypeScript compiler missing: run npm ci before Stage 71 presentation regression.')
+  execFileSync(compiler, ['--target','es2020','--module','commonjs','--skipLibCheck','--resolveJsonModule','--esModuleInterop','--outDir',tmp,'src/nextgen/taxYears/form1040ReviewPresentation2025.ts'], {cwd:root, stdio:'pipe'})
   const {presentRestricted2025Review: review} = require(path.join(tmp,'taxYears','form1040ReviewPresentation2025.js'))
   const keys = ['17','18','20','21','22','23','24','31','32','33','34','37']
   const officialLines = Object.fromEntries(keys.map(k=>[k,null]))

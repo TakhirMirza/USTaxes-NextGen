@@ -15,9 +15,11 @@ const checks = [
     for (const name of ['Dependency preflight','Form 1040 integration regression (local TypeScript)','NextGen 2025 Jest tests','Compile React application'])
       assert.ok(install >= 0 && install < at(name), `${name} must follow install`);
   }],
-  ['Offline checks run before install', () => {
-    for (const name of ['Offline-capable architecture tests','Presentation regression (no dependencies)','Stage 77 workflow safeguards (no dependencies)'])
+  ['Dependency-free audits before install; TypeScript checks after install', () => {
+    for (const name of ['Audit npm lockfile before install','Verify shipped IRS 2025 runtime tax table against source CSV'])
       assert.ok(at(name)>=0 && at(name)<at('Install locked dependencies'),name);
+    for (const name of ['Offline-capable architecture tests','Presentation regression (local TypeScript)','Stage 77 workflow safeguards'])
+      assert.ok(at(name)>at('Install locked dependencies'),name);
   }],
   ['Jest command is registered', () => assert.match(pkg.scripts['test:nextgen:2025'], /craco test.*--runInBand/)],
   ['Local compiler required', () => assert.match(fs.readFileSync(path.join(root,'tools/stage73-integration-regression.js'),'utf8'), /Local TypeScript compiler missing/)],
