@@ -116,5 +116,6 @@
   },
   "engines": {
     "yarn": "please-use-npm"
-  }
+  },
+  "homepage": "https://takhirmirza.github.io/USTaxes-NextGen/"
 }

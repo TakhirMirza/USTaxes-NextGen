@@ -1,6 +1,7 @@
 import { ReactElement } from 'react'
 import { Box, Chip, Link, Paper, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@material-ui/core'
 import manifest from '../nextgen/year-manifest.json'
+import { isTaxYearReady } from '../nextgen/taxYears/registry'
 
 /** Read-only NextGen readiness. This component NEVER enables a tax year for filing. */
 export default function TaxYearManager(): ReactElement {
@@ -18,7 +19,7 @@ export default function TaxYearManager(): ReactElement {
               <TableRow key={year.year}>
                 <TableCell>{year.year}</TableCell>
                 <TableCell>
-                  <Chip size="small" label={year.filingReady ? 'Ready' : year.status === 'legacy' ? 'Legacy (unverified)' : year.status === 'reference' ? 'Reference only' : 'Not ready'} />
+                  <Chip size="small" label={(year.filingReady && isTaxYearReady(year.year)) ? 'Ready' : year.status === 'legacy' ? 'Legacy (unverified)' : year.status === 'reference' ? 'Reference only' : 'Not ready'} />
                 </TableCell>
                 <TableCell>{year.formsStatus}</TableCell>
               </TableRow>
