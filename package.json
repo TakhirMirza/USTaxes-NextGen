@@ -54,7 +54,23 @@
     "audit:years:test": "node tools/year-readiness.test.js",
     "nextgen:status": "node platform/cli/status.js",
     "nextgen:test": "node platform/tests/run.js",
-    "nextgen:irs": "node platform/cli/irs-update.js"
+    "nextgen:irs": "node platform/cli/irs-update.js",
+    "test:integration:2025": "node tools/stage73-integration-regression.js",
+    "preflight:build": "node tools/stage74-build-preflight.js",
+    "preflight:build:strict": "node tools/stage74-build-preflight.js --strict",
+    "test:stage75:offline": "node tools/stage75-ci-validation.test.js && npm run test:integration:2025 && node tools/stage71-presentation-regression.js",
+    "test:nextgen:2025": "craco test --watch=false --runInBand --testPathPattern=src/nextgen/taxYears",
+    "test:stage76:offline": "node tools/stage76-ci-validation.test.js && npm run nextgen:test && node tools/stage71-presentation-regression.js && npm run test:integration:2025",
+    "test:stage77:offline": "node tools/stage77-ci-safeguards.test.js && node tools/stage76-ci-validation.test.js && node tools/stage75-ci-validation.test.js && npm run nextgen:test && node tools/stage71-presentation-regression.js",
+    "audit:2025:runtime-table": "node tools/stage78-tax-table-runtime-audit.js",
+    "audit:lockfile": "node tools/stage79-lockfile-audit.js",
+    "test:stage79:offline": "node tools/stage79-lockfile-audit.test.js && node tools/stage78-tax-table-runtime-audit.test.js && node tools/stage77-ci-safeguards.test.js",
+    "test:stage80:offline": "node tools/stage80-ci-diagnostics.test.js",
+    "ci:triage": "node tools/stage81-ci-triage.js",
+    "test:stage81:offline": "node tools/stage81-ci-triage.test.js",
+    "test:stage82:offline": "node --test tools/stage82-ci-summary.test.js",
+    "test:stage83:offline": "node --test tools/stage83-ci-release-gate.test.js",
+    "gate:ci": "node tools/stage83-ci-release-gate.js"
   },
   "eslintConfig": {
     "extends": "react-app"

@@ -11,6 +11,7 @@ import { isMobileOnly as isMobile } from 'react-device-detect'
 import { PagerProvider } from './pager'
 import { StateLoader } from './debug'
 import NoMatchPage from './NoMatchPage'
+import NextGen2025Review from './NextGen2025Review'
 import SkipToLinks from './SkipToLinks'
 import ScrollTop from './ScrollTop'
 import Menu, { backPages, drawerSectionsForYear } from './Menu'
@@ -119,6 +120,7 @@ export default function Main(): ReactElement {
                 }
               />
             ))}
+            <Route path="/nextgen/2025/review" element={<Layout showMenu={false}><NextGen2025Review /></Layout>} />
             <Route
               path="*"
               element={

@@ -21,10 +21,12 @@
     {
       "year": 2025,
       "status": "reference",
-      "reason": "Ordinary brackets and standard deduction only; 1040 tax table, credits, schedules and PDFs not integrated",
+      "reason": "Experimental W-2/1099-INT review pipeline and partial Schedule 1/1-A and Form 1040 arithmetic; full IRS tax table, tax eligibility, PDF and filing unavailable.",
       "capabilities": [
         "ordinary-brackets",
-        "standard-deduction"
+        "standard-deduction",
+        "experimental-form1040-review",
+        "withholding-review"
       ],
       "formsStatus": "pending",
       "filingReady": false

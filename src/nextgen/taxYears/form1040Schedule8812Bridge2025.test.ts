@@ -1,0 +1,11 @@
+import { review2025Form1040Schedule8812Bridge as review } from './form1040Schedule8812Bridge2025'
+const child = { identifier:'c1', qualifyingChildUnder17:true, otherDependent:false, relationshipResidenceSupportAndDependencyVerified:true, taxpayerIdValidForCredit:true, childSSNValidForEmployment:true, claimedOnReturn:true }
+const other = { ...child, identifier:'o1', qualifyingChildUnder17:false, otherDependent:true }
+const base = { filingStatus:'single' as const, modifiedAdjustedGrossIncome:30000, dependents:[child], taxpayerSSNValidForEmployment:true, federalIncomeTaxAvailableBeforeCredits:0, otherNonrefundableCreditsAndLimitationsReviewed:false, earnedIncomeForACTC:20000, threeOrMoreQualifyingChildren:false, socialSecurityAndMedicareTaxWorksheetVerified:false, nonrefundableCreditOrderingVerified:false }
+test('combines candidate amounts without posting', () => { const r=review(base); expect(r.nonrefundableCandidate).toBe(0); expect(r.refundableCandidate).toBe(1700); expect(r.form1040Line19).toBeNull(); expect(r.form1040Line28).toBeNull(); expect(r.filingReady).toBe(false) })
+test('missing earned income propagates unknown refundable amount', () => { const r=review({...base,earnedIncomeForACTC:null}); expect(r.refundableCandidate).toBeNull(); expect(r.combinedCandidate).toBeNull() })
+test('other dependent adds explicit ODC worksheet blocker', () => { const r=review({...base,dependents:[child,other]}); expect(r.otherDependentCreditBeforePhaseout).toBe(500); expect(r.unresolved.some(x=>x.includes('ODC must be excluded'))).toBe(true) })
+test('other dependent alone does not generate ACTC', () => { const r=review({...base,dependents:[other]}); expect(r.refundableCandidate).toBe(0) })
+test('phaseout cannot create refundable child credit', () => { const r=review({...base,modifiedAdjustedGrossIncome:300000}); expect(r.refundableCandidate).toBe(0) })
+test('tax-limited credit and refundable candidate remain separate', () => { const r=review({...base,federalIncomeTaxAvailableBeforeCredits:2000}); expect(r.nonrefundableCandidate).toBe(2000); expect(r.refundableCandidate).toBe(200) })
+test('invalid earned income is rejected', () => expect(()=>review({...base,earnedIncomeForACTC:-1})).toThrow())
