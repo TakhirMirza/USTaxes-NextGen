@@ -41,3 +41,76 @@ test('rejects invalid amounts and unsafe upstream posting', () => {
   expect(() => review2025Form1040Balance({ ...base, otherTaxes: -1 })).toThrow()
   expect(() => review2025Form1040Balance({ ...base, integrated: { ...review, postingAuthorized: true } as IntegratedReview2025 })).toThrow()
 })
+
+// Stage 112: money reconciliation edge cases across the diagnostic Form 1040 lines.
+test('Stage 112: fractional cents reconcile exactly without floating-point residue', () => {
+  const r = review2025Form1040Balance({
+    ...base,
+    integrated: {
+      ...review,
+      provisionalLine16: { kind: 'unverified-import-candidate', tax: 1234.56, filingReady: false },
+      candidateNonrefundableCredit: 123.45,
+      candidateRefundableCredit: 20.01,
+      withholdingForReviewOnly: 1000.03,
+    },
+    otherNonrefundableCredits: 11.11,
+    otherTaxes: 2.22,
+    otherPayments: 100.04,
+  })
+  expect(r.candidates.line22TaxAfterCredits).toBe(1100)
+  expect(r.candidates.line24TotalTax).toBe(1102.22)
+  expect(r.candidates.line33TotalPayments).toBe(1120.08)
+  expect(r.candidates.line34Overpayment).toBe(17.86)
+  expect(r.candidates.line37AmountOwed).toBe(0)
+  expect(r.filingReady).toBe(false)
+  expect(r.postingAuthorized).toBe(false)
+})
+
+test('Stage 112: exact payment/tax equality produces neither refund nor amount owed', () => {
+  const r = review2025Form1040Balance({
+    ...base,
+    integrated: { ...review, withholdingForReviewOnly: 2750 },
+    otherPayments: 500,
+    otherTaxes: 50,
+  })
+  // 4000 - 500 - 100 + 50 = 3450; 2750 + 200 + 500 = 3450.
+  expect(r.candidates.line24TotalTax).toBe(3450)
+  expect(r.candidates.line33TotalPayments).toBe(3450)
+  expect(r.candidates.line34Overpayment).toBe(0)
+  expect(r.candidates.line37AmountOwed).toBe(0)
+  expect(Object.values(r.officialLines).every(value => value === null)).toBe(true)
+})
+
+test('Stage 112: missing refundable credit blocks payments and final balance', () => {
+  const r = review2025Form1040Balance({
+    ...base,
+    integrated: { ...review, candidateRefundableCredit: null },
+  })
+  expect(r.candidates.line28AdditionalChildTaxCredit).toBeNull()
+  expect(r.candidates.line33TotalPayments).toBeNull()
+  expect(r.candidates.line34Overpayment).toBeNull()
+  expect(r.candidates.line37AmountOwed).toBeNull()
+  expect(r.blockers.join(' ')).toContain('incomplete')
+})
+
+test('Stage 112: missing line 16 candidate prevents total tax and final balance', () => {
+  const r = review2025Form1040Balance({
+    ...base,
+    integrated: { ...review, provisionalLine16: null },
+  })
+  expect(r.candidates.line16Tax).toBeNull()
+  expect(r.candidates.line22TaxAfterCredits).toBeNull()
+  expect(r.candidates.line24TotalTax).toBeNull()
+  expect(r.candidates.line34Overpayment).toBeNull()
+  expect(r.candidates.line37AmountOwed).toBeNull()
+})
+
+test('Stage 112: rejects non-finite, negative, over-precision, and excessive money inputs', () => {
+  for (const amount of [Number.NaN, Infinity, -0.01, 0.001, 1e12 + 1]) {
+    expect(() => review2025Form1040Balance({ ...base, otherPayments: amount })).toThrow(RangeError)
+  }
+  expect(() => review2025Form1040Balance({
+    ...base,
+    integrated: { ...review, withholdingForReviewOnly: Infinity },
+  })).toThrow(RangeError)
+})
