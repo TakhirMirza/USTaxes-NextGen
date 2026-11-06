@@ -37,13 +37,26 @@ export function updateLivePreviewScenario2025(state: LivePreviewScenario2025, ch
   return { ...state, specialRuledOut: change.value }
 }
 
-export function calculateLivePreviewScenario2025(state: LivePreviewScenario2025) {
-  const wages = parseWageInput2025(state.wages)
-  const withholdingText = state.federalWithholding ?? ''
+/** Shared W-2 input consistency gate for the simplified, single-W-2 illustration.
+ * This is a preview-only plausibility check, NOT an IRS rule for all W-2s.
+ */
+export type W2PreviewInputReview2025 =
+  | { kind: 'valid'; wages: number; withholding: number | null }
+  | { kind: 'invalidWages' | 'invalidWithholding' | 'withholdingExceedsWages' }
+
+export function reviewW2PreviewInputs2025(wagesText: string, withholdingText: string): W2PreviewInputReview2025 {
+  const wages = parseWageInput2025(wagesText)
+  if (wages === null) return { kind: 'invalidWages' }
   const withholding = withholdingText.trim() === '' ? null : parseWageInput2025(withholdingText)
-  const withholdingValid = withholdingText.trim() === '' || withholding !== null
-  const withholdingWithinWages = wages === null || withholding === null || withholding <= wages
-  if (wages === null || !withholdingValid || !withholdingWithinWages) return { valid: false as const, result: null, line16: null }
+  if (withholding === null && withholdingText.trim() !== '') return { kind: 'invalidWithholding' }
+  if (withholding !== null && withholding > wages) return { kind: 'withholdingExceedsWages' }
+  return { kind: 'valid', wages, withholding }
+}
+
+export function calculateLivePreviewScenario2025(state: LivePreviewScenario2025) {
+  const inputs = reviewW2PreviewInputs2025(state.wages, state.federalWithholding ?? '')
+  if (inputs.kind !== 'valid') return { valid: false as const, result: null, line16: null }
+  const wages = inputs.wages
   const result = preview2025OrdinaryWages(wages, state.status)
   const line16 = decide2025Line16({
     taxableIncome: result.taxableOrdinaryIncome,

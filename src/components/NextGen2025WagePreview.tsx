@@ -2,7 +2,7 @@ import { ReactElement, useState } from 'react'
 import { Alert } from '@material-ui/lab'
 import { Paper, TextField, Typography, MenuItem, Table, TableBody, TableRow, TableCell, FormControlLabel, Checkbox } from '@material-ui/core'
 import { filingStatuses2025, FilingStatus2025 } from '../nextgen/taxYears/preview2025'
-import { calculateLivePreviewScenario2025, LivePreviewScenario2025, updateLivePreviewScenario2025 } from '../nextgen/taxYears/livePreviewScenario2025'
+import { calculateLivePreviewScenario2025, LivePreviewScenario2025, reviewW2PreviewInputs2025, updateLivePreviewScenario2025 } from '../nextgen/taxYears/livePreviewScenario2025'
 import NextGen2025CreditsAndOvertime from './NextGen2025CreditsAndOvertime'
 import { getWageInputFeedback2025 } from '../nextgen/taxYears/wageInput2025'
 
@@ -16,7 +16,8 @@ export default function NextGen2025WagePreview(): ReactElement {
   const wageFeedback = getWageInputFeedback2025(wages)
   const withholdingText = scenario.federalWithholding ?? ''
   const withholdingFeedback = getWageInputFeedback2025(withholdingText)
-  const withholdingExceedsWages = wageFeedback.kind === 'valid' && withholdingFeedback.kind === 'valid' && Number(withholdingText) > Number(wages)
+  const inputReview = reviewW2PreviewInputs2025(wages, withholdingText)
+  const withholdingExceedsWages = inputReview.kind === 'withholdingExceedsWages'
   const withholdingInvalid = withholdingFeedback.kind === 'invalid' || withholdingExceedsWages
   const update = (change: Parameters<typeof updateLivePreviewScenario2025>[1]): void => {
     setScenario(previous => updateLivePreviewScenario2025(previous, change))

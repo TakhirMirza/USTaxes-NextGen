@@ -1,4 +1,4 @@
-import { calculateLivePreviewScenario2025, LivePreviewScenario2025, updateLivePreviewScenario2025 } from './livePreviewScenario2025'
+import { calculateLivePreviewScenario2025, LivePreviewScenario2025, reviewW2PreviewInputs2025, updateLivePreviewScenario2025 } from './livePreviewScenario2025'
 
 const base: LivePreviewScenario2025 = { wages: '50000', status: 'single', ordinaryConfirmed: true, specialRuledOut: true }
 
@@ -61,4 +61,38 @@ test.each(['-1', '1e3', '12.345', '50000.01'])('unsafe withholding %s blocks cal
 
 test('empty withholding remains optional', () => {
   expect(calculateLivePreviewScenario2025({ ...base, federalWithholding: '' }).valid).toBe(true)
+})
+
+// Stage 116: W-2 Box 1 / Box 2 preview consistency and boundary regressions.
+test.each([
+  ['0', '', 'valid'],
+  ['0', '0', 'valid'],
+  ['0.01', '0.01', 'valid'],
+  ['50000', '50000', 'valid'],
+  ['50000', '50000.01', 'withholdingExceedsWages'],
+  ['0', '0.01', 'withholdingExceedsWages'],
+  ['50000', ' 1200.50 ', 'valid'],
+  ['50000', '1200.501', 'invalidWithholding'],
+  ['50000', '1,200', 'invalidWithholding'],
+  ['50000', 'Infinity', 'invalidWithholding'],
+  ['', '10', 'invalidWages'],
+  ['-1', '', 'invalidWages'],
+])('Stage 116 W-2 review wages=%s withholding=%s => %s', (wages, withholding, expected) => {
+  expect(reviewW2PreviewInputs2025(wages, withholding).kind).toBe(expected)
+  const calculated = calculateLivePreviewScenario2025({ ...base, wages, federalWithholding: withholding })
+  expect(calculated.valid).toBe(expected === 'valid')
+  if (expected !== 'valid') {
+    expect(calculated.line16).toBeNull()
+    expect(calculated.result).toBeNull()
+  }
+})
+
+test('Stage 116: withholding boundary changes never alter provisional line 16', () => {
+  const baseline = calculateLivePreviewScenario2025(base)
+  for (const federalWithholding of ['', '0', '0.01', '50000']) {
+    const updated = updateLivePreviewScenario2025(base, { kind: 'federalWithholding', value: federalWithholding })
+    expect(updated.ordinaryConfirmed).toBe(true)
+    expect(updated.specialRuledOut).toBe(true)
+    expect(calculateLivePreviewScenario2025(updated).line16).toEqual(baseline.line16)
+  }
 })
