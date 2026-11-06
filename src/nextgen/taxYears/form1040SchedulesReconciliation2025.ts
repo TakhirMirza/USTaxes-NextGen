@@ -67,5 +67,5 @@ export function reconcile2025SchedulesWith1040(input: SchedulesReconciliationInp
   return { year: 2025, filingReady: false, postingAuthorized: false,
     officialLines: { '17': null, '18': null, '20': null, '21': null, '22': null, '23': null, '24': null, '31': null, '32': null, '33': null, '34': null, '37': null },
     candidates: { line17: usd(line17), line18: usd(line18), line20: usd(line20), line21: usd(line21), line22: usd(line22), line23: usd(line23), line24: usd(line24), line31: usd(line31), line32: usd(line32), line33: usd(line33), line34: usd(line34), line37: usd(line37) },
-    blockers: [...new Set(blockers)] }
+    blockers: Array.from(new Set(blockers)) }
 }

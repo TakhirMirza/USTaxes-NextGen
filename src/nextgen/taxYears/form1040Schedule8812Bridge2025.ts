@@ -45,6 +45,6 @@ export function review2025Form1040Schedule8812Bridge(input: Schedule8812ReviewIn
     otherDependentCreditBeforePhaseout: others * 500,
     phaseoutReduction: phaseout,
     availableTaxBeforeCredits: input.federalIncomeTaxAvailableBeforeCredits,
-    unresolved: [...new Set(unresolved)], readyForPosting: false,
+    unresolved: Array.from(new Set(unresolved)), readyForPosting: false,
   }
 }

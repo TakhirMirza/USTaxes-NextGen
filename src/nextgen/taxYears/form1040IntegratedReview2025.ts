@@ -110,6 +110,6 @@ export function reviewIntegrated2025Form1040(input: IntegratedReviewInput2025): 
     provisionalTaxableIncome, provisionalLine16,
     candidateNonrefundableCredit, candidateRefundableCredit,
     withholdingForReviewOnly: withholding / 100,
-    blockers: [...new Set(blockers)],
+    blockers: Array.from(new Set(blockers)),
   }
 }
