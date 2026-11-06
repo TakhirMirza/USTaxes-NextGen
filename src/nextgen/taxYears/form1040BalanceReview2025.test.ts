@@ -114,3 +114,77 @@ test('Stage 112: rejects non-finite, negative, over-precision, and excessive mon
     integrated: { ...review, withholdingForReviewOnly: Infinity },
   })).toThrow(RangeError)
 })
+
+// Stage 113: credit ordering, payment boundaries and fail-closed reconciliation.
+test('Stage 113: child credit exactly consumes remaining tax without making tax negative', () => {
+  const r = review2025Form1040Balance({
+    ...base,
+    integrated: { ...review, candidateNonrefundableCredit: 3900 },
+    otherNonrefundableCredits: 100,
+    otherTaxes: 0,
+    otherPayments: 0,
+  })
+  expect(r.candidates.line22TaxAfterCredits).toBe(0)
+  expect(r.candidates.line24TotalTax).toBe(0)
+  expect(r.candidates.line33TotalPayments).toBe(3200)
+  expect(r.candidates.line34Overpayment).toBe(3200)
+  expect(r.candidates.line37AmountOwed).toBe(0)
+  expect(r.postingAuthorized).toBe(false)
+})
+
+test('Stage 113: other nonrefundable credits exceeding tax block downstream balance', () => {
+  const r = review2025Form1040Balance({ ...base, otherNonrefundableCredits: 4000 })
+  expect(r.candidates.line22TaxAfterCredits).toBeNull()
+  expect(r.candidates.line24TotalTax).toBeNull()
+  expect(r.candidates.line34Overpayment).toBeNull()
+  expect(r.candidates.line37AmountOwed).toBeNull()
+  expect(r.blockers.join(' ')).toContain('exceed')
+})
+
+test('Stage 113: missing other taxes blocks total tax but preserves reviewed payments', () => {
+  const r = review2025Form1040Balance({ ...base, otherTaxes: null })
+  expect(r.candidates.line22TaxAfterCredits).toBe(3400)
+  expect(r.candidates.line23OtherTaxes).toBeNull()
+  expect(r.candidates.line24TotalTax).toBeNull()
+  expect(r.candidates.line33TotalPayments).toBe(3700)
+  expect(r.candidates.line34Overpayment).toBeNull()
+  expect(r.candidates.line37AmountOwed).toBeNull()
+})
+
+test('Stage 113: missing other credits blocks tax while payments stay independently reviewable', () => {
+  const r = review2025Form1040Balance({ ...base, otherNonrefundableCredits: null })
+  expect(r.candidates.line20OtherNonrefundableCredits).toBeNull()
+  expect(r.candidates.line22TaxAfterCredits).toBeNull()
+  expect(r.candidates.line24TotalTax).toBeNull()
+  expect(r.candidates.line33TotalPayments).toBe(3700)
+  expect(r.candidates.line34Overpayment).toBeNull()
+  expect(r.candidates.line37AmountOwed).toBeNull()
+})
+
+test('Stage 113: unconfirmed review evidence never authorizes filing or posting', () => {
+  const r = review2025Form1040Balance({
+    ...base,
+    creditOrderingConfirmed: false,
+    otherTaxesReviewed: false,
+    paymentsAndWithholdingReviewed: false,
+  })
+  expect(r.blockers.join(' ')).toContain('credit ordering is not confirmed')
+  expect(r.blockers.join(' ')).toContain('other taxes are not confirmed')
+  expect(r.blockers.join(' ')).toContain('payments are not confirmed')
+  expect(r.filingReady).toBe(false)
+  expect(r.postingAuthorized).toBe(false)
+  expect(Object.values(r.officialLines).every(value => value === null)).toBe(true)
+})
+
+test('Stage 113: fractional withholding and refundable credit produce exact amount owed', () => {
+  const r = review2025Form1040Balance({
+    ...base,
+    integrated: { ...review, withholdingForReviewOnly: 100.01, candidateRefundableCredit: 20.02 },
+    otherPayments: 30.03,
+  })
+  expect(r.candidates.line24TotalTax).toBe(3450)
+  expect(r.candidates.line33TotalPayments).toBe(150.06)
+  expect(r.candidates.line34Overpayment).toBe(0)
+  expect(r.candidates.line37AmountOwed).toBe(3299.94)
+  expect(r.filingReady).toBe(false)
+})
