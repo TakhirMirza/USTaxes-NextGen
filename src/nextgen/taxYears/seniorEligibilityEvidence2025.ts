@@ -22,7 +22,8 @@ export function review2025SeniorEligibilityEvidence(
   if (!evidence) return { complete: false, eligibleForFurtherReview: false,
     blockers: ['Senior deduction identity and residency evidence has not been reviewed.'] }
   const blockers: string[] = []
-  const check = (value: EvidenceAnswer2025 | undefined, label: string) => {
+  // Runtime inputs can originate from JSON, not only TypeScript code.
+  const check = (value: unknown, label: string): void => {
     if (value === undefined) {
       blockers.push(label + ' is unresolved.')
       return

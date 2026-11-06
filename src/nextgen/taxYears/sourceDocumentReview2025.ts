@@ -37,8 +37,10 @@ export function review2025SourceDocuments(
   const missingCategories: SourceCategory2025[] = []
   const categoriesRequiringSeparateCalculation: SourceCategory2025[] = []
   for (const category of SOURCE_CATEGORIES_2025) {
-    const disposition = declaration[category] ?? 'notReviewed'
-    if (!['notReviewed', 'noneConfirmed', 'documentsProvided'].includes(disposition)) {
+    // Treat external data as untrusted even when TypeScript callers are well typed.
+    const supplied: unknown = declaration[category]
+    const disposition = supplied === undefined ? 'notReviewed' : supplied
+    if (disposition !== 'notReviewed' && disposition !== 'noneConfirmed' && disposition !== 'documentsProvided') {
       throw new RangeError(`Invalid source review disposition for ${category}`)
     }
     if (disposition === 'notReviewed') missingCategories.push(category)

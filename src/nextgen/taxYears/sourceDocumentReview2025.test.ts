@@ -27,3 +27,10 @@ test('unknown categories and invalid dispositions are rejected', () => {
   expect(() => review2025SourceDocuments({ ...none, fake: 'noneConfirmed' } as unknown as SourceReviewDeclaration2025, { w2: 0, '1099int': 0 })).toThrow(/Unsupported/)
   expect(() => review2025SourceDocuments({ ...none, '1099b': 'maybe' } as unknown as SourceReviewDeclaration2025, { w2: 0, '1099int': 0 })).toThrow(/Invalid/)
 })
+
+test('null and numeric source dispositions are rejected rather than treated as reviewed', () => {
+  const invalidNull = { ...none, '1099b': null } as unknown as SourceReviewDeclaration2025
+  const invalidNumber = { ...none, '1099b': 1 } as unknown as SourceReviewDeclaration2025
+  expect(() => review2025SourceDocuments(invalidNull, { w2: 0, '1099int': 0 })).toThrow(/Invalid/)
+  expect(() => review2025SourceDocuments(invalidNumber, { w2: 0, '1099int': 0 })).toThrow(/Invalid/)
+})
