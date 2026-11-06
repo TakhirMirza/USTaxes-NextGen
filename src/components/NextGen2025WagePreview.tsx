@@ -4,6 +4,7 @@ import { Paper, TextField, Typography, MenuItem, Table, TableBody, TableRow, Tab
 import { filingStatuses2025, FilingStatus2025 } from '../nextgen/taxYears/preview2025'
 import { calculateLivePreviewScenario2025, LivePreviewScenario2025, reviewW2PreviewInputs2025, updateLivePreviewScenario2025 } from '../nextgen/taxYears/livePreviewScenario2025'
 import NextGen2025CreditsAndOvertime from './NextGen2025CreditsAndOvertime'
+import NextGen2025MultipleW2Preview from './NextGen2025MultipleW2Preview'
 import { getWageInputFeedback2025 } from '../nextgen/taxYears/wageInput2025'
 import { bridgeLiveW2ToRestricted1040_2025 } from '../nextgen/taxYears/livePreviewForm1040Bridge2025'
 
@@ -59,5 +60,6 @@ export default function NextGen2025WagePreview(): ReactElement {
     {line16 && line16.kind !== 'blocked' ? <Paper variant="outlined" style={{ padding: 12, marginTop: 8 }}><Typography>Provisional IRS line 16 candidate: <strong>{usd(line16.tax)}</strong></Typography><Typography variant="body2">Method: {line16.kind}. Source: {line16.source}. NOT FILING READY.</Typography></Paper> : null}
     <Typography variant="body2" style={{ marginTop: 12 }}>Does not include age-related deductions, Schedule 1-A, credits, withholding, capital gains, alternative tax calculations, or other IRS requirements.</Typography>
     <NextGen2025CreditsAndOvertime status={status} wages={result ? result.grossWages : null} line16Tax={line16 && line16.kind !== 'blocked' ? line16.tax : null} />
+    <NextGen2025MultipleW2Preview />
   </Paper>
 }
