@@ -90,10 +90,11 @@ export function build2025Form1040Review(facts: Form1040PipelineFacts2025): Form1
   const schedule1A = facts.schedule1A === undefined ? null : stage2025Schedule1ACandidates(facts.schedule1A)
   const seniorDeduction = facts.seniorDeductionFacts === undefined ? null :
     calculate2025SeniorDeduction(facts.seniorDeductionFacts)
-  const seniorEvidenceReview = seniorDeduction === null ? null :
+  const seniorFacts = facts.seniorDeductionFacts
+  const seniorEvidenceReview = seniorDeduction === null || seniorFacts === undefined ? null :
     review2025SeniorEligibilityEvidence(facts.seniorEligibilityEvidence,
-      facts.seniorDeductionFacts!.married,
-      facts.seniorDeductionFacts!.spouseEligible)
+      seniorFacts.married,
+      seniorFacts.spouseEligible)
   const schedule1AConsistency = review2025Schedule1AConsistency(schedule1A, seniorDeduction)
   if (!schedule1AConsistency.consistent) {
     blockers.push('Schedule 1-A consistency: ' + schedule1AConsistency.issues.join('; '))
@@ -101,7 +102,7 @@ export function build2025Form1040Review(facts: Form1040PipelineFacts2025): Form1
   if (seniorEvidenceReview && !seniorEvidenceReview.complete) {
     blockers.push('Senior deduction evidence: ' + seniorEvidenceReview.blockers.join('; '))
   }
-  if (seniorDeduction && facts.seniorDeductionFacts!.filingStatus !== facts.filingStatus) {
+  if (seniorDeduction && seniorFacts !== undefined && seniorFacts.filingStatus !== facts.filingStatus) {
     blockers.push('Senior deduction filing status differs from Form 1040 filing status.')
   }
   if (seniorDeduction && seniorDeduction.blockers.length) {
@@ -128,7 +129,7 @@ export function build2025Form1040Review(facts: Form1040PipelineFacts2025): Form1
     taxBaseReasons.push('standard deduction eligibility or amount is unresolved')
   }
   if (facts.schedule1 === undefined) taxBaseReasons.push('Schedule 1 has not been reviewed')
-  if (seniorDeduction && facts.seniorDeductionFacts!.filingStatus !== facts.filingStatus) {
+  if (seniorDeduction && seniorFacts !== undefined && seniorFacts.filingStatus !== facts.filingStatus) {
     taxBaseReasons.push('senior deduction filing status conflicts with Form 1040')
   }
   if (seniorEvidenceReview && !seniorEvidenceReview.complete) {

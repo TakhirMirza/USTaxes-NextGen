@@ -84,8 +84,12 @@ export function reconcile2025Form1040Arithmetic(input: Form1040ReconciliationInp
     warnings: ['Missing amounts cannot be assumed zero; no refund or balance due is calculated.',
       'All input amounts require independent eligibility and IRS worksheet verification.'],
   }
+  const w2Withholding = input.line25aW2Withholding
+  const form1099Withholding = input.line25b1099Withholding
+  const otherWithholding = input.line25cOtherWithholding
   if (breakdownCount === withholdingKeys.length &&
-      add(input.line25aW2Withholding!, input.line25b1099Withholding!, input.line25cOtherWithholding!) !== input.line25dWithholding) {
+      w2Withholding !== undefined && form1099Withholding !== undefined && otherWithholding !== undefined &&
+      add(w2Withholding, form1099Withholding, otherWithholding) !== input.line25dWithholding) {
     throw new RangeError('Form 1040 line 25d must equal lines 25a + 25b + 25c')
   }
   const v = input as Required<Form1040ReconciliationInputs2025>

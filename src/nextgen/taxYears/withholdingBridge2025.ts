@@ -68,7 +68,8 @@ export function attach2025Withholding(
   const keys = ['line25aW2Withholding', 'line25b1099Withholding',
     'line25cOtherWithholding', 'line25dWithholding'] as const
   for (const key of keys) {
-    if (input[key] !== undefined && cents(input[key]!, key) !== cents(breakdown[key], key)) {
+    const existing = input[key]
+    if (existing !== undefined && cents(existing, key) !== cents(breakdown[key], key)) {
       throw new RangeError(`Existing ${key} conflicts with document withholding`)
     }
   }

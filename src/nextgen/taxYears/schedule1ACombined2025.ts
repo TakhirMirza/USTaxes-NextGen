@@ -70,17 +70,20 @@ export function reviewCombined2025Schedule1A(facts: CombinedSchedule1AFacts2025)
         facts.staged.form1040Line13b !== null || facts.staged.eligibleDeductionCalculated !== false) {
       blockers.push('Schedule 1-A source evidence inventory has an unsafe status.')
     }
+    const stagedFacts = facts.staged
     keys.forEach((key, i) => {
-      const staged = facts.staged!.candidates[key]
+      const staged = stagedFacts.candidates[key]
       validatedCents(staged, `staged ${key}`)
-      if (amounts[i] !== null && Math.round(staged * 100) !== Math.round(amounts[i]! * 100)) {
+      const candidate = amounts[i]
+      if (candidate !== null && Math.round(staged * 100) !== Math.round(candidate * 100)) {
         blockers.push(`${key}: staged evidence differs from calculated candidate.`)
       }
     })
   }
   let preliminaryTotal: number | null = null
   if (amounts.every(amount => amount !== null)) {
-    const total = amounts.reduce<number>((sum, amount) => sum + validatedCents(amount!, 'candidate'), 0)
+    const total = amounts.reduce<number>((sum, amount) =>
+      sum + (amount === null ? 0 : validatedCents(amount, 'candidate')), 0)
     if (!Number.isSafeInteger(total)) throw new RangeError('Schedule 1-A total exceeds safe integer precision')
     preliminaryTotal = total / 100
   }
