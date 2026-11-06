@@ -26,7 +26,7 @@ describe('2025 restricted Form 1040 draft', () => {
     expect(d.line16.kind).toBe('verified-reference-example')
     if (d.line16.kind !== 'blocked') expect(d.line16.tax).toBe(2562)
     const other = makeRestricted2025Draft([{ ...w[0], box1Wages: 56900 }], [], 'marriedJoint', true, true)
-    expect(other.line16.kind).toBe('blocked')
+    expect(other.line16.kind).toBe('unverified-import-candidate')
   })
   test('rejects negative or invalid inputs', () => {
     expect(() => makeRestricted2025Draft([{ ...w2[0], box1Wages: -1 }], interest, 'single')).toThrow(RangeError)

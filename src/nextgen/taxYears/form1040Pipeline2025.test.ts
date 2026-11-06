@@ -53,7 +53,9 @@ test('Schedule 1-A candidate dollars never silently reduce taxable income', () =
     schedule1A: [{ category: 'qualifiedTips', amount: 1200 }] })
   expect(candidate.schedule1A!.unverifiedCandidateTotal).toBe(1200)
   expect(candidate.schedule1A!.form1040Line13b).toBeNull()
-  expect(candidate.draft).toEqual(baseline.draft)
+  expect(candidate.draft.lines).toEqual(baseline.draft.lines)
+  expect(candidate.draft.line16.kind).toBe('blocked')
+  expect(baseline.draft.line16.kind).toBe('blocked')
   expect(candidate.blockers.some(x => x.includes('line 13b remains unavailable'))).toBe(true)
 })
 

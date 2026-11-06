@@ -1,6 +1,6 @@
 import { presentRestricted2025Review } from './form1040ReviewPresentation2025'
 const base = () => ({ year: 2025, filingReady: false, postingAuthorized: false,
-  officialLines: { '17': null, '18': null },
+  officialLines: Object.fromEntries(['17','18','20','21','22','23','24','31','32','33','34','37'].map(k => [k, null])),
   candidates: { line17: 0, line18: 1200, line20: null, line21: null, line22: null, line23: null, line24: null, line31: null, line32: null, line33: null, line34: null, line37: null },
   blockers: ['Awaiting credit review'] })
 test('renders explicit zero distinctly from unknown', () => {

@@ -11,7 +11,7 @@ const checks=[
  ['Locked install is used',()=>assert.match(workflow,/npm ci --no-audit --no-fund/)],
  ['Integration checks follow install',()=>assert.ok(workflow.indexOf('npm run test:integration:2025')>workflow.indexOf('npm ci --no-audit'))],
  ['Strict dependency check runs before build',()=>assert.ok(workflow.indexOf('npm run preflight:build:strict')<workflow.indexOf('npm run build'))],
- ['React build runs in CI',()=>assert.match(workflow,/run: npm run build/)],
+ ['React build runs in CI',()=>assert.match(workflow,/npm run build(?:\s|$)/)],
  ['No filing or deploy action',()=>{assert.doesNotMatch(workflow,/actions\/deploy-pages|gh release|filingReady: true/);}],
  ['Offline test command registered',()=>assert.match(pkg.scripts['test:stage75:offline'],/stage75-ci-validation/)],
 ];

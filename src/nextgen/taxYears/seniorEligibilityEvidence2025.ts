@@ -23,6 +23,10 @@ export function review2025SeniorEligibilityEvidence(
     blockers: ['Senior deduction identity and residency evidence has not been reviewed.'] }
   const blockers: string[] = []
   const check = (value: EvidenceAnswer2025 | undefined, label: string) => {
+    if (value === undefined) {
+      blockers.push(label + ' is unresolved.')
+      return
+    }
     if (value !== 'yes' && value !== 'no' && value !== 'unknown') {
       throw new TypeError(label + ' must be yes, no or unknown')
     }

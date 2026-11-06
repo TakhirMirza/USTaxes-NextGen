@@ -41,14 +41,15 @@ export function decide2025Line16(facts: Line16Facts2025): Line16Decision2025 {
     }
   }
   if (taxableIncome < 100000) {
-    // Prefer complete audited import when available; otherwise exact published samples only.
+    // Independently transcribed published cells take precedence over the
+    // complete imported dataset. The latter remains diagnostic-only.
+    const verifiedTax = lookupVerified2025SampleTax(taxableIncome, status)
+    if (verifiedTax !== undefined) {
+      return { kind: 'verified-reference-example', tax: verifiedTax, source: IRS_2025_TAX_TABLE_SOURCE, filingReady: false }
+    }
     const importedTax = lookupImported2025Tax(taxableIncome, status)
     if (importedTax !== undefined) {
       return { kind: 'unverified-import-candidate', tax: importedTax, source: IRS_2025_TAX_TABLE_SOURCE, filingReady: false }
-    }
-    const tax = lookupVerified2025SampleTax(taxableIncome, status)
-    if (tax !== undefined) {
-      return { kind: 'verified-reference-example', tax, source: IRS_2025_TAX_TABLE_SOURCE, filingReady: false }
     }
     return {
       kind: 'blocked',

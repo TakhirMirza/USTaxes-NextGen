@@ -17,3 +17,10 @@ test('joint spouse SSN is separately required', () => {
 test('malformed declaration is rejected', () => {
   expect(() => review2025SeniorEligibilityEvidence({...verified, taxpayerHasValidWorkSSN: 'maybe' as any}, false, false)).toThrow(TypeError)
 })
+
+test('missing spouse SSN is a blocker, not an exception', () => {
+  const joint = {...verified, marriedFilingJointly: 'yes' as const }
+  const review = review2025SeniorEligibilityEvidence(joint, true, true)
+  expect(review.complete).toBe(false)
+  expect(review.blockers.join(' ')).toMatch(/Spouse SSN requirement is unresolved/)
+})

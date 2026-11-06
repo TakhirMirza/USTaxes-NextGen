@@ -28,8 +28,9 @@ describe('2025 imported table fail-closed validation', () => {
     rows[123] = { ...rows[123], lower: 3025 }
     expect(validateComplete2025TaxTable(rows)).toBe(false)
   })
-  test('rejects missing bundled table', () => {
-    expect(lookupImported2025Tax(25300, 'single')).toBeUndefined()
+  test('bundled complete table is diagnostic-only, not filing authorization', () => {
+    expect(lookupImported2025Tax(25300, 'single')).toBe(2801)
+    expect(lookupImported2025Tax(100000, 'single')).toBeUndefined()
   })
   test('rejects incomplete data', () => {
     expect(validateComplete2025TaxTable(makeRows().slice(0, -1))).toBe(false)

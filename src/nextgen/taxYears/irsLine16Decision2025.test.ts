@@ -9,8 +9,8 @@ describe('2025 IRS line 16 conservative decision routing', () => {
     const result = decide2025Line16({ taxableIncome: 25300, status: 'marriedJoint', ...confirmed })
     expect(result).toMatchObject({ kind: 'verified-reference-example', tax: 2562, filingReady: false })
   })
-  test('does not extrapolate table values from the published example', () => {
-    expect(decide2025Line16({ taxableIncome: 25400, status: 'marriedJoint', ...confirmed }).kind).toBe('blocked')
+  test('published samples remain verified; adjacent imported rows remain unverified' , () => {
+    expect(decide2025Line16({ taxableIncome: 25400, status: 'marriedJoint', ...confirmed }).kind).toBe('unverified-import-candidate')
     expect(decide2025Line16({ taxableIncome: 25300, status: 'single', ...confirmed })).toMatchObject({ kind: 'verified-reference-example', tax: 2801 })
   })
   test('100k boundary uses official ordinary-income worksheet', () => {
