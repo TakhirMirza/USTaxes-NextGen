@@ -14,10 +14,8 @@ export function get2025ReviewChecklist(result: Form1040PipelineResult2025): Revi
   const taxDetermined = result.draft.line16.kind === 'ordinary-worksheet'
   // Published sample cells are reference examples, not a complete tax determination.
   const arithmetic = result.reconciliation?.completeArithmetic === true
-  const elections = result.reconciliation !== null &&
-    result.reconciliation !== undefined &&
-    result.reconciliation.lines['35a'] != null &&
-    result.reconciliation.lines['36'] != null
+  const elections = result.reconciliation?.lines['35a'] != null &&
+    result.reconciliation?.lines['36'] != null
   return [
     { id: 'schedule1', label: 'Schedule 1 review', status: result.blockers.some(x => x.includes('Schedule 1 has not been explicitly reviewed')) ? 'blocked' : 'reviewed', explanation: 'Explicit review of other income and adjustments; not proof of tax-law completeness.' },
     { id: 'schedule1a', label: 'Schedule 1-A review', status: hasSchedule1A && schedule1ACandidates === 0 ? 'reviewed' : 'blocked', explanation: !hasSchedule1A ? 'Not reviewed.' : schedule1ACandidates ? 'Candidate deductions require eligibility and phaseout calculations.' : 'No candidate deductions were reported; not an eligibility certification.' },

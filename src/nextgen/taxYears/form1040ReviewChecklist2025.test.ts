@@ -26,3 +26,13 @@ test('reference tax-table sample does not count as a completed line 16 review', 
   // certify filing readiness.
   expect(checks.find(x => x.id === 'filing')!.status).toBe('blocked')
 })
+
+
+test('absent reconciliation never marks arithmetic or elections reviewed', () => {
+  const result = build2025Form1040Review(base)
+  const withoutReconciliation = { ...result, reconciliation: null }
+  const checks = get2025ReviewChecklist(withoutReconciliation)
+  expect(checks.find(x => x.id === 'arithmetic')?.status).toBe('blocked')
+  expect(checks.find(x => x.id === 'elections')?.status).toBe('blocked')
+  expect(checks.find(x => x.id === 'filing')?.status).toBe('blocked')
+})

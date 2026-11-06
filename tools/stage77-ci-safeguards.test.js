@@ -34,7 +34,7 @@ const checks = [
     assert.match(workflow, /set -o pipefail/, 'Build failures must propagate through tee');
   }],
   ['Build and diagnostic artifacts retained on failure', () => {assert.match(workflow,/if: always\(\)/);assert.match(workflow,/build\//);assert.match(workflow,/test-results\//)}],
-  ['Source and build config trigger workflow', () => {for(const name of ['src/nextgen/**','scripts/**','craco.config.js','tsconfig.json']) assert.ok(workflow.includes(name),name)}],
+  ['Source and build config trigger workflow', () => {for(const name of ['src/nextgen/**','src/components/**','scripts/**','craco.config.js','tsconfig.json']) assert.ok(workflow.includes(name),name)}],
   ['Never deploy or authorize tax filing', () => assert.doesNotMatch(workflow,/actions\/deploy-pages|filingReady: true|postingAuthorized: true/)],
   ['Explicit Node 18 environment', () => assert.match(workflow,/node-version: '18'/)],
 ];
