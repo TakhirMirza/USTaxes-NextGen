@@ -151,3 +151,49 @@ describe('Stage 106: Form 1040 reconciliation rejects malformed imported money',
     }
   })
 })
+
+describe('Stage 107: imported data and boundary reconciliation safeguards', () => {
+  it('rejects nonnumeric values from untrusted JSON rather than coercing them', () => {
+    const invalid: unknown[] = ['100', null, true, {}, [], '0.00']
+    for (const value of invalid) {
+      const imported = { ...complete, line16Tax: value } as unknown as typeof complete
+      expect(() => reconcile2025Form1040Arithmetic(imported)).toThrow(RangeError)
+    }
+  })
+
+  it('requires the total withholding field even when all breakdown entries exist', () => {
+    const incomplete: Partial<typeof complete> & {
+      line25aW2Withholding: number; line25b1099Withholding: number; line25cOtherWithholding: number
+    } = { ...complete, line25aW2Withholding: 5000, line25b1099Withholding: 400, line25cOtherWithholding: 100 }
+    delete incomplete.line25dWithholding
+    const result = reconcile2025Form1040Arithmetic(incomplete)
+    expect(result.completeArithmetic).toBe(false)
+    expect(result.missingInputs).toContain('line25dWithholding')
+    expect(result.lines['25d']).toBeNull()
+    expect(result.filingReady).toBe(false)
+  })
+
+  it('handles exact-cent withholding without binary floating-point mismatches', () => {
+    const result = reconcile2025Form1040Arithmetic({ ...complete,
+      line25aW2Withholding: 5499.97, line25b1099Withholding: 0.01,
+      line25cOtherWithholding: 0.02, line25dWithholding: 5500,
+    })
+    expect(result.completeArithmetic).toBe(true)
+    expect(result.lines['25d']).toBe(5500)
+    expect(result.filingReady).toBe(false)
+  })
+
+  it('never silently infers a refund or carryforward election', () => {
+    const result = reconcile2025Form1040Arithmetic({ ...complete })
+    expect(result.lines['34']).toBe(800)
+    expect(result.lines['35a']).toBeNull()
+    expect(result.lines['36']).toBeNull()
+    expect(result.filingReady).toBe(false)
+  })
+
+  it('rejects allocating more than available even at the cent boundary', () => {
+    expect(() => reconcile2025Form1040Arithmetic({ ...complete,
+      line35aRefundRequested: 799.99, line36AppliedTo2026: 0.02,
+    })).toThrow(RangeError)
+  })
+})
