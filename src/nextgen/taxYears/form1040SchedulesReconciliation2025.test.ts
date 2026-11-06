@@ -27,7 +27,7 @@ test('Schedule 3 mismatches are flagged', () => {
   expect(reconcile2025SchedulesWith1040(i).blockers.join(' ')).toMatch(/line 20 disagrees/)
 })
 test('missing payment is not treated as zero', () => {
-  const i = input(); i.additionalPaymentsExcludingSchedule3 = null as any
+  const i = input(); i.additionalPaymentsExcludingSchedule3 = null as unknown as number
   expect(reconcile2025SchedulesWith1040(i).candidates.line33).toBeNull()
 })
 test('nonrefundable credit excess blocks line 22', () => {

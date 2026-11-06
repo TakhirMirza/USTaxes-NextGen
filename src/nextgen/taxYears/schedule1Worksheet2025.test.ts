@@ -13,7 +13,7 @@ describe('restricted 2025 Schedule 1 worksheet', () => {
   test('rejects negative, fractional-cent and unsupported values', () => {
     expect(() => create2025Schedule1Worksheet([{line:'3', amount:-1}])).toThrow(RangeError)
     expect(() => create2025Schedule1Worksheet([{line:'3', amount:0.001}])).toThrow(RangeError)
-    expect(() => create2025Schedule1Worksheet([{line:'10' as any, amount:5}])).toThrow(RangeError)
+    expect(() => create2025Schedule1Worksheet([{line:'10' as unknown as Parameters<typeof create2025Schedule1Worksheet>[0][number]['line'], amount:5}])).toThrow(RangeError)
   })
   test('maps Schedule 1 to Form 1040 draft lines 8, 10, 11a and 15', () => {
     const d = makeRestricted2025Draft([{id:'w',employer:'Example',box1Wages:100000,box2FederalWithholding:5000}], [], 'single', false, false, [

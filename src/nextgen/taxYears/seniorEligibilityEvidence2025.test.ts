@@ -15,7 +15,7 @@ test('joint spouse SSN is separately required', () => {
   expect(review2025SeniorEligibilityEvidence({...joint, spouseHasValidWorkSSN: 'yes'}, true, true).complete).toBe(true)
 })
 test('malformed declaration is rejected', () => {
-  expect(() => review2025SeniorEligibilityEvidence({...verified, taxpayerHasValidWorkSSN: 'maybe' as any}, false, false)).toThrow(TypeError)
+  expect(() => review2025SeniorEligibilityEvidence({...verified, taxpayerHasValidWorkSSN: 'maybe' as unknown as typeof verified.taxpayerHasValidWorkSSN}, false, false)).toThrow(TypeError)
 })
 
 test('missing spouse SSN is a blocker, not an exception', () => {

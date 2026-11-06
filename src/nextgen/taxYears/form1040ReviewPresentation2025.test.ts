@@ -18,7 +18,7 @@ test('rejects any posted official line', () => {
 })
 test('rejects invalid and missing candidate amounts', () => {
   expect(() => presentRestricted2025Review({ ...base(), candidates: { ...base().candidates, line18: -1 } })).toThrow()
-  const r = base() as any; delete r.candidates.line18
+  const r = base(); delete (r.candidates as Partial<typeof r.candidates>).line18
   expect(() => presentRestricted2025Review(r)).toThrow()
 })
 test('preserves blockers', () => expect(presentRestricted2025Review(base()).blockers).toEqual(['Awaiting credit review']))

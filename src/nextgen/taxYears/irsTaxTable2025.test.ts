@@ -21,6 +21,6 @@ describe('2025 tax-table midpoint reconstruction (NOT filing-ready)', () => {
     expect(() => reconstruct2025TaxTableBand(Infinity, 'single')).toThrow(RangeError)
   })
   test('rejects invalid filing status', () => {
-    expect(() => reconstruct2025TaxTableBand(1000, 'bogus' as any)).toThrow(RangeError)
+    expect(() => reconstruct2025TaxTableBand(1000, 'bogus' as unknown as Parameters<typeof reconstruct2025TaxTableBand>[1])).toThrow(RangeError)
   })
 })

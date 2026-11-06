@@ -19,7 +19,7 @@ describe('2025 Schedule 1-A candidate staging (not a deduction)', () => {
     expect(() => stage2025Schedule1ACandidates([{ category: 'qualifiedTips', amount: 1.001 }])).toThrow()
   })
   it('rejects unknown categories', () => {
-    expect(() => stage2025Schedule1ACandidates([{ category: 'unknown' as any, amount: 1 }])).toThrow()
+    expect(() => stage2025Schedule1ACandidates([{ category: 'unknown' as unknown as Parameters<typeof stage2025Schedule1ACandidates>[0][number]['category'], amount: 1 }])).toThrow()
   })
   it('starts with no authorized deductions', () => {
     const result = stage2025Schedule1ACandidates([])

@@ -14,7 +14,7 @@ describe('2025 source-document withholding bridge', () => {
     expect(() => summarize2025Withholding(w2s, interests, NaN, 0)).toThrow(RangeError)
     expect(() => summarize2025Withholding(w2s, interests, 0.001, 0)).toThrow(RangeError)
     expect(() => summarize2025Withholding([...w2s, ...w2s], interests, 0, 0)).toThrow(RangeError)
-    expect(() => summarize2025Withholding(w2s, interests, undefined as any, 0)).toThrow(RangeError)
+    expect(() => summarize2025Withholding(w2s, interests, undefined as unknown as Parameters<typeof summarize2025Withholding>[2], 0)).toThrow(RangeError)
   })
   it('preserves unrelated reconciliation inputs', () => {
     const result = attach2025Withholding({ line16Tax: 4000 }, summarize2025Withholding(w2s, interests, 0, 0))
