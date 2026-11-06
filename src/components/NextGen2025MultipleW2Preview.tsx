@@ -28,7 +28,7 @@ export default function NextGen2025MultipleW2Preview(): ReactElement {
     <TextField select label="Filing status for restricted preview" variant="outlined" value={status} onChange={event => setStatus(event.target.value as FilingStatus2025)} style={{ minWidth: 260, marginTop: 16 }}>
       {filingStatuses2025.map(option => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}
     </TextField>
-    {documents.map((document, index) => <Paper variant="outlined" key={document.id + '-' + index} style={{ padding: 12, marginTop: 12 }}>
+    {documents.map((document, index) => <Paper variant="outlined" key={`${document.id}-${index}`} style={{ padding: 12, marginTop: 12 }}>
       <Typography variant="subtitle1">W-2 document {index + 1}</Typography>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 8 }}>
         <TextField variant="outlined" label="Document ID" value={document.id} onChange={event => edit(index, 'id', event.target.value)} inputProps={{ 'aria-label': `W-2 ${index + 1} document ID` }} helperText="Unique identifier for this illustration" />
