@@ -26,7 +26,9 @@ export function audit2025TaxTable(
   const sorted = [...rows].sort((a, b) => a.lower - b.lower)
   let cursor = 0
   let coveredDollars = 0
-  for (const [index, row] of sorted.entries()) {
+  // Index-based iteration is compatible with the React build target (ES5).
+  for (let index = 0; index < sorted.length; index++) {
+    const row = sorted[index]
     if (!Number.isInteger(row.lower) || !Number.isInteger(row.upper) ||
         row.lower < 0 || row.upper > 100000 || row.lower >= row.upper) {
       errors.push(`Invalid interval at sorted row ${index}`)
