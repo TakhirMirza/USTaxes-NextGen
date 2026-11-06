@@ -119,3 +119,73 @@ test('Stage 110: missing Schedule 1-A never becomes a zero deduction or computed
   expect(balance.candidates.line37AmountOwed).toBeNull()
   expect(Object.values(balance.officialLines).every(v => v === null)).toBe(true)
 })
+
+// Stage 111: cross-module money, evidence, and authorization boundary regressions.
+test('Stage 111: withholding and payments reconcile exactly at the refund/amount-due boundary', () => {
+  const preliminary = reviewIntegrated2025Form1040({ ...base, schedule8812: null })
+  const tax = preliminary.provisionalLine16
+  if (!tax || tax.kind === 'blocked') throw new Error('Expected diagnostic line 16')
+  const integrated = reviewIntegrated2025Form1040({
+    ...base, schedule8812: { ...credit, availableTaxBeforeCredits: tax.tax },
+  })
+  const otherTaxes = 5000
+  const otherPayments = tax.tax + otherTaxes - 500 - 3200
+  const common = {
+    integrated, otherNonrefundableCredits: 0, otherTaxes,
+    creditOrderingConfirmed: true, otherTaxesReviewed: true, paymentsAndWithholdingReviewed: true,
+  }
+  const equalBalance = review2025Form1040Balance({ ...common, otherPayments })
+  expect(equalBalance.candidates.line24TotalTax).toBe(equalBalance.candidates.line33TotalPayments)
+  expect(equalBalance.candidates.line34Overpayment).toBe(0)
+  expect(equalBalance.candidates.line37AmountOwed).toBe(0)
+  const overpaid = review2025Form1040Balance({ ...common, otherPayments: otherPayments + 1 })
+  expect(overpaid.candidates.line34Overpayment).toBe(1)
+  expect(overpaid.candidates.line37AmountOwed).toBe(0)
+  const owed = review2025Form1040Balance({ ...common, otherPayments: otherPayments - 1 })
+  expect(owed.candidates.line34Overpayment).toBe(0)
+  expect(owed.candidates.line37AmountOwed).toBe(1)
+  for (const result of [equalBalance, overpaid, owed]) {
+    expect(result.filingReady).toBe(false)
+    expect(result.postingAuthorized).toBe(false)
+    expect(Object.values(result.officialLines).every(v => v === null)).toBe(true)
+  }
+})
+
+test('Stage 111: excess nonrefundable credits cannot produce negative tax or a fabricated refund', () => {
+  const preliminary = reviewIntegrated2025Form1040({ ...base, schedule8812: null })
+  const tax = preliminary.provisionalLine16
+  if (!tax || tax.kind === 'blocked') throw new Error('Expected diagnostic line 16')
+  const integrated = reviewIntegrated2025Form1040({
+    ...base, schedule8812: { ...credit, availableTaxBeforeCredits: tax.tax },
+  })
+  const balance = review2025Form1040Balance({
+    integrated, otherNonrefundableCredits: tax.tax, otherTaxes: 0, otherPayments: 0,
+    creditOrderingConfirmed: true, otherTaxesReviewed: true, paymentsAndWithholdingReviewed: true,
+  })
+  expect(balance.candidates.line22TaxAfterCredits).toBeNull()
+  expect(balance.candidates.line24TotalTax).toBeNull()
+  expect(balance.candidates.line34Overpayment).toBeNull()
+  expect(balance.candidates.line37AmountOwed).toBeNull()
+  expect(balance.blockers.join(' ')).toContain('credit ordering requires recalculation')
+  expect(balance.postingAuthorized).toBe(false)
+})
+
+test('Stage 111: unreviewed payment evidence never silently becomes a zero payment', () => {
+  const preliminary = reviewIntegrated2025Form1040({ ...base, schedule8812: null })
+  const tax = preliminary.provisionalLine16
+  if (!tax || tax.kind === 'blocked') throw new Error('Expected diagnostic line 16')
+  const integrated = reviewIntegrated2025Form1040({
+    ...base, schedule8812: { ...credit, availableTaxBeforeCredits: tax.tax },
+  })
+  const balance = review2025Form1040Balance({
+    integrated, otherNonrefundableCredits: 0, otherTaxes: 0, otherPayments: null,
+    creditOrderingConfirmed: true, otherTaxesReviewed: true, paymentsAndWithholdingReviewed: false,
+  })
+  expect(balance.candidates.line33TotalPayments).toBeNull()
+  expect(balance.candidates.line34Overpayment).toBeNull()
+  expect(balance.candidates.line37AmountOwed).toBeNull()
+  expect(balance.blockers.join(' ')).toContain('Other payments have not been reviewed')
+  expect(balance.blockers.join(' ')).toContain('Withholding and payments are not confirmed')
+  expect(balance.filingReady).toBe(false)
+  expect(balance.postingAuthorized).toBe(false)
+})
