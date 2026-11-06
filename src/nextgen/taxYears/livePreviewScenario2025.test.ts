@@ -42,3 +42,23 @@ test('reconfirmation is explicit after an input change', () => {
 test('unsupported status is rejected at scenario boundary', () => {
   expect(() => updateLivePreviewScenario2025(base, { kind: 'status', value: 'unsupported' as LivePreviewScenario2025['status'] })).toThrow(RangeError)
 })
+
+
+test('optional W-2 Box 2 withholding is context only and does not change line 16', () => {
+  const before = calculateLivePreviewScenario2025(base)
+  const updated = updateLivePreviewScenario2025(base, { kind: 'federalWithholding', value: '1200.50' })
+  expect(updated.ordinaryConfirmed).toBe(true)
+  expect(updated.specialRuledOut).toBe(true)
+  expect(calculateLivePreviewScenario2025(updated).line16).toEqual(before.line16)
+})
+
+test.each(['-1', '1e3', '12.345', '50000.01'])('unsafe withholding %s blocks calculations', value => {
+  const updated = updateLivePreviewScenario2025(base, { kind: 'federalWithholding', value })
+  const calculated = calculateLivePreviewScenario2025(updated)
+  expect(calculated.valid).toBe(false)
+  expect(calculated.line16).toBeNull()
+})
+
+test('empty withholding remains optional', () => {
+  expect(calculateLivePreviewScenario2025({ ...base, federalWithholding: '' }).valid).toBe(true)
+})
