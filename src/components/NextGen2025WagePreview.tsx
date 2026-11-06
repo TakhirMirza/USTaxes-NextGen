@@ -5,6 +5,7 @@ import { filingStatuses2025, FilingStatus2025 } from '../nextgen/taxYears/previe
 import { calculateLivePreviewScenario2025, LivePreviewScenario2025, reviewW2PreviewInputs2025, updateLivePreviewScenario2025 } from '../nextgen/taxYears/livePreviewScenario2025'
 import NextGen2025CreditsAndOvertime from './NextGen2025CreditsAndOvertime'
 import { getWageInputFeedback2025 } from '../nextgen/taxYears/wageInput2025'
+import { bridgeLiveW2ToRestricted1040_2025 } from '../nextgen/taxYears/livePreviewForm1040Bridge2025'
 
 /** Live, deliberately limited illustration: not an input to the Form 1040 reconciliation. */
 export default function NextGen2025WagePreview(): ReactElement {
@@ -17,6 +18,7 @@ export default function NextGen2025WagePreview(): ReactElement {
   const withholdingText = scenario.federalWithholding ?? ''
   const withholdingFeedback = getWageInputFeedback2025(withholdingText)
   const inputReview = reviewW2PreviewInputs2025(wages, withholdingText)
+  const form1040Bridge = bridgeLiveW2ToRestricted1040_2025(scenario)
   const withholdingExceedsWages = inputReview.kind === 'withholdingExceedsWages'
   const withholdingInvalid = withholdingFeedback.kind === 'invalid' || withholdingExceedsWages
   const update = (change: Parameters<typeof updateLivePreviewScenario2025>[1]): void => {
@@ -42,6 +44,13 @@ export default function NextGen2025WagePreview(): ReactElement {
       <TableRow><TableCell>Illustrative taxable ordinary income</TableCell><TableCell align="right">{usd(result.taxableOrdinaryIncome)}</TableCell></TableRow>
       <TableRow><TableCell>Illustrative bracket tax (NOT line 16)</TableCell><TableCell align="right">{usd(result.illustrativeBracketTax)}</TableCell></TableRow>
     </TableBody></Table> : <Typography style={{ marginTop: 12 }}>{wageFeedback.kind === 'invalid' || withholdingInvalid ? 'Correct the input amounts to continue.' : 'Enter wages to see an illustrative calculation.'}</Typography>}
+    <Typography variant="h6" style={{ marginTop: 20 }}>Restricted Form 1040 mapping — read only</Typography>
+    <Alert severity="info">This mapping uses a single unverified W-2 example. Box 2 must be entered explicitly (including zero). It does not establish complete withholding, eligibility, tax due, refund, or filing readiness.</Alert>
+    {form1040Bridge.kind === 'mapped' ? <Table size="small" aria-label="Restricted Form 1040 W-2 mapping"><TableBody>
+      <TableRow><TableCell>Form 1040 line 1a — W-2 wages</TableCell><TableCell align="right">{usd(form1040Bridge.draft.lines['1a'])}</TableCell></TableRow>
+      <TableRow><TableCell>Form 1040 line 25a — W-2 withholding</TableCell><TableCell align="right">{usd(form1040Bridge.draft.lines['25a'])}</TableCell></TableRow>
+      <TableRow><TableCell>Restricted draft line 25d — known W-2 withholding only</TableCell><TableCell align="right">{usd(form1040Bridge.draft.lines['25d'])}</TableCell></TableRow>
+    </TableBody></Table> : <Typography variant="body2" style={{ marginTop: 8 }}>Form 1040 mapping blocked until valid wages and an explicit Box 2 amount are entered.</Typography>}
     <Typography variant="h6" style={{ marginTop: 20 }}>IRS 2025 line 16 — restricted tax-table diagnostic</Typography>
     <Alert severity="info">For wages-only examples, explicitly confirm both conditions before looking up the imported IRS Tax Table. Confirmations reset whenever wages or filing status changes. Confirmation does not establish eligibility or filing readiness.</Alert>
     <FormControlLabel control={<Checkbox disabled={!result} checked={ordinaryConfirmed} onChange={e => update({ kind: 'ordinaryConfirmed', value: e.target.checked })} />} label="I verified that the ordinary-income tax method applies" />
