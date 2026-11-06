@@ -76,7 +76,8 @@ describe('2025 refund and carryforward elections', () => {
 
 describe('2025 IRS line 30 and withholding breakdown', () => {
   it('requires the new refundable adoption credit input rather than assuming zero', () => {
-    const { line30RefundableAdoptionCredit, ...without30 } = complete
+    const without30: Partial<typeof complete> = { ...complete }
+    delete without30.line30RefundableAdoptionCredit
     const result = reconcile2025Form1040Arithmetic(without30)
     expect(result.completeArithmetic).toBe(false)
     expect(result.missingInputs).toContain('line30RefundableAdoptionCredit')

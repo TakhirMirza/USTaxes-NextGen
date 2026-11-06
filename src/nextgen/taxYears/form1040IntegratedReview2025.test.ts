@@ -41,3 +41,22 @@ test('rejects inconsistent Schedule 1-A arithmetic', () => {
 test('rejects unsafe filing status from an upstream bridge', () => {
   expect(() => reviewIntegrated2025Form1040({ ...base, schedule8812: { ...credit, readyForPosting: true } as Form1040Schedule8812Bridge2025 })).toThrow()
 })
+
+// Invalid imported money must fail closed rather than reach a provisional calculation.
+test('rejects non-finite and negative Form 1040 money inputs', () => {
+  expect(() => reviewIntegrated2025Form1040({
+    ...base, draft: { ...draft, lines: { ...draft.lines, '15': Number.NaN } },
+  })).toThrow(RangeError)
+  expect(() => reviewIntegrated2025Form1040({
+    ...base, draft: { ...draft, lines: { ...draft.lines, '25d': -1 } },
+  })).toThrow(RangeError)
+})
+
+test('rejects unsafe bridge credit candidates without authorizing filing', () => {
+  expect(() => reviewIntegrated2025Form1040({
+    ...base, schedule8812: { ...credit, nonrefundableCandidate: Number.POSITIVE_INFINITY },
+  })).toThrow(RangeError)
+  expect(() => reviewIntegrated2025Form1040({
+    ...base, schedule8812: { ...credit, refundableCandidate: -5 },
+  })).toThrow(RangeError)
+})
