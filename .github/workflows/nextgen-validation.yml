@@ -73,6 +73,16 @@ jobs:
           set -o pipefail
           mkdir -p test-results
           npm run build 2>&1 | tee test-results/react-build.log
+      # Inventory remaining lint findings without weakening Jest or the Stage 83 gate.
+      # The React build currently uses CI=false; this report makes warnings visible
+      # and measurable before strict CI=true can safely be restored.
+      - name: Inventory ESLint findings (Stage 98)
+        if: always() && steps.npm_install.outcome == 'success'
+        run: |
+          mkdir -p test-results
+          node tools/stage98-eslint-report.test.js
+          ./node_modules/.bin/eslint ./src --ext ts,js,tsx,jsx --format json --output-file test-results/eslint.json || true
+          node tools/stage98-eslint-report.js test-results/eslint.json test-results/eslint-summary.json
       - name: Summarize CI outcomes (including skipped steps)
         if: always()
         run: |
