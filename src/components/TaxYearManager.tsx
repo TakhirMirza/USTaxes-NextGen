@@ -29,7 +29,7 @@ export default function TaxYearManager(): ReactElement {
               <TableCell>Tax year</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Forms</TableCell>
-              <TableCell>What's missing / next steps</TableCell>
+              <TableCell>What&apos;s missing / next steps</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>

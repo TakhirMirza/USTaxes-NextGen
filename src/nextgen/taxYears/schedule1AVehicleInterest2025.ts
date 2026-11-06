@@ -36,7 +36,10 @@ export interface VehicleInterestCandidate2025 {
   blockers: string[]
 }
 const statuses: FilingStatus2025[] = ['single','marriedJoint','marriedSeparate','headOfHousehold','qualifyingSurvivingSpouse']
-const requiredFlags: (keyof VehicleLoanInterest2025)[] = [
+type VehicleLoanBooleanFlag = {
+  [K in keyof VehicleLoanInterest2025]: VehicleLoanInterest2025[K] extends boolean ? K : never
+}[keyof VehicleLoanInterest2025]
+const requiredFlags: VehicleLoanBooleanFlag[] = [
   'originatedAfter2024','loanOriginatedByTaxpayer','loanUsedToPurchaseVehicleNotLease',
   'securedByFirstLien','originalUseBeganWithTaxpayer','eligibleVehicleTypeAndWeight',
   'finalAssemblyInUnitedStatesVerified','predominantlyPersonalUse',

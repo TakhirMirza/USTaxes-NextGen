@@ -53,14 +53,22 @@ export function lookupImported2025Tax(
   const rows: ReadonlyArray<PublishedTaxRow2025> = IMPORTED_2025_TAX_ROWS
   if (!validateComplete2025TaxTable(rows)) return undefined
   const column = status === 'qualifyingSurvivingSpouse' ? 'marriedJoint' : status
-  if (!COLUMNS.includes(column as typeof COLUMNS[number])) return undefined
+  if (!COLUMNS.some(allowed => allowed === column)) return undefined
   let lo = 0, hi = rows.length - 1
   while (lo <= hi) {
     const mid = (lo + hi) >>> 1
     const row = rows[mid]
     if (taxableIncome < row.lower) hi = mid - 1
     else if (taxableIncome >= row.upper) lo = mid + 1
-    else return row[column as typeof COLUMNS[number]]
+    else {
+      switch (column) {
+        case 'single': return row.single
+        case 'marriedJoint': return row.marriedJoint
+        case 'marriedSeparate': return row.marriedSeparate
+        case 'headOfHousehold': return row.headOfHousehold
+        default: return undefined
+      }
+    }
   }
   return undefined
 }
