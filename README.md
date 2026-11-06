@@ -1,3 +1,36 @@
+# USTaxes NextGen — experimental tax preparation preview
+
+> **NOT READY FOR TAX FILING.** This repository includes experimental 2025 tax-year review and calculation modules. Passing GitHub Actions or deploying a GitHub Pages preview **does not** establish IRS compliance, calculation completeness, e-file capability, or permission to submit a tax return. Do not rely on this preview to prepare or file a real tax return.
+
+## Project status (Stage 102)
+
+- **2025:** In-progress, restricted Form 1040 and supporting schedule review; tests cover selected scenarios only. Tax calculations and eligibility must be independently verified before real-world use.
+- **2026–2028+:** Planned architecture, **not implemented or certified as filing-ready**. Do not use 2025 tables or limits for later years.
+- **CI:** Automated tests and a React preview build run in GitHub Actions. The build currently sets `CI=false` to report ESLint warnings without failing compilation; a separate lint inventory captures remaining issues. Green workflows are not a tax accuracy certification.
+- **Submission:** This NextGen preview must remain non-filing (`filingReady: false`, `postingAuthorized: false`). No e-file or posting authorization is provided.
+
+[Open GitHub Pages preview](https://takhirmirza.github.io/USTaxes-NextGen/) · [GitHub Actions](https://github.com/TakhirMirza/USTaxes-NextGen/actions)
+
+## Development
+
+Use **Node.js 18** for the current CI-compatible development environment (the original upstream instructions below refer to Node 16 and older tax years).
+
+```bash
+npm ci
+npm run nextgen:test
+npm run test:integration:2025
+npm run test:nextgen:2025
+npm run build
+```
+
+The React build may require `NODE_OPTIONS=--openssl-legacy-provider` with this legacy toolchain. The GitHub Actions workflow defines its own environment. These commands validate only the covered software behavior; they do not validate tax filing eligibility.
+
+## Origin and legacy documentation
+
+This project is based on the open-source UsTaxes application. The following README text is retained for historical/upstream reference and describes **legacy features, historical years and infrastructure**. Its claims about filing, supported states, privacy, and Node 16 must **not** be interpreted as NextGen 2025–2028 support or security assurances.
+
+---
+
 <div align="center">
 <h1><a href="//ustaxes.org">USTaxes</a></h1>
 
