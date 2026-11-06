@@ -103,3 +103,51 @@ describe('2025 IRS line 30 and withholding breakdown', () => {
       line25aW2Withholding: -1, line25b1099Withholding: 0, line25cOtherWithholding: 0 })).toThrow(RangeError)
   })
 })
+
+
+describe('Stage 106: Form 1040 reconciliation rejects malformed imported money', () => {
+  const requiredMoneyFields = [
+    'line16Tax', 'line17Schedule2Tax', 'line19ChildOtherDependentCredit',
+    'line20Schedule3NonrefundableCredits', 'line23OtherTaxes',
+    'line25dWithholding', 'line26EstimatedPayments', 'line27aEarnedIncomeCredit',
+    'line28AdditionalChildTaxCredit', 'line29AmericanOpportunityCredit',
+    'line30RefundableAdoptionCredit', 'line31Schedule3RefundableCredits',
+  ] as const
+
+  for (const field of requiredMoneyFields) {
+    it(`fails closed on non-finite, negative and sub-cent ${field}`, () => {
+      for (const invalid of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -0.01, 1.001, 1e10 + 1]) {
+        expect(() => reconcile2025Form1040Arithmetic({ ...complete, [field]: invalid })).toThrow(RangeError)
+      }
+    })
+  }
+
+  it('rejects invalid withholding components even if aggregate withholding is valid', () => {
+    for (const invalid of [Number.NaN, Number.POSITIVE_INFINITY, -1, 0.001, 1e10 + 1]) {
+      expect(() => reconcile2025Form1040Arithmetic({ ...complete,
+        line25aW2Withholding: invalid, line25b1099Withholding: 0, line25cOtherWithholding: 0,
+      })).toThrow(RangeError)
+    }
+  })
+
+  it('rejects malformed explicit refund and carryforward elections', () => {
+    for (const invalid of [Number.NaN, Number.POSITIVE_INFINITY, -1, 0.001, 1e10 + 1]) {
+      expect(() => reconcile2025Form1040Arithmetic({ ...complete,
+        line35aRefundRequested: invalid })).toThrow(RangeError)
+      expect(() => reconcile2025Form1040Arithmetic({ ...complete,
+        line36AppliedTo2026: invalid })).toThrow(RangeError)
+    }
+  })
+
+  it('never turns absent required money into an inferred zero or a filing-ready result', () => {
+    for (const field of requiredMoneyFields) {
+      const incomplete: Partial<typeof complete> = { ...complete }
+      delete incomplete[field]
+      const result = reconcile2025Form1040Arithmetic(incomplete)
+      expect(result.completeArithmetic).toBe(false)
+      expect(result.filingReady).toBe(false)
+      expect(result.missingInputs).toContain(field)
+      expect(Object.values(result.lines).every(value => value === null)).toBe(true)
+    }
+  })
+})
