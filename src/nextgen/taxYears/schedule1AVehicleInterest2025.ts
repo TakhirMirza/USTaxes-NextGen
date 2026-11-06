@@ -36,9 +36,12 @@ export interface VehicleInterestCandidate2025 {
   blockers: string[]
 }
 const statuses: FilingStatus2025[] = ['single','marriedJoint','marriedSeparate','headOfHousehold','qualifyingSurvivingSpouse']
-type VehicleLoanBooleanFlag = {
-  [K in keyof VehicleLoanInterest2025]: VehicleLoanInterest2025[K] extends boolean ? K : never
-}[keyof VehicleLoanInterest2025]
+type VehicleLoanBooleanFlag =
+  | 'originatedAfter2024' | 'loanOriginatedByTaxpayer'
+  | 'loanUsedToPurchaseVehicleNotLease' | 'securedByFirstLien'
+  | 'originalUseBeganWithTaxpayer' | 'eligibleVehicleTypeAndWeight'
+  | 'finalAssemblyInUnitedStatesVerified' | 'predominantlyPersonalUse'
+  | 'qualifiedLoanAndRefinancingReviewed'
 const requiredFlags: VehicleLoanBooleanFlag[] = [
   'originatedAfter2024','loanOriginatedByTaxpayer','loanUsedToPurchaseVehicleNotLease',
   'securedByFirstLien','originalUseBeganWithTaxpayer','eligibleVehicleTypeAndWeight',
@@ -60,7 +63,7 @@ export function calculate2025VehicleInterestCandidate(facts: VehicleInterestFact
   const blockers: string[] = []
   let totalCents = 0
   const vins = new Set<string>()
-  facts.loans.forEach((loan, index) => {
+  facts.loans.forEach((loan: VehicleLoanInterest2025, index: number): void => {
     const label = `Loan ${index + 1}`
     const paid = cents(loan.interestPaid2025, `${label} interest`)
     const elsewhere = cents(loan.interestDeductedElsewhere, `${label} already deducted interest`)
@@ -72,7 +75,7 @@ export function calculate2025VehicleInterestCandidate(facts: VehicleInterestFact
       if (vins.has(vin)) blockers.push(`${label}: duplicate VIN; aggregate interest per vehicle first.`)
       vins.add(vin)
     }
-    requiredFlags.forEach(flag => {
+    requiredFlags.forEach((flag: VehicleLoanBooleanFlag): void => {
       if (typeof loan[flag] !== 'boolean') throw new TypeError(`${label}: ${flag} must be boolean`)
       if (!loan[flag]) blockers.push(`${label}: ${flag} not verified.`)
     })
