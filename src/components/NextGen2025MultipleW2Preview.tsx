@@ -4,6 +4,7 @@ import { Button, Paper, TextField, Typography, Table, TableBody, TableRow, Table
 import { filingStatuses2025, FilingStatus2025 } from '../nextgen/taxYears/preview2025'
 import { bridgeMultipleW2ToRestricted1040_2025, W2DocumentInput2025 } from '../nextgen/taxYears/multipleW2Form1040Bridge2025'
 import { reviewW2PreviewInputs2025 } from '../nextgen/taxYears/livePreviewScenario2025'
+import { reconcileMultipleW2_2025 } from '../nextgen/taxYears/multipleW2Reconciliation2025'
 
 const newDocument = (id: number): W2DocumentInput2025 => ({ id: `manual-w2-${id}`, employer: '', box1Wages: '', box2FederalWithholding: '' })
 const usd = (value: number): string => value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -14,6 +15,7 @@ export default function NextGen2025MultipleW2Preview(): ReactElement {
   const [nextId, setNextId] = useState(2)
   const [status, setStatus] = useState<FilingStatus2025>('single')
   const bridge = bridgeMultipleW2ToRestricted1040_2025(documents, status)
+  const reconciliation = reconcileMultipleW2_2025(documents, bridge)
   const documentIds = documents.map(document => document.id.trim())
   const duplicateIds = new Set(documentIds.filter((id, index) => id !== '' && documentIds.indexOf(id) !== index))
   const duplicateIndexes = new Set<number>()
@@ -59,14 +61,15 @@ export default function NextGen2025MultipleW2Preview(): ReactElement {
     <Typography variant="body2" style={{ marginTop: 8 }}>Documents: {documents.length} / 100. Each document needs a unique ID; employer names may repeat.</Typography>
     <Typography variant="h6" style={{ marginTop: 16 }}>W-2 input reconciliation</Typography>
     {previewWagesCents !== null && previewWithholdingCents !== null && Number.isSafeInteger(previewWagesCents) && Number.isSafeInteger(previewWithholdingCents) ? <Typography variant="body2">Sum of validated inputs: Box 1 {usd(previewWagesCents / 100)} · Box 2 {usd(previewWithholdingCents / 100)}. These amounts are provisional until all document IDs and employer labels pass review.</Typography> : <Alert severity="info">Enter valid Box 1 and Box 2 amounts for every W-2 to see combined input totals. Missing or invalid amounts are never treated as zero.</Alert>}
-    {bridge.kind === 'blocked' ? <Alert severity="info" style={{ marginTop: 12 }} role="status">Mapping blocked{bridge.documentIndex === undefined ? '' : ` at W-2 ${bridge.documentIndex + 1}`}: {bridge.reason}. Correct the inputs to display totals.</Alert> : <>
+    {reconciliation.kind === 'mismatch' && <Alert severity="error" role="alert" style={{ marginTop: 12 }}>Independent W-2 reconciliation failed: {reconciliation.reason}. Do not rely on mapped totals.</Alert>}
+    {bridge.kind === 'blocked' ? <Alert severity="info" style={{ marginTop: 12 }} role="status">Mapping blocked{bridge.documentIndex === undefined ? '' : ` at W-2 ${bridge.documentIndex + 1}`}: {bridge.reason}. Correct the inputs to display totals.</Alert> : reconciliation.kind !== 'matched' ? <Alert severity="error">Form 1040 mapping is withheld until independent W-2 reconciliation passes.</Alert> : <>
       <Typography variant="h6" style={{ marginTop: 16 }}>Restricted Form 1040 mapping — read only</Typography>
       <Table size="small" aria-label="Multiple W-2 Form 1040 totals"><TableBody>
         <TableRow><TableCell>Form 1040 line 1a — combined Box 1 wages</TableCell><TableCell align="right">{usd(bridge.draft.lines['1a'])}</TableCell></TableRow>
         <TableRow><TableCell>Form 1040 line 25a — combined Box 2 withholding</TableCell><TableCell align="right">{usd(bridge.draft.lines['25a'])}</TableCell></TableRow>
         <TableRow><TableCell>Restricted line 25d — known W-2 withholding only</TableCell><TableCell align="right">{usd(bridge.draft.lines['25d'])}</TableCell></TableRow>
       </TableBody></Table>
-      <Alert severity="success" style={{ marginTop: 12 }}>Input reconciliation passed: mapped line 1a and line 25a match the validated W-2 totals.</Alert>
+      <Alert severity="success" style={{ marginTop: 12 }}>Independent cent-level reconciliation passed: Form 1040 lines 1a, 25a and restricted 25d match the validated W-2 totals.</Alert>
       <Alert severity="info" style={{ marginTop: 12 }}>Mapped {bridge.documentCount} unverified W-2 document(s). This is not a determination of eligibility, tax, withholding completeness, refund or filing readiness.</Alert>
     </>}
   </Paper>
