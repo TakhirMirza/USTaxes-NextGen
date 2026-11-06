@@ -1,6 +1,5 @@
 import { ReactElement } from 'react'
 import { Helmet } from 'react-helmet'
-import { Link, useMediaQuery } from '@material-ui/core'
 import { StartButtons, SingleButtons } from './pager'
 import { isWeb } from 'ustaxes/core/util'
 
@@ -28,8 +27,6 @@ const singleButtons: ReactElement = (
 )
 
 export default function GettingStarted(): ReactElement {
-  const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)')
-
   return (
     <>
       <Helmet>

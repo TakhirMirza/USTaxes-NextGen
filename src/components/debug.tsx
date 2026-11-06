@@ -1,6 +1,5 @@
 import { ReactElement } from 'react'
 import { IconButton, makeStyles } from '@material-ui/core'
-import { Star } from '@material-ui/icons'
 import fc from 'fast-check'
 import { useDispatch, YearsTaxesState } from 'ustaxes/redux'
 import { setInfo } from 'ustaxes/redux/actions'

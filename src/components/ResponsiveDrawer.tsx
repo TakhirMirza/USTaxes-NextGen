@@ -14,8 +14,6 @@ import {
   ListSubheader,
   Theme
 } from '@material-ui/core'
-import GitHubIcon from '@material-ui/icons/GitHub'
-import TwitterIcon from '@material-ui/icons/Twitter'
 import { HelpOutlineRounded, Settings } from '@material-ui/icons'
 import Urls from 'ustaxes/data/urls'
 
