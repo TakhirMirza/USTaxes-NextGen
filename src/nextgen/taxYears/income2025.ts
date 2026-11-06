@@ -16,12 +16,24 @@ export interface Interest1099Entry2025 {
 
 const validMoney = (value: number): boolean => Number.isFinite(value) && value >= 0 && value <= 1e12
 
+export interface IncomePreview2025 {
+  wages: number
+  taxableInterest: number
+  totalOrdinaryIncome: number
+  federalWithholding: number
+  standardDeduction: number
+  illustrativeTaxableIncome: number
+  illustrativeBracketTax: number
+  illustrativeWithholdingMinusBracketTax: number
+  filingReady: false
+}
+
 /** Educational aggregation only: excludes many Form 1040 rules and tax-table calculations. */
 export function preview2025Income(
   w2s: W2Entry2025[],
   interests: Interest1099Entry2025[],
   status: FilingStatus2025
-) {
+): IncomePreview2025 {
   if (w2s.length > 100 || interests.length > 100) throw new RangeError('Too many entries')
   for (const entry of w2s) {
     if (!validMoney(entry.box1Wages) || !validMoney(entry.box2FederalWithholding)) {

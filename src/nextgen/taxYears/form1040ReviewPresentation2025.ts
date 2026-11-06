@@ -39,8 +39,9 @@ export function presentRestricted2025Review(value: unknown): ReviewPresentation2
       !Array.isArray(r.blockers) || r.blockers.some(b => typeof b !== 'string')) {
     throw new Error('Invalid review fields')
   }
+  const candidates = r.candidates
   const rows = LABELS.map(([key, line]) => {
-    const amount = r.candidates![key]
+    const amount = candidates[key]
     if (amount === undefined || (amount !== null && (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0 ||
         amount > 1e12 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-6))) {
       throw new Error(`Invalid diagnostic amount: ${key}`)

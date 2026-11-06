@@ -10,7 +10,15 @@ export const filingStatuses2025: { value: FilingStatus2025; label: string }[] = 
 ]
 
 /** Illustrative ordinary-rate calculation, NOT Form 1040 tax liability. */
-export function preview2025OrdinaryWages(grossWages: number, status: FilingStatus2025) {
+export interface OrdinaryWagesPreview2025 {
+  grossWages: number
+  standardDeduction: number
+  taxableOrdinaryIncome: number
+  illustrativeBracketTax: number
+  filingReady: false
+}
+
+export function preview2025OrdinaryWages(grossWages: number, status: FilingStatus2025): OrdinaryWagesPreview2025 {
   if (!Number.isFinite(grossWages) || grossWages < 0 || grossWages > 1e12) {
     throw new RangeError('Enter a valid nonnegative wage amount')
   }
