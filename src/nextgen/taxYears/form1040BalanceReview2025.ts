@@ -93,6 +93,6 @@ export function review2025Form1040Balance(input: BalanceReviewInput2025): Balanc
       line33TotalPayments: dollars(line33), line34Overpayment: dollars(line34),
       line37AmountOwed: dollars(line37),
     },
-    blockers: [...new Set(blockers)],
+    blockers: Array.from(new Set(blockers)),
   }
 }
