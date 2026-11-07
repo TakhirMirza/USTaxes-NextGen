@@ -26,7 +26,7 @@ jobs:
         env:
           CI: 'false'
           REACT_APP_GITHUB_PAGES: 'true'
-          PUBLIC_URL: /USTaxes-NextGen-Preview
+          PUBLIC_URL: /USTaxes-NextGen
         run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
