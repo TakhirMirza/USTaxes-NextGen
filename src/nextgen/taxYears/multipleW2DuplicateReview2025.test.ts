@@ -1,4 +1,4 @@
-import { findPotentialRepeatedW2_2025, repeatedW2ReviewSignature2025, isRepeatedW2ReviewAcknowledged2025, describePotentialRepeatedW2Groups2025, potentialRepeatedW2ReviewDetails2025, potentialW2WithholdingDifferences2025 } from './multipleW2DuplicateReview2025'
+import { findPotentialRepeatedW2_2025, repeatedW2ReviewSignature2025, isRepeatedW2ReviewAcknowledged2025, describePotentialRepeatedW2Groups2025, potentialRepeatedW2ReviewDetails2025, potentialW2WithholdingDifferences2025, potentialW2WageDifferences2025 } from './multipleW2DuplicateReview2025'
 import { W2DocumentInput2025 } from './multipleW2Form1040Bridge2025'
 
 const first: W2DocumentInput2025 = { id: 'one', employer: 'Acme', box1Wages: '123.45', box2FederalWithholding: '12.30' }
@@ -190,5 +190,27 @@ describe('Stage 131 same-employer wage / withholding difference review', () => {
     expect(potentialW2WithholdingDifferences2025(documents)).toHaveLength(1)
     expect(repeatedW2ReviewSignature2025(documents)).toBeNull()
     expect(isRepeatedW2ReviewAcknowledged2025(repeatedW2ReviewSignature2025([first, { ...first, id: 'two' }]), null)).toBe(false)
+  })
+})
+
+
+describe('Stage 132 informational same-withholding different-wages review', () => {
+  test('flags validated same employer and Box 2 with differing Box 1', () => {
+    expect(potentialW2WageDifferences2025([first, { ...first, id: 'two', employer: ' ACME ', box1Wages: '200.00', box2FederalWithholding: '12.3' }])).toEqual([{
+      documentPositions: [1, 2], employerLabel: 'Acme', box2FederalWithholding: 12.3, box1Wages: [123.45, 200],
+    }])
+  })
+  test('does not flag equal wages or different employers', () => {
+    expect(potentialW2WageDifferences2025([first, { ...first, id: 'two' }])).toEqual([])
+    expect(potentialW2WageDifferences2025([first, { ...first, id: 'two', employer: 'Elsewhere', box1Wages: '200' }])).toEqual([])
+  })
+  test('excludes invalid or incomplete W-2 inputs', () => {
+    expect(potentialW2WageDifferences2025([first, { ...first, id: 'two', box1Wages: '' }])).toEqual([])
+    expect(potentialW2WageDifferences2025([first, { ...first, id: 'two', box1Wages: '123.456' }])).toEqual([])
+  })
+  test('does not introduce a duplicate acknowledgement requirement', () => {
+    const documents = [first, { ...first, id: 'two', box1Wages: '200' }]
+    expect(potentialW2WageDifferences2025(documents)).toHaveLength(1)
+    expect(repeatedW2ReviewSignature2025(documents, 'single')).toBeNull()
   })
 })

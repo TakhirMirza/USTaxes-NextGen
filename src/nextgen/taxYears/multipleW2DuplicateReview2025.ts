@@ -114,3 +114,44 @@ export function potentialW2WithholdingDifferences2025(documents: readonly W2Docu
     }
   })
 }
+
+
+/** Informational cross-check: equal employer and Box 2 but different Box 1.
+ * This can be legitimate; it never changes mapping or acknowledgement rules.
+ */
+export interface PotentialW2WageDifference2025 {
+  documentPositions: number[]
+  employerLabel: string
+  box2FederalWithholding: number
+  box1Wages: number[]
+}
+
+export function potentialW2WageDifferences2025(documents: readonly W2DocumentInput2025[]): PotentialW2WageDifference2025[] {
+  const groups = new Map<string, Array<{ index: number; wagesCents: number }>>()
+  documents.forEach((document, index) => {
+    const employer = document.employer.trim().toLocaleLowerCase('en-US')
+    if (!employer) return
+    const reviewed = reviewW2PreviewInputs2025(document.box1Wages, document.box2FederalWithholding)
+    if (reviewed.kind !== 'valid' || reviewed.withholding === null) return
+    const wagesCents = Math.round(reviewed.wages * 100)
+    const withholdingCents = Math.round(reviewed.withholding * 100)
+    if (!Number.isSafeInteger(wagesCents) || !Number.isSafeInteger(withholdingCents)) return
+    const key = JSON.stringify([employer, withholdingCents])
+    const group = groups.get(key) || []
+    group.push({ index, wagesCents })
+    groups.set(key, group)
+  })
+  return Array.from(groups.values()).filter(group =>
+    group.length > 1 && new Set(group.map(item => item.wagesCents)).size > 1
+  ).map(group => {
+    const representative = documents[group[0].index]
+    const reviewed = reviewW2PreviewInputs2025(representative.box1Wages, representative.box2FederalWithholding)
+    if (reviewed.kind !== 'valid' || reviewed.withholding === null) throw new Error('Invalid W-2 comparison group')
+    return {
+      documentPositions: group.map(item => item.index + 1),
+      employerLabel: representative.employer.trim(),
+      box2FederalWithholding: reviewed.withholding,
+      box1Wages: group.map(item => item.wagesCents / 100),
+    }
+  })
+}
