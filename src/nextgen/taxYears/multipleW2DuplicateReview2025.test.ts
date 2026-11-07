@@ -43,3 +43,25 @@ describe('Stage 124 explicit repeated W-2 acknowledgement', () => {
     expect(isRepeatedW2ReviewAcknowledged2025(changed, signature)).toBe(false)
   })
 })
+
+describe('Stage 125 acknowledgement invalidation boundaries', () => {
+  const repeated = [first, { ...first, id: 'two' }, { ...first, id: 'unflagged', employer: 'Other', box1Wages: '500.00' }]
+  const accepted = repeatedW2ReviewSignature2025(repeated, 'single')
+  test('unflagged W-2 amount changes invalidate an earlier acknowledgement', () => {
+    const updated = repeatedW2ReviewSignature2025([first, repeated[1], { ...repeated[2], box1Wages: '600.00' }], 'single')
+    expect(isRepeatedW2ReviewAcknowledged2025(updated, accepted)).toBe(false)
+  })
+  test('filing status changes invalidate an earlier acknowledgement', () => {
+    expect(isRepeatedW2ReviewAcknowledged2025(repeatedW2ReviewSignature2025(repeated, 'marriedFilingJointly'), accepted)).toBe(false)
+  })
+  test('reordering documents invalidates an earlier acknowledgement', () => {
+    expect(isRepeatedW2ReviewAcknowledged2025(repeatedW2ReviewSignature2025([repeated[1], first, repeated[2]], 'single'), accepted)).toBe(false)
+  })
+  test('exact same documents and filing status retain acknowledgement', () => {
+    expect(isRepeatedW2ReviewAcknowledged2025(repeatedW2ReviewSignature2025(repeated, 'single'), accepted)).toBe(true)
+  })
+  test('an unflagged employer edit invalidates an earlier acknowledgement', () => {
+    const updated = repeatedW2ReviewSignature2025([first, repeated[1], { ...repeated[2], employer: 'Another' }], 'single')
+    expect(isRepeatedW2ReviewAcknowledged2025(updated, accepted)).toBe(false)
+  })
+})

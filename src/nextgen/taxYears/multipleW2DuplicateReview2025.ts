@@ -21,13 +21,17 @@ export function findPotentialRepeatedW2_2025(documents: readonly W2DocumentInput
 }
 
 /** Acknowledgement applies only to the exact current reviewed entries. */
-export function repeatedW2ReviewSignature2025(documents: readonly W2DocumentInput2025[]): string | null {
+export function repeatedW2ReviewSignature2025(documents: readonly W2DocumentInput2025[], filingStatus: string = ''): string | null {
   const groups = findPotentialRepeatedW2_2025(documents)
   if (groups.length === 0) return null
-  return JSON.stringify(groups.map(group => group.map(index => {
-    const document = documents[index]
-    return [document.id.trim(), document.employer.trim(), document.box1Wages.trim(), document.box2FederalWithholding.trim()]
-  })))
+  // Include ALL documents, not only flagged entries: even an unflagged W-2
+  // can change the restricted totals after the user acknowledged a review.
+  // Keep original order and raw strings so any edit invalidates the acknowledgement.
+  return JSON.stringify({
+    filingStatus,
+    documents: documents.map(document => [document.id, document.employer, document.box1Wages, document.box2FederalWithholding]),
+    groups,
+  })
 }
 
 /** The restricted mapping must be hidden while a duplicate review is unresolved. */

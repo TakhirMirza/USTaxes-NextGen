@@ -19,7 +19,7 @@ export default function NextGen2025MultipleW2Preview(): ReactElement {
   const bridge = bridgeMultipleW2ToRestricted1040_2025(documents, status)
   const reconciliation = reconcileMultipleW2_2025(documents, bridge)
   const potentialRepeatedGroups = findPotentialRepeatedW2_2025(documents)
-  const repeatedSignature = repeatedW2ReviewSignature2025(documents)
+  const repeatedSignature = repeatedW2ReviewSignature2025(documents, status)
   const repeatedReviewCleared = isRepeatedW2ReviewAcknowledged2025(repeatedSignature, acknowledgedSignature)
   const potentialRepeatedIndexes = new Set<number>()
   potentialRepeatedGroups.forEach(group => group.forEach(index => potentialRepeatedIndexes.add(index)))
