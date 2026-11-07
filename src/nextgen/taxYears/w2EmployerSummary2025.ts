@@ -39,3 +39,50 @@ export function summarizeW2ByEmployer2025(documents: readonly W2DocumentInput202
     box2FederalWithholding: group.withholdingCents / 100,
   }))
 }
+
+
+export type W2EmployerTotalsCheck2025 =
+  | { kind: 'matched'; documentCount: number; box1Wages: number; box2FederalWithholding: number }
+  | { kind: 'blocked'; reason: string }
+
+/** Independently checks the employer inventory against every W-2 source entry.
+ * No mapping or filing authorization is implied by a match.
+ */
+export function checkW2EmployerTotals2025(documents: readonly W2DocumentInput2025[]): W2EmployerTotalsCheck2025 {
+  if (documents.length === 0) return { kind: 'blocked', reason: 'No W-2 documents supplied.' }
+  const ids = new Set<string>()
+  let sourceWagesCents = 0
+  let sourceWithholdingCents = 0
+  for (const document of documents) {
+    const id = document.id.trim()
+    if (!id || ids.has(id)) return { kind: 'blocked', reason: 'Missing or repeated W-2 document ID.' }
+    ids.add(id)
+    if (!document.employer.trim()) return { kind: 'blocked', reason: 'Missing employer label.' }
+    const review = reviewW2PreviewInputs2025(document.box1Wages, document.box2FederalWithholding)
+    if (review.kind !== 'valid' || review.withholding === null) return { kind: 'blocked', reason: 'Incomplete or invalid W-2 amounts.' }
+    const wages = Math.round(review.wages * 100)
+    const withholding = Math.round(review.withholding * 100)
+    if (!Number.isSafeInteger(wages) || !Number.isSafeInteger(withholding)) return { kind: 'blocked', reason: 'Unsafe W-2 cent amount.' }
+    sourceWagesCents += wages
+    sourceWithholdingCents += withholding
+    if (!Number.isSafeInteger(sourceWagesCents) || !Number.isSafeInteger(sourceWithholdingCents)) return { kind: 'blocked', reason: 'Unsafe combined W-2 totals.' }
+  }
+  const summary = summarizeW2ByEmployer2025(documents)
+  if (summary === null) return { kind: 'blocked', reason: 'Employer inventory is incomplete.' }
+  let groupedWagesCents = 0
+  let groupedWithholdingCents = 0
+  const positions = new Set<number>()
+  for (const group of summary) {
+    for (const position of group.documentPositions) {
+      if (!Number.isInteger(position) || position < 1 || position > documents.length || positions.has(position)) return { kind: 'blocked', reason: 'Employer inventory positions do not match source entries.' }
+      positions.add(position)
+    }
+    groupedWagesCents += Math.round(group.box1Wages * 100)
+    groupedWithholdingCents += Math.round(group.box2FederalWithholding * 100)
+    if (!Number.isSafeInteger(groupedWagesCents) || !Number.isSafeInteger(groupedWithholdingCents)) return { kind: 'blocked', reason: 'Unsafe employer inventory totals.' }
+  }
+  if (positions.size !== documents.length || groupedWagesCents !== sourceWagesCents || groupedWithholdingCents !== sourceWithholdingCents) {
+    return { kind: 'blocked', reason: 'Employer inventory and W-2 source totals do not reconcile.' }
+  }
+  return { kind: 'matched', documentCount: documents.length, box1Wages: sourceWagesCents / 100, box2FederalWithholding: sourceWithholdingCents / 100 }
+}
