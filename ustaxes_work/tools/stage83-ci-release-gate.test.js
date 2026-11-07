@@ -1,0 +1,14 @@
+'use strict';
+const test=require('node:test');
+const assert=require('node:assert/strict');
+const {evaluate}=require('./stage83-ci-release-gate');
+const names=['npm-ci.log','integration.log','jest.log','react-build.log'];
+const good=()=>({schemaVersion:1,verdict:'PASSED',rows:names.map(name=>({name,status:'success',logPresent:true}))});
+test('complete successful CI passes the engineering gate',()=>{const x=evaluate(good());assert.equal(x.passed,true);assert.equal(x.filingReady,false);assert.equal(x.postingAuthorized,false)});
+test('skipped Jest fails closed',()=>{const s=good();s.rows[2].status='skipped';assert.equal(evaluate(s).passed,false)});
+test('missing build log fails closed',()=>{const s=good();s.rows[3].logPresent=false;assert.equal(evaluate(s).passed,false)});
+test('failed npm install fails closed',()=>{const s=good();s.rows[0].status='failure';assert.equal(evaluate(s).passed,false)});
+test('missing step fails closed',()=>{const s=good();s.rows.pop();assert.equal(evaluate(s).passed,false)});
+test('duplicate step fails closed',()=>{const s=good();s.rows.push(s.rows[0]);assert.equal(evaluate(s).passed,false)});
+test('false summary verdict fails closed',()=>{const s=good();s.verdict='INCOMPLETE';assert.equal(evaluate(s).passed,false)});
+test('invalid input fails closed',()=>assert.equal(evaluate(null).passed,false));

@@ -1,0 +1,65 @@
+import { ReactElement, useState } from 'react'
+import { Alert } from '@material-ui/lab'
+import { Paper, TextField, Typography, MenuItem, Table, TableBody, TableRow, TableCell, FormControlLabel, Checkbox } from '@material-ui/core'
+import { filingStatuses2025, FilingStatus2025 } from '../nextgen/taxYears/preview2025'
+import { calculateLivePreviewScenario2025, LivePreviewScenario2025, reviewW2PreviewInputs2025, updateLivePreviewScenario2025 } from '../nextgen/taxYears/livePreviewScenario2025'
+import NextGen2025CreditsAndOvertime from './NextGen2025CreditsAndOvertime'
+import NextGen2025MultipleW2Preview from './NextGen2025MultipleW2Preview'
+import { getWageInputFeedback2025 } from '../nextgen/taxYears/wageInput2025'
+import { bridgeLiveW2ToRestricted1040_2025 } from '../nextgen/taxYears/livePreviewForm1040Bridge2025'
+
+/** Live, deliberately limited illustration: not an input to the Form 1040 reconciliation. */
+export default function NextGen2025WagePreview(): ReactElement {
+  const [scenario, setScenario] = useState<LivePreviewScenario2025>({
+    wages: '', federalWithholding: '', status: 'single', ordinaryConfirmed: false, specialRuledOut: false,
+  })
+  const { wages, status, ordinaryConfirmed, specialRuledOut } = scenario
+  const { result, line16 } = calculateLivePreviewScenario2025(scenario)
+  const wageFeedback = getWageInputFeedback2025(wages)
+  const withholdingText = scenario.federalWithholding ?? ''
+  const withholdingFeedback = getWageInputFeedback2025(withholdingText)
+  const inputReview = reviewW2PreviewInputs2025(wages, withholdingText)
+  const form1040Bridge = bridgeLiveW2ToRestricted1040_2025(scenario)
+  const withholdingExceedsWages = inputReview.kind === 'withholdingExceedsWages'
+  const withholdingInvalid = withholdingFeedback.kind === 'invalid' || withholdingExceedsWages
+  const update = (change: Parameters<typeof updateLivePreviewScenario2025>[1]): void => {
+    setScenario(previous => updateLivePreviewScenario2025(previous, change))
+  }
+  const usd = (value: number) => value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+  return <Paper style={{ padding: 16, marginTop: 20 }}>
+    <Typography variant="h6" gutterBottom>2025 wages-only illustration — live calculator</Typography>
+    <Alert severity="warning">NOT FILING READY. Illustrative bracket calculation only. The bracket illustration is not IRS Tax Table line 16; a separate restricted IRS table diagnostic appears below. Neither is a Form 1040 return or refund estimate. No values are saved or sent.</Alert>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginTop: 16 }}>
+      <TextField label="Annual W-2 wages (USD)" variant="outlined" value={wages} onChange={e => { update({ kind: 'wages', value: e.target.value }) }} inputProps={{ 'aria-label': 'Annual W-2 wages' }} helperText={wageFeedback.message} error={wageFeedback.kind === 'invalid'} />
+      <TextField label="W-2 Box 2 federal withholding (USD, optional)" variant="outlined" value={withholdingText} onChange={e => update({ kind: 'federalWithholding', value: e.target.value })} inputProps={{ 'aria-label': 'W-2 Box 2 federal withholding' }} error={withholdingInvalid} helperText={withholdingExceedsWages ? 'Withholding cannot exceed the wages in this limited illustration.' : withholdingFeedback.kind === 'invalid' ? withholdingFeedback.message : 'Optional context only; no refund or amount due is calculated.'} style={{ minWidth: 290 }} />
+      <TextField select label="Filing status" variant="outlined" value={status} onChange={e => { update({ kind: 'status', value: e.target.value as FilingStatus2025 }) }} style={{ minWidth: 230 }}>
+        {filingStatuses2025.map(s => <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>)}
+      </TextField>
+    </div>
+    {wageFeedback.kind === 'invalid' ? <Alert severity="error" style={{ marginTop: 12 }} role="alert">The wage amount is invalid. Calculations and IRS line 16 candidates are withheld until the input is corrected.</Alert> : null}
+    {withholdingInvalid ? <Alert severity="error" style={{ marginTop: 12 }}>Correct the withholding amount to continue. This is not a refund calculation.</Alert> : null}
+    {result ? <Table size="small" aria-label="Illustrative 2025 wage calculation" style={{ marginTop: 16 }}><TableBody>
+      <TableRow><TableCell>Gross wages</TableCell><TableCell align="right">{usd(result.grossWages)}</TableCell></TableRow>
+      {withholdingText.trim() !== '' ? <TableRow><TableCell>W-2 Box 2 withholding (context only)</TableCell><TableCell align="right">{usd(Number(withholdingText))}</TableCell></TableRow> : null}
+      <TableRow><TableCell>Base standard deduction (illustrative)</TableCell><TableCell align="right">{usd(result.standardDeduction)}</TableCell></TableRow>
+      <TableRow><TableCell>Illustrative taxable ordinary income</TableCell><TableCell align="right">{usd(result.taxableOrdinaryIncome)}</TableCell></TableRow>
+      <TableRow><TableCell>Illustrative bracket tax (NOT line 16)</TableCell><TableCell align="right">{usd(result.illustrativeBracketTax)}</TableCell></TableRow>
+    </TableBody></Table> : <Typography style={{ marginTop: 12 }}>{wageFeedback.kind === 'invalid' || withholdingInvalid ? 'Correct the input amounts to continue.' : 'Enter wages to see an illustrative calculation.'}</Typography>}
+    <Typography variant="h6" style={{ marginTop: 20 }}>Restricted Form 1040 mapping — read only</Typography>
+    <Alert severity="info">This mapping uses a single unverified W-2 example. Box 2 must be entered explicitly (including zero). It does not establish complete withholding, eligibility, tax due, refund, or filing readiness.</Alert>
+    {form1040Bridge.kind === 'mapped' ? <Table size="small" aria-label="Restricted Form 1040 W-2 mapping"><TableBody>
+      <TableRow><TableCell>Form 1040 line 1a — W-2 wages</TableCell><TableCell align="right">{usd(form1040Bridge.draft.lines['1a'])}</TableCell></TableRow>
+      <TableRow><TableCell>Form 1040 line 25a — W-2 withholding</TableCell><TableCell align="right">{usd(form1040Bridge.draft.lines['25a'])}</TableCell></TableRow>
+      <TableRow><TableCell>Restricted draft line 25d — known W-2 withholding only</TableCell><TableCell align="right">{usd(form1040Bridge.draft.lines['25d'])}</TableCell></TableRow>
+    </TableBody></Table> : <Typography variant="body2" style={{ marginTop: 8 }}>Form 1040 mapping blocked until valid wages and an explicit Box 2 amount are entered.</Typography>}
+    <Typography variant="h6" style={{ marginTop: 20 }}>IRS 2025 line 16 — restricted tax-table diagnostic</Typography>
+    <Alert severity="info">For wages-only examples, explicitly confirm both conditions before looking up the imported IRS Tax Table. Confirmations reset whenever wages or filing status changes. Confirmation does not establish eligibility or filing readiness.</Alert>
+    <FormControlLabel control={<Checkbox disabled={!result} checked={ordinaryConfirmed} onChange={e => update({ kind: 'ordinaryConfirmed', value: e.target.checked })} />} label="I verified that the ordinary-income tax method applies" />
+    <FormControlLabel control={<Checkbox disabled={!result} checked={specialRuledOut} onChange={e => update({ kind: 'specialRuledOut', value: e.target.checked })} />} label="I ruled out special tax worksheets (qualified dividends, capital gains, Form 8615, etc.)" />
+    {line16 && line16.kind === 'blocked' ? <Alert severity="warning">Line 16 blocked: {line16.reason}</Alert> : null}
+    {line16 && line16.kind !== 'blocked' ? <Paper variant="outlined" style={{ padding: 12, marginTop: 8 }}><Typography>Provisional IRS line 16 candidate: <strong>{usd(line16.tax)}</strong></Typography><Typography variant="body2">Method: {line16.kind}. Source: {line16.source}. NOT FILING READY.</Typography></Paper> : null}
+    <Typography variant="body2" style={{ marginTop: 12 }}>Does not include age-related deductions, Schedule 1-A, credits, withholding, capital gains, alternative tax calculations, or other IRS requirements.</Typography>
+    <NextGen2025CreditsAndOvertime status={status} wages={result ? result.grossWages : null} line16Tax={line16 && line16.kind !== 'blocked' ? line16.tax : null} />
+    <NextGen2025MultipleW2Preview />
+  </Paper>
+}

@@ -1,0 +1,23 @@
+{
+  "name": "USTaxes NextGen",
+  "version": "0.1.0-architecture",
+  "layers": [
+    "domain",
+    "rules",
+    "engine",
+    "forms",
+    "irs",
+    "cli"
+  ],
+  "supportedYears": [
+    2020,
+    2021,
+    2025,
+    2026,
+    2027,
+    2028
+  ],
+  "filingReadyYears": [],
+  "irsSubmission": "not implemented",
+  "irsDocumentDownload": "candidate-only, human review required"
+}
