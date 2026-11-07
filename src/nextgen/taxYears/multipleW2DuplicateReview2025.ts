@@ -21,7 +21,7 @@ export function findPotentialRepeatedW2_2025(documents: readonly W2DocumentInput
 }
 
 /** Acknowledgement applies only to the exact current reviewed entries. */
-export function repeatedW2ReviewSignature2025(documents: readonly W2DocumentInput2025[], filingStatus: string = ''): string | null {
+export function repeatedW2ReviewSignature2025(documents: readonly W2DocumentInput2025[], filingStatus = ''): string | null {
   const groups = findPotentialRepeatedW2_2025(documents)
   if (groups.length === 0) return null
   // Include ALL documents, not only flagged entries: even an unflagged W-2
