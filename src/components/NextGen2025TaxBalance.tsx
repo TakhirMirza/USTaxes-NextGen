@@ -41,7 +41,7 @@ export default function NextGen2025TaxBalance({ mapping, worksheet }: { mapping:
     {incomplete.length > 0 && <p className="v2-inline-warning">Missing or invalid amounts on lines: {incomplete.join(', ')}. Use nonnegative dollars with no more than two decimal places.</p>}
     <label className="v2-check"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />I independently reviewed the source, eligibility and correct IRS treatment of every entered component for this fictional scenario. This is not a filing authorization.</label>
     {reconciliation.status === 'reconciled' && reconciliation.lines ? <>
-      <div className="v2-review-grid">{['16', '18', '21', '22', '24', '25d', '32', '33', '34', '37'].map(line => <div key={line}><span>Form 1040 line {line}</span><strong>{format(reconciliation.lines![line])}</strong></div>)}</div>
+      <div className="v2-review-grid">{['16', '18', '21', '22', '24', '25d', '32', '33', '34', '37'].map(line => <div key={line}><span>Form 1040 line {line}</span><strong>{format(reconciliation.lines[line])}</strong></div>)}</div>
       <div className="v2-note"><strong>Arithmetic reconciled — NOT FILING READY.</strong> This is a mathematical consistency check of manually confirmed fictional inputs, not an IRS-certified tax calculation, refund, or payment instruction.</div>
     </> : <div className="v2-note"><strong>Arithmetic blocked.</strong> {reconciliation.blockers.join(' ')} No refund or balance due is displayed without a valid source mapping and all independently reviewed inputs.</div>}
   </section>
