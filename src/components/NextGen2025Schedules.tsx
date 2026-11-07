@@ -1,4 +1,5 @@
 import { ReactElement, useEffect, useMemo, useState } from 'react'
+import { auditScheduleEntries2025 } from '../nextgen/taxYears/schedules2025EntryAudit'
 import { Schedule1040Candidates2025 } from '../nextgen/taxYears/schedules1040Bridge2025'
 import { create2025Schedule1Worksheet, Schedule1Entry2025 } from '../nextgen/taxYears/schedule1Worksheet2025'
 import { review2025Schedules2And3, ReviewedAmount2025 } from '../nextgen/taxYears/schedule2And3Review2025'
@@ -37,7 +38,8 @@ export default function NextGen2025Schedules({ onReconcile }: { onReconcile?: (v
     const cents = selected.reduce((sum, e) => sum + (parseCents(e.amount) || 0), 0)
     return { ...s, selected, invalid, cents }
   }), [entries])
-  const allValid = summaries.every(s => s.invalid.length === 0)
+  const sourceAudit = useMemo(() => auditScheduleEntries2025(entries), [entries])
+  const allValid = summaries.every(s => s.invalid.length === 0) && !sourceAudit.blocked
   const schedule1 = useMemo(() => {
     if (!allValid) return null
     const selected = entries.filter(e => e.section === 's1income' || e.section === 's1adjustments')
@@ -83,6 +85,9 @@ export default function NextGen2025Schedules({ onReconcile }: { onReconcile?: (v
     </div>)}
     <label className="v2-check"><input type="checkbox" checked={duplicatePaymentsConfirmed} onChange={e => setDuplicatePaymentsConfirmed(e.target.checked)} />I checked Schedule 3 payments for duplication with withholding and refundable child tax credits.</label>
     <label className="v2-check"><input type="checkbox" checked={creditOrderingConfirmed} onChange={e => setCreditOrderingConfirmed(e.target.checked)} />I checked the order and limits of nonrefundable credits, including Schedule 8812.</label>
+    <h3>Source reconciliation audit</h3>
+    <p>{sourceAudit.blocked ? `${sourceAudit.issues.length} source issue(s) must be resolved before review.` : 'No source-level inconsistencies detected. IRS eligibility and posting checks are still required.'}</p>
+    {sourceAudit.issues.length > 0 && <ul>{sourceAudit.issues.map((issue, index) => <li key={`${issue.code}-${index}`}>{issue.code}: {issue.message} {issue.entryIds.length > 0 ? `(entries ${issue.entryIds.join(', ')})` : ''}</li>)}</ul>}
     <h3>Form 1040 reconciliation candidates</h3>
     <div className="v2-review-grid">
       <div><span>Line 8 — Schedule 1 additional income</span><strong>{schedule1 ? currency(Math.round(schedule1.otherIncome * 100)) : 'Pending review'}</strong></div>
