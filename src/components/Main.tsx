@@ -13,6 +13,7 @@ import { StateLoader } from './debug'
 import NoMatchPage from './NoMatchPage'
 import NextGen2025Review from './NextGen2025Review'
 import NextGenV2Foundation from './NextGenV2Foundation'
+import GettingStarted from './GettingStarted'
 import SkipToLinks from './SkipToLinks'
 import ScrollTop from './ScrollTop'
 import Menu, { backPages, drawerSectionsForYear } from './Menu'
@@ -110,6 +111,10 @@ export default function Main(): ReactElement {
             <Route path="/" element={<Navigate to="/start" />} />
             <Route path="/start" element={<NextGenV2Foundation />} />
             <Route path="/v2/*" element={<NextGenV2Foundation />} />
+            <Route path="/nextgen-2" element={<Navigate to="/start" replace />} />
+            <Route path="/nextgen-2/*" element={<Navigate to="/start" replace />} />
+            <Route path="/legacy" element={<Layout><DataPropagator /><GettingStarted /></Layout>} />
+            <Route path="/info" element={<Navigate to="/legacy" replace />} />
             {allItems.filter((item) => item.url !== "/start").map((item) => (
               <Route
                 key={item.title}

@@ -1,4 +1,5 @@
 import { ReactElement, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import './NextGenV2Foundation.css'
 import { map2025SourcesTo1040 } from '../nextgen/taxYears/taxEngineCore2025'
 import { reviewFederalReturn2025 } from '../nextgen/taxYears/federalReview2025'
@@ -6,7 +7,9 @@ import { reconcileForm1040Arithmetic2025 } from '../nextgen/taxYears/form1040Ari
 import { FilingStatus2025 } from '../nextgen/taxYears/preview2025'
 import { computeIrsTaxWorksheet2025 } from '../nextgen/taxYears/irsTaxComputationWorksheet2025'
 
-type Step = 'overview' | 'profile' | 'income' | 'deductions' | 'review'
+import { stepFromV2Path, v2PathForStep, V2Step } from '../nextgen/navigation/v2Routes'
+
+type Step = V2Step
 type Wage = { id: number; employer: string; wages: string; withholding: string }
 const steps: { id: Step; title: string; detail: string }[] = [
   { id: 'overview', title: 'Overview', detail: 'Your return' },
@@ -23,7 +26,9 @@ const money = (value: string): number | null => {
 const usd = (cents: number): string => (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
 
 export default function NextGenV2Foundation(): ReactElement {
-  const [step, setStep] = useState<Step>('overview')
+  const location = useLocation()
+  const navigate = useNavigate()
+  const step = stepFromV2Path(location.pathname)
   const [year, setYear] = useState('2025')
   const [filingStatus, setFilingStatus] = useState('single')
   const [hasDependents, setHasDependents] = useState('unknown')
@@ -65,7 +70,7 @@ export default function NextGenV2Foundation(): ReactElement {
     'Complete IRS tax calculation and form-generation validation are not yet available',
     'Production identity, secure storage, and filing infrastructure are not configured'
   ]
-  const go = (id: Step): void => { setNotice(''); setStep(id); window.scrollTo(0, 0) }
+  const go = (id: Step): void => { setNotice(''); navigate(v2PathForStep(id)); window.scrollTo(0, 0) }
   const next = (): void => go(steps[Math.min(current + 1, steps.length - 1)].id)
   const toggleKind = (kind: string): void => setIncomeKinds((previous) => previous.includes(kind) ? previous.filter((item) => item !== kind) : [...previous, kind])
 
@@ -74,7 +79,7 @@ export default function NextGenV2Foundation(): ReactElement {
       <div className="v2-logo"><span className="v2-mark">U</span><span>USTaxes <strong>NextGen</strong><small>Federal tax preparation</small></span></div>
       <div className="v2-side-label">2025 TAX RETURN</div>
       <nav>{steps.map((item, i) => <button key={item.id} type="button" className={`v2-nav ${step === item.id ? 'active' : ''}`} onClick={() => go(item.id)}><span className="v2-num">{i + 1}</span><span><strong>{item.title}</strong><small>{item.detail}</small></span></button>)}</nav>
-      <div className="v2-side-bottom"><span className="v2-status-dot"/> Development foundation<br/><small>Not approved for real taxpayer data or filing</small><a href="#/info">Legacy editor (archive)</a><a href="#/nextgen/2025/review">2025 diagnostic workspace</a></div>
+      <div className="v2-side-bottom"><span className="v2-status-dot"/> Development foundation<br/><small>Not approved for real taxpayer data or filing</small><a href="#/legacy">Legacy editor (archive)</a><a href="#/nextgen/2025/review">2025 diagnostic workspace</a></div>
     </aside>
     <main className="v2-main">
       <header className="v2-top"><div><span className="v2-eyebrow">USTAXES NEXTGEN 2.0</span><h1>{step === 'overview' ? 'Your tax return, simplified.' : steps[current].title}</h1><p>{step === 'overview' ? 'A new preparation experience, built around clarity and accuracy.' : steps[current].detail}</p></div><span className="v2-preview-tag">FOUNDATION PREVIEW</span></header>
