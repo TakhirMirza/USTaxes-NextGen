@@ -155,3 +155,15 @@ export function potentialW2WageDifferences2025(documents: readonly W2DocumentInp
     }
   })
 }
+
+
+/** Pair each source position with its own amount, never relying on an unlabeled
+ * parallel value list. Invalid alignment is withheld rather than guessed.
+ * This display-only helper does not validate or authorize tax mapping.
+ */
+export function describeW2SourceAmountPairs2025(positions: readonly number[], amounts: readonly number[], box: 'Box 1' | 'Box 2'): string[] {
+  if (positions.length !== amounts.length || positions.length === 0 ||
+    positions.some(position => !Number.isSafeInteger(position) || position < 1) ||
+    amounts.some(amount => !Number.isFinite(amount) || !Number.isSafeInteger(Math.round(amount * 100)) || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.000001)) return []
+  return positions.map((position, index) => `W-2 #${position}: ${box} ${amounts[index].toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`)
+}

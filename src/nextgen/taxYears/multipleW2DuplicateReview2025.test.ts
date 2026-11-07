@@ -1,4 +1,4 @@
-import { findPotentialRepeatedW2_2025, repeatedW2ReviewSignature2025, isRepeatedW2ReviewAcknowledged2025, describePotentialRepeatedW2Groups2025, potentialRepeatedW2ReviewDetails2025, potentialW2WithholdingDifferences2025, potentialW2WageDifferences2025 } from './multipleW2DuplicateReview2025'
+import { findPotentialRepeatedW2_2025, repeatedW2ReviewSignature2025, isRepeatedW2ReviewAcknowledged2025, describePotentialRepeatedW2Groups2025, potentialRepeatedW2ReviewDetails2025, potentialW2WithholdingDifferences2025, potentialW2WageDifferences2025, describeW2SourceAmountPairs2025 } from './multipleW2DuplicateReview2025'
 import { W2DocumentInput2025 } from './multipleW2Form1040Bridge2025'
 
 const first: W2DocumentInput2025 = { id: 'one', employer: 'Acme', box1Wages: '123.45', box2FederalWithholding: '12.30' }
@@ -212,5 +212,25 @@ describe('Stage 132 informational same-withholding different-wages review', () =
     const documents = [first, { ...first, id: 'two', box1Wages: '200' }]
     expect(potentialW2WageDifferences2025(documents)).toHaveLength(1)
     expect(repeatedW2ReviewSignature2025(documents, 'single')).toBeNull()
+  })
+})
+
+
+describe('Stage 138 W-2 source amount pairing', () => {
+  test('pairs each W-2 position with its own Box 2 amount in source order', () => {
+    expect(describeW2SourceAmountPairs2025([3, 1], [12.31, 0], 'Box 2')).toEqual(['W-2 #3: Box 2 $12.31', 'W-2 #1: Box 2 $0.00'])
+  })
+  test('pairs Box 1 wages with precise cents', () => {
+    expect(describeW2SourceAmountPairs2025([1, 2], [123.45, 200], 'Box 1')).toEqual(['W-2 #1: Box 1 $123.45', 'W-2 #2: Box 1 $200.00'])
+  })
+  test('withholds mismatched or invalid source/value pairs', () => {
+    expect(describeW2SourceAmountPairs2025([1, 2], [12.3], 'Box 2')).toEqual([])
+    expect(describeW2SourceAmountPairs2025([0], [12.3], 'Box 2')).toEqual([])
+    expect(describeW2SourceAmountPairs2025([1], [12.345], 'Box 2')).toEqual([])
+  })
+  test('does not change existing duplicate review gate', () => {
+    const documents = [first, { ...first, id: 'two' }]
+    expect(describeW2SourceAmountPairs2025([1, 2], [12.3, 12.3], 'Box 2')).toHaveLength(2)
+    expect(isRepeatedW2ReviewAcknowledged2025(repeatedW2ReviewSignature2025(documents), null)).toBe(false)
   })
 })
