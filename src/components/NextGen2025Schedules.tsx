@@ -1,4 +1,5 @@
 import { ReactElement, useEffect, useMemo, useState } from 'react'
+import { aggregateWorkpaperLines2025, exportWorkpaper2025, importWorkpaper2025 } from '../nextgen/taxYears/schedules2025Workpaper'
 import { evaluateSchedules2025PostingGate } from '../nextgen/taxYears/schedules2025PostingGate'
 import { auditScheduleEntries2025 } from '../nextgen/taxYears/schedules2025EntryAudit'
 import { Schedule1040Candidates2025 } from '../nextgen/taxYears/schedules1040Bridge2025'
@@ -26,6 +27,8 @@ export default function NextGen2025Schedules({ onReconcile }: { onReconcile?: (v
   // Deliberately in-memory: the current static frontend has no secure taxpayer database.
   const [entries, setEntries] = useState<Entry[]>([])
   const [nextId, setNextId] = useState(1)
+  const [workpaperText, setWorkpaperText] = useState('')
+  const [workpaperMessage, setWorkpaperMessage] = useState('')
   const [duplicatePaymentsConfirmed, setDuplicatePaymentsConfirmed] = useState(false)
   const [creditOrderingConfirmed, setCreditOrderingConfirmed] = useState(false)
   const add = (section: Section) => {
@@ -39,6 +42,27 @@ export default function NextGen2025Schedules({ onReconcile }: { onReconcile?: (v
     const cents = selected.reduce((sum, e) => sum + (parseCents(e.amount) || 0), 0)
     return { ...s, selected, invalid, cents }
   }), [entries])
+  const lineWorkpaper = useMemo(() => aggregateWorkpaperLines2025(entries), [entries])
+  const downloadWorkpaper = () => {
+    const blob = new Blob([exportWorkpaper2025(entries)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = 'ustaxes-schedules-2025-workpaper.json'
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+  const restoreWorkpaper = () => {
+    try {
+      const allowed = Object.fromEntries(sections.map(section => [section.id, section.lines])) as Record<Section, string[]>
+      const restored = importWorkpaper2025(workpaperText, allowed)
+      setEntries(restored)
+      setNextId(Math.max(0, ...restored.map(entry => entry.id)) + 1)
+      setDuplicatePaymentsConfirmed(false)
+      setCreditOrderingConfirmed(false)
+      setWorkpaperMessage(`Imported ${restored.length} records. Reconfirm cross-form checks.`)
+    } catch (error) { setWorkpaperMessage(error instanceof Error ? error.message : 'Invalid workpaper') }
+  }
   const sourceAudit = useMemo(() => auditScheduleEntries2025(entries), [entries])
   const allValid = summaries.every(s => s.invalid.length === 0) && !sourceAudit.blocked
   const schedule1 = useMemo(() => {
@@ -87,6 +111,18 @@ export default function NextGen2025Schedules({ onReconcile }: { onReconcile?: (v
     </div>)}
     <label className="v2-check"><input type="checkbox" checked={duplicatePaymentsConfirmed} onChange={e => setDuplicatePaymentsConfirmed(e.target.checked)} />I checked Schedule 3 payments for duplication with withholding and refundable child tax credits.</label>
     <label className="v2-check"><input type="checkbox" checked={creditOrderingConfirmed} onChange={e => setCreditOrderingConfirmed(e.target.checked)} />I checked the order and limits of nonrefundable credits, including Schedule 8812.</label>
+    <h3>Line-by-line source workpaper</h3>
+    <p>Reviewed entries are grouped by official schedule line. Totals are working-paper amounts, not authorized IRS postings.</p>
+    <p>{lineWorkpaper.entryCount} entries · {Object.keys(lineWorkpaper.totals).length} populated lines · {lineWorkpaper.issues.length} issues</p>
+    <div className="v2-review-grid">{Object.entries(lineWorkpaper.totals).sort(([a], [b]) => a.localeCompare(b)).map(([key, cents]) =>
+      <div key={key}><span>{key.replace(':', ' / line ')}</span><strong>{currency(cents)}</strong></div>)}</div>
+    {lineWorkpaper.issues.length > 0 && <ul>{lineWorkpaper.issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul>}
+    <h3>Portable schedules workpaper</h3>
+    <p>Export and import a versioned 2025 JSON workpaper. The file can contain sensitive financial information: store it securely. Import replaces the current schedule entries.</p>
+    <button type="button" className="v2-secondary" onClick={downloadWorkpaper}>Export 2025 workpaper JSON</button>
+    <label>Paste exported workpaper JSON<textarea rows={5} value={workpaperText} onChange={e => setWorkpaperText(e.target.value)} /></label>
+    <button type="button" className="v2-secondary" onClick={restoreWorkpaper}>Import and validate workpaper</button>
+    {workpaperMessage && <p role="status">{workpaperMessage}</p>}
     <h3>Source reconciliation audit</h3>
     <p>{sourceAudit.blocked ? `${sourceAudit.issues.length} source issue(s) must be resolved before review.` : 'No source-level inconsistencies detected. IRS eligibility and posting checks are still required.'}</p>
     {sourceAudit.issues.length > 0 && <ul>{sourceAudit.issues.map((issue, index) => <li key={`${issue.code}-${index}`}>{issue.code}: {issue.message} {issue.entryIds.length > 0 ? `(entries ${issue.entryIds.join(', ')})` : ''}</li>)}</ul>}
