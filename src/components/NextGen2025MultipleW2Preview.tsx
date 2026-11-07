@@ -5,7 +5,7 @@ import { filingStatuses2025, FilingStatus2025 } from '../nextgen/taxYears/previe
 import { bridgeMultipleW2ToRestricted1040_2025, W2DocumentInput2025 } from '../nextgen/taxYears/multipleW2Form1040Bridge2025'
 import { reviewW2PreviewInputs2025 } from '../nextgen/taxYears/livePreviewScenario2025'
 import { reconcileMultipleW2_2025 } from '../nextgen/taxYears/multipleW2Reconciliation2025'
-import { findPotentialRepeatedW2_2025, repeatedW2ReviewSignature2025, isRepeatedW2ReviewAcknowledged2025, describePotentialRepeatedW2Groups2025, potentialRepeatedW2ReviewDetails2025 } from '../nextgen/taxYears/multipleW2DuplicateReview2025'
+import { findPotentialRepeatedW2_2025, repeatedW2ReviewSignature2025, isRepeatedW2ReviewAcknowledged2025, describePotentialRepeatedW2Groups2025, potentialRepeatedW2ReviewDetails2025, potentialW2WithholdingDifferences2025 } from '../nextgen/taxYears/multipleW2DuplicateReview2025'
 
 const newDocument = (id: number): W2DocumentInput2025 => ({ id: `manual-w2-${id}`, employer: '', box1Wages: '', box2FederalWithholding: '' })
 const usd = (value: number): string => value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -21,6 +21,7 @@ export default function NextGen2025MultipleW2Preview(): ReactElement {
   const potentialRepeatedGroups = findPotentialRepeatedW2_2025(documents)
   const repeatedGroupDescriptions = describePotentialRepeatedW2Groups2025(documents)
   const repeatedGroupDetails = potentialRepeatedW2ReviewDetails2025(documents)
+  const withholdingDifferences = potentialW2WithholdingDifferences2025(documents)
   const repeatedSignature = repeatedW2ReviewSignature2025(documents, status)
   const repeatedReviewCleared = isRepeatedW2ReviewAcknowledged2025(repeatedSignature, acknowledgedSignature)
   const potentialRepeatedIndexes = new Set<number>()
@@ -78,6 +79,7 @@ export default function NextGen2025MultipleW2Preview(): ReactElement {
     {previewWagesCents !== null && previewWithholdingCents !== null && Number.isSafeInteger(previewWagesCents) && Number.isSafeInteger(previewWithholdingCents) ? <Typography variant="body2">Sum of validated inputs: Box 1 {usd(previewWagesCents / 100)} · Box 2 {usd(previewWithholdingCents / 100)}. These amounts are provisional until all document IDs and employer labels pass review.</Typography> : <Alert severity="info">Enter valid Box 1 and Box 2 amounts for every W-2 to see combined input totals. Missing or invalid amounts are never treated as zero.</Alert>}
     {potentialRepeatedGroups.length > 0 && <Alert severity="warning" style={{ marginTop: 12 }}>Review {potentialRepeatedGroups.length} potential repeated W-2 group(s) before relying on the preview. Identical amounts can be legitimate; verify against source documents. No automatic deduplication is performed.</Alert>}
     {repeatedGroupDescriptions.map((description, index) => <Alert key={`repeated-group-${index}`} severity="warning" style={{ marginTop: 8 }}>Potential repeat group {index + 1}: {description}. Employer: {repeatedGroupDetails[index].employerLabel}; Box 1: {usd(repeatedGroupDetails[index].box1Wages)}; Box 2: {usd(repeatedGroupDetails[index].box2FederalWithholding)}. Compare employer identity, tax year, corrected-form status and source documents before acknowledging; do not automatically remove either entry.</Alert>)}
+    {withholdingDifferences.map((group, index) => <Alert key={`withholding-difference-${index}`} severity="info" style={{ marginTop: 8 }} role="status">Additional source check {index + 1}: W-2 documents {group.documentPositions.join(', ')} share employer {group.employerLabel} and Box 1 {usd(group.box1Wages)}, but Box 2 amounts differ ({group.box2Withholdings.map(usd).join(' versus ')}). Verify each source form and any W-2c before relying on totals. This signal alone does not block mapping, identify a correction or automatically remove entries.</Alert>)}
     {repeatedSignature !== null && <FormControlLabel style={{ marginTop: 8 }} control={<Checkbox color="primary" checked={repeatedReviewCleared} onChange={event => setAcknowledgedSignature(event.target.checked ? repeatedSignature : null)} inputProps={{ 'aria-label': 'Confirm potential repeated W-2 review' }} />} label="I reviewed the flagged W-2 entries against source documents and verified that all listed entries should be counted. This confirmation resets after any document edit." />}
     {repeatedSignature !== null && !repeatedReviewCleared && <Alert severity="error" role="alert" style={{ marginTop: 8 }}>Restricted Form 1040 totals are hidden until the potential repeated W-2 entries are reviewed and acknowledged. Do not confirm without checking the source documents.</Alert>}
     {reconciliation.kind === 'mismatch' && <Alert severity="error" role="alert" style={{ marginTop: 12 }}>Independent W-2 reconciliation failed: {reconciliation.reason}. Do not rely on mapped totals.</Alert>}

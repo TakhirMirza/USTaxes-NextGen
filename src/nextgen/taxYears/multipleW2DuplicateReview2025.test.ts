@@ -1,4 +1,4 @@
-import { findPotentialRepeatedW2_2025, repeatedW2ReviewSignature2025, isRepeatedW2ReviewAcknowledged2025, describePotentialRepeatedW2Groups2025, potentialRepeatedW2ReviewDetails2025 } from './multipleW2DuplicateReview2025'
+import { findPotentialRepeatedW2_2025, repeatedW2ReviewSignature2025, isRepeatedW2ReviewAcknowledged2025, describePotentialRepeatedW2Groups2025, potentialRepeatedW2ReviewDetails2025, potentialW2WithholdingDifferences2025 } from './multipleW2DuplicateReview2025'
 import { W2DocumentInput2025 } from './multipleW2Form1040Bridge2025'
 
 const first: W2DocumentInput2025 = { id: 'one', employer: 'Acme', box1Wages: '123.45', box2FederalWithholding: '12.30' }
@@ -167,5 +167,28 @@ describe('Stage 130 source-review detail regression', () => {
     const documents = [first, { ...first, id: 'second' }]
     expect(potentialRepeatedW2ReviewDetails2025(documents)).toHaveLength(1)
     expect(isRepeatedW2ReviewAcknowledged2025(repeatedW2ReviewSignature2025(documents), null)).toBe(false)
+  })
+})
+
+
+describe('Stage 131 same-employer wage / withholding difference review', () => {
+  test('reports positions and distinct Box 2 amounts without inferring duplication', () => {
+    expect(potentialW2WithholdingDifferences2025([first, { ...first, id: 'two', employer: ' ACME ', box2FederalWithholding: '12.31' }])).toEqual([{
+      documentPositions: [1, 2], employerLabel: 'Acme', box1Wages: 123.45, box2Withholdings: [12.3, 12.31],
+    }])
+  })
+  test('does not flag identical withholding or unrelated employers', () => {
+    expect(potentialW2WithholdingDifferences2025([first, { ...first, id: 'two' }])).toEqual([])
+    expect(potentialW2WithholdingDifferences2025([first, { ...first, id: 'two', employer: 'Elsewhere', box2FederalWithholding: '12.31' }])).toEqual([])
+  })
+  test('ignores invalid and incomplete amounts', () => {
+    expect(potentialW2WithholdingDifferences2025([first, { ...first, id: 'two', box2FederalWithholding: '' }])).toEqual([])
+    expect(potentialW2WithholdingDifferences2025([first, { ...first, id: 'two', box1Wages: '123.450', box2FederalWithholding: '12.31' }])).toEqual([])
+  })
+  test('informational signal does not weaken the existing duplicate acknowledgement gate', () => {
+    const documents = [first, { ...first, id: 'two', box2FederalWithholding: '12.31' }]
+    expect(potentialW2WithholdingDifferences2025(documents)).toHaveLength(1)
+    expect(repeatedW2ReviewSignature2025(documents)).toBeNull()
+    expect(isRepeatedW2ReviewAcknowledged2025(repeatedW2ReviewSignature2025([first, { ...first, id: 'two' }]), null)).toBe(false)
   })
 })

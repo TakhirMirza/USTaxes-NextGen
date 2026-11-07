@@ -73,3 +73,44 @@ export function potentialRepeatedW2ReviewDetails2025(documents: readonly W2Docum
     }
   })
 }
+
+/** Informational signal for equal employer + Box 1 but differing Box 2.
+ * A different withholding amount is NOT proof of a corrected or duplicate W-2.
+ * Exclude exact repeats (handled by the acknowledgement gate) and invalid inputs.
+ */
+export interface PotentialW2WithholdingDifference2025 {
+  documentPositions: number[]
+  employerLabel: string
+  box1Wages: number
+  box2Withholdings: number[]
+}
+
+export function potentialW2WithholdingDifferences2025(documents: readonly W2DocumentInput2025[]): PotentialW2WithholdingDifference2025[] {
+  const groups = new Map<string, Array<{ index: number; withholdingCents: number }>>()
+  documents.forEach((document, index) => {
+    const employer = document.employer.trim().toLocaleLowerCase('en-US')
+    if (!employer) return
+    const reviewed = reviewW2PreviewInputs2025(document.box1Wages, document.box2FederalWithholding)
+    if (reviewed.kind !== 'valid' || reviewed.withholding === null) return
+    const wagesCents = Math.round(reviewed.wages * 100)
+    const withholdingCents = Math.round(reviewed.withholding * 100)
+    if (!Number.isSafeInteger(wagesCents) || !Number.isSafeInteger(withholdingCents)) return
+    const key = JSON.stringify([employer, wagesCents])
+    const group = groups.get(key) || []
+    group.push({ index, withholdingCents })
+    groups.set(key, group)
+  })
+  return Array.from(groups.values()).filter(group =>
+    group.length > 1 && new Set(group.map(item => item.withholdingCents)).size > 1
+  ).map(group => {
+    const representative = documents[group[0].index]
+    const reviewed = reviewW2PreviewInputs2025(representative.box1Wages, representative.box2FederalWithholding)
+    if (reviewed.kind !== 'valid') throw new Error('Invalid W-2 comparison group')
+    return {
+      documentPositions: group.map(item => item.index + 1),
+      employerLabel: representative.employer.trim(),
+      box1Wages: reviewed.wages,
+      box2Withholdings: group.map(item => item.withholdingCents / 100),
+    }
+  })
+}
