@@ -71,3 +71,23 @@ describe('Stage 135 employer inventory to Form 1040 mapping check', () => {
     expect(checkW2EmployerMapping2025(split, bridge).kind).toBe('blocked')
   })
 })
+
+
+describe('Stage 136 employer inventory input boundary safeguards', () => {
+  it('withholds the entire summary when source document IDs repeat', () => {
+    expect(summarizeW2ByEmployer2025([entry('same', 'A', '100', '10'), entry('same', 'B', '200', '20')])).toBeNull()
+  })
+  it('treats whitespace-equivalent document IDs as repeated', () => {
+    expect(summarizeW2ByEmployer2025([entry(' id ', 'A', '100', '10'), entry('id', 'B', '200', '20')])).toBeNull()
+  })
+  it('withholds summaries and blocks checks beyond the 100-document limit', () => {
+    const documents = Array.from({ length: 101 }, (_, index) => entry(`w2-${index}`, 'A', '1', '0'))
+    expect(summarizeW2ByEmployer2025(documents)).toBeNull()
+    expect(checkW2EmployerTotals2025(documents)).toEqual({ kind: 'blocked', reason: 'W-2 document limit exceeded (100).' })
+  })
+  it('accepts 100 distinct valid documents without silently dropping any', () => {
+    const documents = Array.from({ length: 100 }, (_, index) => entry(`w2-${index}`, 'A', '1.01', '0.01'))
+    expect(summarizeW2ByEmployer2025(documents)?.[0].documentPositions).toHaveLength(100)
+    expect(checkW2EmployerTotals2025(documents)).toEqual({ kind: 'matched', documentCount: 100, box1Wages: 101, box2FederalWithholding: 1 })
+  })
+})

@@ -12,11 +12,15 @@ export interface W2EmployerSummary2025 {
  * Fail closed: no partial totals when any source entry is incomplete or invalid.
  */
 export function summarizeW2ByEmployer2025(documents: readonly W2DocumentInput2025[]): W2EmployerSummary2025[] | null {
+  if (documents.length > 100) return null
+  const seenIds = new Set<string>()
   const groups = new Map<string, { employerLabel: string; positions: number[]; wagesCents: number; withholdingCents: number }>()
   for (let index = 0; index < documents.length; index += 1) {
     const document = documents[index]
     const label = document.employer.trim()
-    if (!label || !document.id.trim()) return null
+    const id = document.id.trim()
+    if (!label || !id || seenIds.has(id)) return null
+    seenIds.add(id)
     const review = reviewW2PreviewInputs2025(document.box1Wages, document.box2FederalWithholding)
     if (review.kind !== 'valid' || review.withholding === null) return null
     const wages = Math.round(review.wages * 100)
@@ -50,6 +54,7 @@ export type W2EmployerTotalsCheck2025 =
  */
 export function checkW2EmployerTotals2025(documents: readonly W2DocumentInput2025[]): W2EmployerTotalsCheck2025 {
   if (documents.length === 0) return { kind: 'blocked', reason: 'No W-2 documents supplied.' }
+  if (documents.length > 100) return { kind: 'blocked', reason: 'W-2 document limit exceeded (100).' }
   const ids = new Set<string>()
   let sourceWagesCents = 0
   let sourceWithholdingCents = 0
