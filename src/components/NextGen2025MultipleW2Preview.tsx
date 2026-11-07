@@ -5,6 +5,7 @@ import { filingStatuses2025, FilingStatus2025 } from '../nextgen/taxYears/previe
 import { bridgeMultipleW2ToRestricted1040_2025, W2DocumentInput2025 } from '../nextgen/taxYears/multipleW2Form1040Bridge2025'
 import { reviewW2PreviewInputs2025 } from '../nextgen/taxYears/livePreviewScenario2025'
 import { reconcileMultipleW2_2025 } from '../nextgen/taxYears/multipleW2Reconciliation2025'
+import { summarizeW2ByEmployer2025 } from '../nextgen/taxYears/w2EmployerSummary2025'
 import { findPotentialRepeatedW2_2025, repeatedW2ReviewSignature2025, isRepeatedW2ReviewAcknowledged2025, describePotentialRepeatedW2Groups2025, potentialRepeatedW2ReviewDetails2025, potentialW2WithholdingDifferences2025, potentialW2WageDifferences2025 } from '../nextgen/taxYears/multipleW2DuplicateReview2025'
 
 const newDocument = (id: number): W2DocumentInput2025 => ({ id: `manual-w2-${id}`, employer: '', box1Wages: '', box2FederalWithholding: '' })
@@ -23,6 +24,7 @@ export default function NextGen2025MultipleW2Preview(): ReactElement {
   const repeatedGroupDetails = potentialRepeatedW2ReviewDetails2025(documents)
   const withholdingDifferences = potentialW2WithholdingDifferences2025(documents)
   const wageDifferences = potentialW2WageDifferences2025(documents)
+  const employerSummary = summarizeW2ByEmployer2025(documents)
   const repeatedSignature = repeatedW2ReviewSignature2025(documents, status)
   const repeatedReviewCleared = isRepeatedW2ReviewAcknowledged2025(repeatedSignature, acknowledgedSignature)
   const potentialRepeatedIndexes = new Set<number>()
@@ -78,6 +80,14 @@ export default function NextGen2025MultipleW2Preview(): ReactElement {
     <Typography variant="body2" style={{ marginTop: 8 }}>Documents: {documents.length} / 100. Each document needs a unique ID; employer names may repeat.</Typography>
     <Typography variant="h6" style={{ marginTop: 16 }}>W-2 input reconciliation</Typography>
     {previewWagesCents !== null && previewWithholdingCents !== null && Number.isSafeInteger(previewWagesCents) && Number.isSafeInteger(previewWithholdingCents) ? <Typography variant="body2">Sum of validated inputs: Box 1 {usd(previewWagesCents / 100)} · Box 2 {usd(previewWithholdingCents / 100)}. These amounts are provisional until all document IDs and employer labels pass review.</Typography> : <Alert severity="info">Enter valid Box 1 and Box 2 amounts for every W-2 to see combined input totals. Missing or invalid amounts are never treated as zero.</Alert>}
+    <Typography variant="h6" style={{ marginTop: 16 }}>Employer source summary — informational</Typography>
+    {employerSummary === null ? <Alert severity="info" role="status">Employer summary is withheld until every W-2 has an ID, employer label, and valid Box 1 / Box 2 amounts. No partial totals are displayed.</Alert> : <>
+      <Table size="small" aria-label="W-2 employer source summary"><TableBody>
+        <TableRow><TableCell>Employer / source positions</TableCell><TableCell align="right">Box 1 wages</TableCell><TableCell align="right">Box 2 withholding</TableCell></TableRow>
+        {employerSummary.map((group, index) => <TableRow key={`employer-summary-${index}`}><TableCell>{group.employerLabel} — W-2 {group.documentPositions.join(', ')}</TableCell><TableCell align="right">{usd(group.box1Wages)}</TableCell><TableCell align="right">{usd(group.box2FederalWithholding)}</TableCell></TableRow>)}
+      </TableBody></Table>
+      <Alert severity="info" style={{ marginTop: 8 }}>This is a source-document inventory, not independent verification of employer identity. Every entry is included, including potential repeats. Review original and corrected W-2 forms; the summary does not authorize mapping.</Alert>
+    </>}
     {potentialRepeatedGroups.length > 0 && <Alert severity="warning" style={{ marginTop: 12 }}>Review {potentialRepeatedGroups.length} potential repeated W-2 group(s) before relying on the preview. Identical amounts can be legitimate; verify against source documents. No automatic deduplication is performed.</Alert>}
     {repeatedGroupDescriptions.map((description, index) => <Alert key={`repeated-group-${index}`} severity="warning" style={{ marginTop: 8 }}>Potential repeat group {index + 1}: {description}. Employer: {repeatedGroupDetails[index].employerLabel}; Box 1: {usd(repeatedGroupDetails[index].box1Wages)}; Box 2: {usd(repeatedGroupDetails[index].box2FederalWithholding)}. Compare employer identity, tax year, corrected-form status and source documents before acknowledging; do not automatically remove either entry.</Alert>)}
     {withholdingDifferences.map((group, index) => <Alert key={`withholding-difference-${index}`} severity="info" style={{ marginTop: 8 }} role="status">Additional source check {index + 1}: W-2 documents {group.documentPositions.join(', ')} share employer {group.employerLabel} and Box 1 {usd(group.box1Wages)}, but Box 2 amounts differ ({group.box2Withholdings.map(usd).join(' versus ')}). Verify each source form and any W-2c before relying on totals. This signal alone does not block mapping, identify a correction or automatically remove entries.</Alert>)}
