@@ -1,8 +1,8 @@
-name: Publish USTaxes preview to GitHub Pages
+name: Deploy USTaxes NextGen 2.0 Preview
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    branches: [main]
 permissions:
   contents: read
   pages: write
@@ -26,7 +26,7 @@ jobs:
         env:
           CI: 'false'
           REACT_APP_GITHUB_PAGES: 'true'
-          PUBLIC_URL: /${{ github.event.repository.name }}
+          PUBLIC_URL: /USTaxes-NextGen-Preview
         run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
