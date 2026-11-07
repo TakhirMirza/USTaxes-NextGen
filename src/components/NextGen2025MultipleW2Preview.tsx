@@ -5,7 +5,7 @@ import { filingStatuses2025, FilingStatus2025 } from '../nextgen/taxYears/previe
 import { bridgeMultipleW2ToRestricted1040_2025, W2DocumentInput2025 } from '../nextgen/taxYears/multipleW2Form1040Bridge2025'
 import { reviewW2PreviewInputs2025 } from '../nextgen/taxYears/livePreviewScenario2025'
 import { reconcileMultipleW2_2025 } from '../nextgen/taxYears/multipleW2Reconciliation2025'
-import { summarizeW2ByEmployer2025, checkW2EmployerTotals2025, checkW2EmployerMapping2025 } from '../nextgen/taxYears/w2EmployerSummary2025'
+import { summarizeW2ByEmployer2025, checkW2EmployerTotals2025, checkW2EmployerMapping2025, findW2EmployerLabelVariations2025 } from '../nextgen/taxYears/w2EmployerSummary2025'
 import { findPotentialRepeatedW2_2025, repeatedW2ReviewSignature2025, isRepeatedW2ReviewAcknowledged2025, describePotentialRepeatedW2Groups2025, potentialRepeatedW2ReviewDetails2025, potentialW2WithholdingDifferences2025, potentialW2WageDifferences2025 } from '../nextgen/taxYears/multipleW2DuplicateReview2025'
 
 const newDocument = (id: number): W2DocumentInput2025 => ({ id: `manual-w2-${id}`, employer: '', box1Wages: '', box2FederalWithholding: '' })
@@ -24,6 +24,7 @@ export default function NextGen2025MultipleW2Preview(): ReactElement {
   const repeatedGroupDetails = potentialRepeatedW2ReviewDetails2025(documents)
   const withholdingDifferences = potentialW2WithholdingDifferences2025(documents)
   const wageDifferences = potentialW2WageDifferences2025(documents)
+  const employerLabelVariations = findW2EmployerLabelVariations2025(documents)
   const employerSummary = summarizeW2ByEmployer2025(documents)
   const employerTotalsCheck = checkW2EmployerTotals2025(documents)
   const employerMappingCheck = checkW2EmployerMapping2025(documents, bridge)
@@ -82,6 +83,7 @@ export default function NextGen2025MultipleW2Preview(): ReactElement {
     <Typography variant="body2" style={{ marginTop: 8 }}>Documents: {documents.length} / 100. Each document needs a unique ID; employer names may repeat.</Typography>
     <Typography variant="h6" style={{ marginTop: 16 }}>W-2 input reconciliation</Typography>
     {previewWagesCents !== null && previewWithholdingCents !== null && Number.isSafeInteger(previewWagesCents) && Number.isSafeInteger(previewWithholdingCents) ? <Typography variant="body2">Sum of validated inputs: Box 1 {usd(previewWagesCents / 100)} · Box 2 {usd(previewWithholdingCents / 100)}. These amounts are provisional until all document IDs and employer labels pass review.</Typography> : <Alert severity="info">Enter valid Box 1 and Box 2 amounts for every W-2 to see combined input totals. Missing or invalid amounts are never treated as zero.</Alert>}
+    {employerLabelVariations.map((variation, index) => <Alert key={`employer-label-variation-${index}`} severity="info" role="status" style={{ marginTop: 8 }}>Employer label formatting review {index + 1}: W-2 documents {variation.documentPositions.join(', ')} use labels that differ only in internal whitespace ({variation.labels.join(' versus ')}). Check the source documents. No labels are changed, employers are not merged, and this notice does not override duplicate review or mapping safeguards.</Alert>)}
     <Typography variant="h6" style={{ marginTop: 16 }}>Employer source summary — informational</Typography>
     {employerSummary === null ? <Alert severity="info" role="status">Employer summary is withheld until all W-2 entries have distinct document IDs, employer labels, and valid Box 1 / Box 2 amounts (maximum 100 documents). No partial totals are displayed.</Alert> : <>
       <Table size="small" aria-label="W-2 employer source summary"><TableBody>

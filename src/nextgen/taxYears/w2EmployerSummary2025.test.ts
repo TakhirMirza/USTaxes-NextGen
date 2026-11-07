@@ -1,5 +1,5 @@
 import { bridgeMultipleW2ToRestricted1040_2025 } from './multipleW2Form1040Bridge2025'
-import { summarizeW2ByEmployer2025, checkW2EmployerTotals2025, checkW2EmployerMapping2025 } from './w2EmployerSummary2025'
+import { summarizeW2ByEmployer2025, checkW2EmployerTotals2025, checkW2EmployerMapping2025, findW2EmployerLabelVariations2025 } from './w2EmployerSummary2025'
 
 const entry = (id: string, employer: string, wages: string, withholding: string) => ({ id, employer, box1Wages: wages, box2FederalWithholding: withholding })
 
@@ -89,5 +89,25 @@ describe('Stage 136 employer inventory input boundary safeguards', () => {
     const documents = Array.from({ length: 100 }, (_, index) => entry(`w2-${index}`, 'A', '1.01', '0.01'))
     expect(summarizeW2ByEmployer2025(documents)?.[0].documentPositions).toHaveLength(100)
     expect(checkW2EmployerTotals2025(documents)).toEqual({ kind: 'matched', documentCount: 100, box1Wages: 101, box2FederalWithholding: 1 })
+  })
+})
+
+
+describe('Stage 137 employer label whitespace advisory', () => {
+  it('flags different internal whitespace without changing source labels', () => {
+    const documents = [entry('a', 'Example  Inc', '100', '10'), entry('b', 'example inc', '200', '20')]
+    expect(findW2EmployerLabelVariations2025(documents)).toEqual([{ documentPositions: [1, 2], labels: ['Example  Inc', 'example inc'] }])
+    expect(summarizeW2ByEmployer2025(documents)?.length).toBe(2)
+  })
+  it('does not flag differences in case or surrounding whitespace alone', () => {
+    expect(findW2EmployerLabelVariations2025([entry('a', ' Example Inc ', '1', '0'), entry('b', 'example inc', '2', '0')])).toEqual([])
+  })
+  it('does not infer identity for substantively different names', () => {
+    expect(findW2EmployerLabelVariations2025([entry('a', 'Example Inc', '1', '0'), entry('b', 'Example LLC', '2', '0')])).toEqual([])
+  })
+  it('does not alter independent reconciliation or allow over-limit inventories', () => {
+    const documents = [entry('a', 'Example  Inc', '100', '10'), entry('b', 'Example Inc', '200', '20')]
+    expect(checkW2EmployerTotals2025(documents).kind).toBe('matched')
+    expect(findW2EmployerLabelVariations2025(Array.from({ length: 101 }, (_, i) => entry(String(i), 'A  B', '1', '0')))).toEqual([])
   })
 })

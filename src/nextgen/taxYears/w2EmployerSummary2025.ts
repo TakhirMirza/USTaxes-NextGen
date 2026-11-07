@@ -122,3 +122,31 @@ export function checkW2EmployerMapping2025(
   }
   return { kind: 'matched', documentCount: totals.documentCount, box1Wages: totals.box1Wages, box2FederalWithholding: totals.box2FederalWithholding }
 }
+
+
+export interface W2EmployerLabelVariation2025 {
+  documentPositions: number[]
+  labels: string[]
+}
+
+/** Advisory only: flag labels that differ only in internal whitespace.
+ * Keep the original employer inventory unchanged; this is not identity verification.
+ */
+export function findW2EmployerLabelVariations2025(documents: readonly W2DocumentInput2025[]): W2EmployerLabelVariation2025[] {
+  if (documents.length > 100) return []
+  const groups = new Map<string, { positions: number[]; labels: string[]; exactLabels: Set<string> }>()
+  documents.forEach((document, index) => {
+    const label = document.employer.trim()
+    if (!label) return
+    const exact = label.toLocaleLowerCase('en-US')
+    const normalized = label.replace(/\s+/g, ' ').toLocaleLowerCase('en-US')
+    const group = groups.get(normalized) || { positions: [], labels: [], exactLabels: new Set<string>() }
+    group.positions.push(index + 1)
+    if (!group.exactLabels.has(exact)) group.labels.push(label)
+    group.exactLabels.add(exact)
+    groups.set(normalized, group)
+  })
+  return Array.from(groups.values())
+    .filter(group => group.exactLabels.size > 1)
+    .map(group => ({ documentPositions: group.positions, labels: group.labels }))
+}
