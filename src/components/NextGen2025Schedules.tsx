@@ -1,4 +1,5 @@
 import { ReactElement, useEffect, useMemo, useState } from 'react'
+import { evaluateSchedules2025PostingGate } from '../nextgen/taxYears/schedules2025PostingGate'
 import { auditScheduleEntries2025 } from '../nextgen/taxYears/schedules2025EntryAudit'
 import { Schedule1040Candidates2025 } from '../nextgen/taxYears/schedules1040Bridge2025'
 import { create2025Schedule1Worksheet, Schedule1Entry2025 } from '../nextgen/taxYears/schedule1Worksheet2025'
@@ -64,6 +65,7 @@ export default function NextGen2025Schedules({ onReconcile }: { onReconcile?: (v
     blocked: !allValid || review.blockers.length > 0,
     entryCount: entries.length
   }), [schedule1, review.candidates.form1040Line17, review.candidates.form1040Line20, review.candidates.form1040Line23, review.candidates.form1040Line31, review.blockers.length, allValid, entries.length])
+  const postingGate = useMemo(() => evaluateSchedules2025PostingGate(candidateSnapshot, sourceAudit), [candidateSnapshot, sourceAudit])
   useEffect(() => { if (onReconcile) onReconcile(candidateSnapshot) }, [onReconcile, candidateSnapshot])
   return <section className="v2-card" aria-label="2025 IRS Schedules 1 2 and 3">
     <span className="v2-eyebrow">IRS TAX YEAR 2025</span><h2>Schedules 1, 2 and 3</h2>
@@ -88,6 +90,9 @@ export default function NextGen2025Schedules({ onReconcile }: { onReconcile?: (v
     <h3>Source reconciliation audit</h3>
     <p>{sourceAudit.blocked ? `${sourceAudit.issues.length} source issue(s) must be resolved before review.` : 'No source-level inconsistencies detected. IRS eligibility and posting checks are still required.'}</p>
     {sourceAudit.issues.length > 0 && <ul>{sourceAudit.issues.map((issue, index) => <li key={`${issue.code}-${index}`}>{issue.code}: {issue.message} {issue.entryIds.length > 0 ? `(entries ${issue.entryIds.join(', ')})` : ''}</li>)}</ul>}
+    <h3>Form 1040 posting readiness</h3>
+    <p>Automatic posting: blocked until IRS calculation rules and all cross-form worksheets are verified.</p>
+    <ul>{postingGate.issues.map((issue, index) => <li key={`${issue.code}-${index}`}>{issue.code}: {issue.message}</li>)}</ul>
     <h3>Form 1040 reconciliation candidates</h3>
     <div className="v2-review-grid">
       <div><span>Line 8 — Schedule 1 additional income</span><strong>{schedule1 ? currency(Math.round(schedule1.otherIncome * 100)) : 'Pending review'}</strong></div>
