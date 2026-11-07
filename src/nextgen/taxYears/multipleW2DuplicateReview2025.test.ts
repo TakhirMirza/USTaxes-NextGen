@@ -65,3 +65,55 @@ describe('Stage 125 acknowledgement invalidation boundaries', () => {
     expect(isRepeatedW2ReviewAcknowledged2025(updated, accepted)).toBe(false)
   })
 })
+
+
+describe('Stage 127 W-2 review acknowledgement regression matrix', () => {
+  const base: W2DocumentInput2025[] = [
+    first,
+    { ...first, id: 'two' },
+    { id: 'third', employer: 'Other', box1Wages: '500.00', box2FederalWithholding: '50.00' },
+  ]
+  const accepted = repeatedW2ReviewSignature2025(base, 'single')
+
+  test.each([
+    ['duplicate employer spelling', 1, 'employer', 'ACME'],
+    ['duplicate document ID', 1, 'id', 'second'],
+    ['duplicate wages formatting', 1, 'box1Wages', '123.450'],
+    ['duplicate withholding formatting', 1, 'box2FederalWithholding', '12.3'],
+    ['unflagged document ID', 2, 'id', 'replacement'],
+    ['unflagged withholding', 2, 'box2FederalWithholding', '55.00'],
+    ['unflagged wages', 2, 'box1Wages', '501.00'],
+    ['unflagged employer', 2, 'employer', 'Other Company'],
+  ] as Array<[string, number, keyof W2DocumentInput2025, string]>)('%s invalidates confirmation', (_description, index, field, value) => {
+    const changed = base.map((document, i) => i === index ? { ...document, [field]: value } : document)
+    const current = repeatedW2ReviewSignature2025(changed, 'single')
+    expect(current).not.toBeNull()
+    expect(isRepeatedW2ReviewAcknowledged2025(current, accepted)).toBe(false)
+  })
+
+  test('adding a unique document invalidates confirmation', () => {
+    const added = [...base, { id: 'fourth', employer: 'Elsewhere', box1Wages: '75', box2FederalWithholding: '5' }]
+    expect(isRepeatedW2ReviewAcknowledged2025(repeatedW2ReviewSignature2025(added, 'single'), accepted)).toBe(false)
+  })
+
+  test('removing an unflagged document invalidates confirmation', () => {
+    expect(isRepeatedW2ReviewAcknowledged2025(repeatedW2ReviewSignature2025(base.slice(0, 2), 'single'), accepted)).toBe(false)
+  })
+
+  test('resolving a possible duplicate needs no acknowledgement', () => {
+    const resolved = [base[0], { ...base[1], employer: 'Different Employer' }, base[2]]
+    expect(repeatedW2ReviewSignature2025(resolved, 'single')).toBeNull()
+    expect(isRepeatedW2ReviewAcknowledged2025(null, accepted)).toBe(true)
+  })
+
+  test('a new duplicate group cannot reuse confirmation for a previous group', () => {
+    const newGroup = [base[0], { ...base[1], employer: 'Other', box1Wages: '500.00', box2FederalWithholding: '50.00' }, base[2]]
+    expect(isRepeatedW2ReviewAcknowledged2025(repeatedW2ReviewSignature2025(newGroup, 'single'), accepted)).toBe(false)
+  })
+
+  test('acknowledgement is bound to filing status and exact snapshot', () => {
+    expect(isRepeatedW2ReviewAcknowledged2025(accepted, accepted)).toBe(true)
+    expect(isRepeatedW2ReviewAcknowledged2025(repeatedW2ReviewSignature2025(base, 'headOfHousehold'), accepted)).toBe(false)
+    expect(isRepeatedW2ReviewAcknowledged2025(accepted, null)).toBe(false)
+  })
+})

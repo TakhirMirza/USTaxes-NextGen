@@ -54,7 +54,7 @@ export default function NextGen2025MultipleW2Preview(): ReactElement {
   return <Paper style={{ padding: 16, marginTop: 20 }}>
     <Typography variant="h6" gutterBottom>Multiple W-2 documents — restricted 2025 Form 1040 preview</Typography>
     <Alert severity="warning">NOT FILING READY. Enter fictional data only. No documents are uploaded, stored or submitted. This preview does not calculate a refund, amount due or complete tax return. Corrected W-2 forms must be reconciled manually; do not count both original and corrected copies.</Alert>
-    <TextField select label="Filing status for restricted preview" variant="outlined" value={status} onChange={event => setStatus(event.target.value as FilingStatus2025)} style={{ minWidth: 260, marginTop: 16 }}>
+    <TextField select label="Filing status for restricted preview" variant="outlined" value={status} onChange={event => { setAcknowledgedSignature(null); setStatus(event.target.value as FilingStatus2025) }} style={{ minWidth: 260, marginTop: 16 }}>
       {filingStatuses2025.map(option => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}
     </TextField>
     {documents.map((document, index) => <Paper variant="outlined" key={`${document.id}-${index}`} style={{ padding: 12, marginTop: 12 }}>
