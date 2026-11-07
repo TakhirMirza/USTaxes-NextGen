@@ -1,4 +1,4 @@
-import { findPotentialRepeatedW2_2025, repeatedW2ReviewSignature2025, isRepeatedW2ReviewAcknowledged2025, describePotentialRepeatedW2Groups2025 } from './multipleW2DuplicateReview2025'
+import { findPotentialRepeatedW2_2025, repeatedW2ReviewSignature2025, isRepeatedW2ReviewAcknowledged2025, describePotentialRepeatedW2Groups2025, potentialRepeatedW2ReviewDetails2025 } from './multipleW2DuplicateReview2025'
 import { W2DocumentInput2025 } from './multipleW2Form1040Bridge2025'
 
 const first: W2DocumentInput2025 = { id: 'one', employer: 'Acme', box1Wages: '123.45', box2FederalWithholding: '12.30' }
@@ -148,5 +148,24 @@ describe('Stage 129 transparent potential duplicate group references', () => {
 
   test('does not report a group for distinct valid documents', () => {
     expect(describePotentialRepeatedW2Groups2025([first, { ...first, id: 'second', employer: 'Different' }])).toEqual([])
+  })
+})
+
+
+describe('Stage 130 source-review detail regression', () => {
+  test('shows group positions and validated comparison values', () => {
+    const documents = [first, { ...first, id: 'second', employer: ' ACME ', box2FederalWithholding: '12.3' }]
+    expect(potentialRepeatedW2ReviewDetails2025(documents)).toEqual([{
+      documentPositions: [1, 2], employerLabel: 'Acme', box1Wages: 123.45, box2FederalWithholding: 12.3,
+    }])
+  })
+  test('omits incomplete or fractional-cent source entries', () => {
+    expect(potentialRepeatedW2ReviewDetails2025([first, { ...first, id: 'second', box1Wages: '123.450' }])).toEqual([])
+    expect(potentialRepeatedW2ReviewDetails2025([first, { ...first, id: 'second', box2FederalWithholding: '' }])).toEqual([])
+  })
+  test('does not alter review acknowledgement requirement', () => {
+    const documents = [first, { ...first, id: 'second' }]
+    expect(potentialRepeatedW2ReviewDetails2025(documents)).toHaveLength(1)
+    expect(isRepeatedW2ReviewAcknowledged2025(repeatedW2ReviewSignature2025(documents), null)).toBe(false)
   })
 })

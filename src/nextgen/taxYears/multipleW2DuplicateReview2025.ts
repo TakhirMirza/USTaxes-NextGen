@@ -47,3 +47,29 @@ export function describePotentialRepeatedW2Groups2025(documents: readonly W2Docu
     `W-2 documents ${group.map(index => index + 1).join(', ')}`
   )
 }
+
+/** Source-review details are informational only; they never authorize a tax mapping. */
+export interface PotentialRepeatedW2ReviewDetail2025 {
+  documentPositions: number[]
+  employerLabel: string
+  box1Wages: number
+  box2FederalWithholding: number
+}
+
+export function potentialRepeatedW2ReviewDetails2025(documents: readonly W2DocumentInput2025[]): PotentialRepeatedW2ReviewDetail2025[] {
+  return findPotentialRepeatedW2_2025(documents).map(group => {
+    const representative = documents[group[0]]
+    const reviewed = reviewW2PreviewInputs2025(representative.box1Wages, representative.box2FederalWithholding)
+    // findPotentialRepeatedW2_2025 only includes validated amounts, but fail closed
+    // if that invariant ever changes.
+    if (reviewed.kind !== 'valid' || reviewed.withholding === null) {
+      throw new Error('Potential W-2 group contains an invalid representative')
+    }
+    return {
+      documentPositions: group.map(index => index + 1),
+      employerLabel: representative.employer.trim(),
+      box1Wages: reviewed.wages,
+      box2FederalWithholding: reviewed.withholding,
+    }
+  })
+}
