@@ -19,3 +19,18 @@ export function findPotentialRepeatedW2_2025(documents: readonly W2DocumentInput
   })
   return Array.from(groups.values()).filter(indexes => indexes.length > 1)
 }
+
+/** Acknowledgement applies only to the exact current reviewed entries. */
+export function repeatedW2ReviewSignature2025(documents: readonly W2DocumentInput2025[]): string | null {
+  const groups = findPotentialRepeatedW2_2025(documents)
+  if (groups.length === 0) return null
+  return JSON.stringify(groups.map(group => group.map(index => {
+    const document = documents[index]
+    return [document.id.trim(), document.employer.trim(), document.box1Wages.trim(), document.box2FederalWithholding.trim()]
+  })))
+}
+
+/** The restricted mapping must be hidden while a duplicate review is unresolved. */
+export function isRepeatedW2ReviewAcknowledged2025(signature: string | null, acknowledgedSignature: string | null): boolean {
+  return signature === null || (acknowledgedSignature !== null && acknowledgedSignature === signature)
+}

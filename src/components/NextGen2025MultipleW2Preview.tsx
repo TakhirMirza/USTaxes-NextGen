@@ -1,11 +1,11 @@
 import { ReactElement, useState } from 'react'
 import { Alert } from '@material-ui/lab'
-import { Button, Paper, TextField, Typography, Table, TableBody, TableRow, TableCell, MenuItem } from '@material-ui/core'
+import { Button, Paper, TextField, Typography, Table, TableBody, TableRow, TableCell, MenuItem, FormControlLabel, Checkbox } from '@material-ui/core'
 import { filingStatuses2025, FilingStatus2025 } from '../nextgen/taxYears/preview2025'
 import { bridgeMultipleW2ToRestricted1040_2025, W2DocumentInput2025 } from '../nextgen/taxYears/multipleW2Form1040Bridge2025'
 import { reviewW2PreviewInputs2025 } from '../nextgen/taxYears/livePreviewScenario2025'
 import { reconcileMultipleW2_2025 } from '../nextgen/taxYears/multipleW2Reconciliation2025'
-import { findPotentialRepeatedW2_2025 } from '../nextgen/taxYears/multipleW2DuplicateReview2025'
+import { findPotentialRepeatedW2_2025, repeatedW2ReviewSignature2025, isRepeatedW2ReviewAcknowledged2025 } from '../nextgen/taxYears/multipleW2DuplicateReview2025'
 
 const newDocument = (id: number): W2DocumentInput2025 => ({ id: `manual-w2-${id}`, employer: '', box1Wages: '', box2FederalWithholding: '' })
 const usd = (value: number): string => value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -15,9 +15,12 @@ export default function NextGen2025MultipleW2Preview(): ReactElement {
   const [documents, setDocuments] = useState<W2DocumentInput2025[]>([newDocument(1)])
   const [nextId, setNextId] = useState(2)
   const [status, setStatus] = useState<FilingStatus2025>('single')
+  const [acknowledgedSignature, setAcknowledgedSignature] = useState<string | null>(null)
   const bridge = bridgeMultipleW2ToRestricted1040_2025(documents, status)
   const reconciliation = reconcileMultipleW2_2025(documents, bridge)
   const potentialRepeatedGroups = findPotentialRepeatedW2_2025(documents)
+  const repeatedSignature = repeatedW2ReviewSignature2025(documents)
+  const repeatedReviewCleared = isRepeatedW2ReviewAcknowledged2025(repeatedSignature, acknowledgedSignature)
   const potentialRepeatedIndexes = new Set<number>()
   potentialRepeatedGroups.forEach(group => group.forEach(index => potentialRepeatedIndexes.add(index)))
   const documentIds = documents.map(document => document.id.trim())
@@ -35,14 +38,19 @@ export default function NextGen2025MultipleW2Preview(): ReactElement {
   const previewWagesCents = allAmountsValid ? reviews.reduce((sum, review) => sum + (review.kind === 'valid' ? Math.round(review.wages * 100) : 0), 0) : null
   const previewWithholdingCents = allAmountsValid ? reviews.reduce((sum, review) => sum + (review.kind === 'valid' && review.withholding !== null ? Math.round(review.withholding * 100) : 0), 0) : null
   const edit = (index: number, field: keyof W2DocumentInput2025, value: string): void => {
+    setAcknowledgedSignature(null)
     setDocuments(previous => previous.map((document, i) => i === index ? { ...document, [field]: value } : document))
   }
   const add = (): void => {
     if (documents.length >= 100) return
+    setAcknowledgedSignature(null)
     setDocuments(previous => [...previous, newDocument(nextId)])
     setNextId(previous => previous + 1)
   }
-  const remove = (index: number): void => setDocuments(previous => previous.filter((_, i) => i !== index))
+  const remove = (index: number): void => {
+    setAcknowledgedSignature(null)
+    setDocuments(previous => previous.filter((_, i) => i !== index))
+  }
   return <Paper style={{ padding: 16, marginTop: 20 }}>
     <Typography variant="h6" gutterBottom>Multiple W-2 documents — restricted 2025 Form 1040 preview</Typography>
     <Alert severity="warning">NOT FILING READY. Enter fictional data only. No documents are uploaded, stored or submitted. This preview does not calculate a refund, amount due or complete tax return. Corrected W-2 forms must be reconciled manually; do not count both original and corrected copies.</Alert>
@@ -67,8 +75,10 @@ export default function NextGen2025MultipleW2Preview(): ReactElement {
     <Typography variant="h6" style={{ marginTop: 16 }}>W-2 input reconciliation</Typography>
     {previewWagesCents !== null && previewWithholdingCents !== null && Number.isSafeInteger(previewWagesCents) && Number.isSafeInteger(previewWithholdingCents) ? <Typography variant="body2">Sum of validated inputs: Box 1 {usd(previewWagesCents / 100)} · Box 2 {usd(previewWithholdingCents / 100)}. These amounts are provisional until all document IDs and employer labels pass review.</Typography> : <Alert severity="info">Enter valid Box 1 and Box 2 amounts for every W-2 to see combined input totals. Missing or invalid amounts are never treated as zero.</Alert>}
     {potentialRepeatedGroups.length > 0 && <Alert severity="warning" style={{ marginTop: 12 }}>Review {potentialRepeatedGroups.length} potential repeated W-2 group(s) before relying on the preview. Identical amounts can be legitimate; verify against source documents. No automatic deduplication is performed.</Alert>}
+    {repeatedSignature !== null && <FormControlLabel style={{ marginTop: 8 }} control={<Checkbox color="primary" checked={repeatedReviewCleared} onChange={event => setAcknowledgedSignature(event.target.checked ? repeatedSignature : null)} inputProps={{ 'aria-label': 'Confirm potential repeated W-2 review' }} />} label="I reviewed the flagged W-2 entries against source documents and verified that all listed entries should be counted. This confirmation resets after any document edit." />}
+    {repeatedSignature !== null && !repeatedReviewCleared && <Alert severity="error" role="alert" style={{ marginTop: 8 }}>Restricted Form 1040 totals are hidden until the potential repeated W-2 entries are reviewed and acknowledged. Do not confirm without checking the source documents.</Alert>}
     {reconciliation.kind === 'mismatch' && <Alert severity="error" role="alert" style={{ marginTop: 12 }}>Independent W-2 reconciliation failed: {reconciliation.reason}. Do not rely on mapped totals.</Alert>}
-    {bridge.kind === 'blocked' ? <Alert severity="info" style={{ marginTop: 12 }} role="status">Mapping blocked{bridge.documentIndex === undefined ? '' : ` at W-2 ${bridge.documentIndex + 1}`}: {bridge.reason}. Correct the inputs to display totals.</Alert> : reconciliation.kind !== 'matched' ? <Alert severity="error">Form 1040 mapping is withheld until independent W-2 reconciliation passes.</Alert> : <>
+    {bridge.kind === 'blocked' ? <Alert severity="info" style={{ marginTop: 12 }} role="status">Mapping blocked{bridge.documentIndex === undefined ? '' : ` at W-2 ${bridge.documentIndex + 1}`}: {bridge.reason}. Correct the inputs to display totals.</Alert> : !repeatedReviewCleared ? <Alert severity="warning">Restricted Form 1040 mapping is withheld pending review of possible repeated W-2 entries.</Alert> : reconciliation.kind !== 'matched' ? <Alert severity="error">Form 1040 mapping is withheld until independent W-2 reconciliation passes.</Alert> : <>
       <Typography variant="h6" style={{ marginTop: 16 }}>Restricted Form 1040 mapping — read only</Typography>
       <Table size="small" aria-label="Multiple W-2 Form 1040 totals"><TableBody>
         <TableRow><TableCell>Form 1040 line 1a — combined Box 1 wages</TableCell><TableCell align="right">{usd(bridge.draft.lines['1a'])}</TableCell></TableRow>
