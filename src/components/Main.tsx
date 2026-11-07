@@ -12,12 +12,12 @@ import { PagerProvider } from './pager'
 import { StateLoader } from './debug'
 import NoMatchPage from './NoMatchPage'
 import NextGen2025Review from './NextGen2025Review'
+import NextGenV2Foundation from './NextGenV2Foundation'
 import SkipToLinks from './SkipToLinks'
 import ScrollTop from './ScrollTop'
 import Menu, { backPages, drawerSectionsForYear } from './Menu'
 import { Section, SectionItem } from './ResponsiveDrawer'
 
-import Urls from 'ustaxes/data/urls'
 import DataPropagator from './DataPropagator'
 import YearStatusBar from './YearStatusBar'
 import TaxYearManager from './TaxYearManager'
@@ -107,8 +107,10 @@ export default function Main(): ReactElement {
         <StateLoader />
         <PagerProvider pages={steps}>
           <Routes>
-            <Route path="/" element={<Navigate to={Urls.default} />} />
-            {allItems.map((item) => (
+            <Route path="/" element={<Navigate to="/start" />} />
+            <Route path="/start" element={<NextGenV2Foundation />} />
+            <Route path="/v2/*" element={<NextGenV2Foundation />} />
+            {allItems.filter((item) => item.url !== "/start").map((item) => (
               <Route
                 key={item.title}
                 path={item.url}
