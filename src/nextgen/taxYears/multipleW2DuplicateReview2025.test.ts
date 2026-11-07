@@ -78,7 +78,7 @@ describe('Stage 127 W-2 review acknowledgement regression matrix', () => {
   test.each([
     ['duplicate employer spelling', 1, 'employer', 'ACME'],
     ['duplicate document ID', 1, 'id', 'second'],
-    ['duplicate wages formatting', 1, 'box1Wages', '123.450'],
+    ['duplicate wages formatting', 1, 'box1Wages', '123.45 '],
     ['duplicate withholding formatting', 1, 'box2FederalWithholding', '12.3'],
     ['unflagged document ID', 2, 'id', 'replacement'],
     ['unflagged withholding', 2, 'box2FederalWithholding', '55.00'],
@@ -89,6 +89,14 @@ describe('Stage 127 W-2 review acknowledgement regression matrix', () => {
     const current = repeatedW2ReviewSignature2025(changed, 'single')
     expect(current).not.toBeNull()
     expect(isRepeatedW2ReviewAcknowledged2025(current, accepted)).toBe(false)
+  })
+
+  test('fractional-cent wages are rejected rather than treated as a duplicate', () => {
+    const invalid = base.map((document, index) => index === 1 ? { ...document, box1Wages: '123.450' } : document)
+    expect(findPotentialRepeatedW2_2025(invalid)).toEqual([])
+    expect(repeatedW2ReviewSignature2025(invalid, 'single')).toBeNull()
+    // The separate W-2 input validation gate rejects this invalid amount.
+    // A null duplicate signature does not make invalid wages filing-ready.
   })
 
   test('adding a unique document invalidates confirmation', () => {
