@@ -38,3 +38,12 @@ export function repeatedW2ReviewSignature2025(documents: readonly W2DocumentInpu
 export function isRepeatedW2ReviewAcknowledged2025(signature: string | null, acknowledgedSignature: string | null): boolean {
   return signature === null || (acknowledgedSignature !== null && acknowledgedSignature === signature)
 }
+
+/** Human-readable, one-based group references for source-document review.
+ * These labels never deduplicate, accept or modify any W-2 values.
+ */
+export function describePotentialRepeatedW2Groups2025(documents: readonly W2DocumentInput2025[]): string[] {
+  return findPotentialRepeatedW2_2025(documents).map(group =>
+    `W-2 documents ${group.map(index => index + 1).join(', ')}`
+  )
+}

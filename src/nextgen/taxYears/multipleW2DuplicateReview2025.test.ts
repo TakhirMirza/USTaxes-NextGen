@@ -1,4 +1,4 @@
-import { findPotentialRepeatedW2_2025, repeatedW2ReviewSignature2025, isRepeatedW2ReviewAcknowledged2025 } from './multipleW2DuplicateReview2025'
+import { findPotentialRepeatedW2_2025, repeatedW2ReviewSignature2025, isRepeatedW2ReviewAcknowledged2025, describePotentialRepeatedW2Groups2025 } from './multipleW2DuplicateReview2025'
 import { W2DocumentInput2025 } from './multipleW2Form1040Bridge2025'
 
 const first: W2DocumentInput2025 = { id: 'one', employer: 'Acme', box1Wages: '123.45', box2FederalWithholding: '12.30' }
@@ -123,5 +123,30 @@ describe('Stage 127 W-2 review acknowledgement regression matrix', () => {
     expect(isRepeatedW2ReviewAcknowledged2025(accepted, accepted)).toBe(true)
     expect(isRepeatedW2ReviewAcknowledged2025(repeatedW2ReviewSignature2025(base, 'headOfHousehold'), accepted)).toBe(false)
     expect(isRepeatedW2ReviewAcknowledged2025(accepted, null)).toBe(false)
+  })
+})
+
+
+describe('Stage 129 transparent potential duplicate group references', () => {
+  test('reports one-based positions for multiple separate potential-repeat groups', () => {
+    const documents: W2DocumentInput2025[] = [
+      first,
+      { id: 'other-1', employer: 'Elsewhere', box1Wages: '50.00', box2FederalWithholding: '5.00' },
+      { ...first, id: 'second' },
+      { id: 'other-2', employer: 'Elsewhere', box1Wages: '50.00', box2FederalWithholding: '5.00' },
+      { ...first, id: 'third' },
+    ]
+    expect(describePotentialRepeatedW2Groups2025(documents)).toEqual([
+      'W-2 documents 1, 3, 5',
+      'W-2 documents 2, 4',
+    ])
+  })
+
+  test('does not report a group for invalid fractional-cent entries', () => {
+    expect(describePotentialRepeatedW2Groups2025([first, { ...first, id: 'second', box1Wages: '123.450' }])).toEqual([])
+  })
+
+  test('does not report a group for distinct valid documents', () => {
+    expect(describePotentialRepeatedW2Groups2025([first, { ...first, id: 'second', employer: 'Different' }])).toEqual([])
   })
 })
