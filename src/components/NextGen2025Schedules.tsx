@@ -1,4 +1,5 @@
-import { ReactElement, useMemo, useState } from 'react'
+import { ReactElement, useEffect, useMemo, useState } from 'react'
+import { Schedule1040Candidates2025 } from '../nextgen/taxYears/schedules1040Bridge2025'
 import { create2025Schedule1Worksheet, Schedule1Entry2025 } from '../nextgen/taxYears/schedule1Worksheet2025'
 import { review2025Schedules2And3, ReviewedAmount2025 } from '../nextgen/taxYears/schedule2And3Review2025'
 
@@ -19,7 +20,7 @@ const parseCents = (raw: string): number | null => {
   return Number.isSafeInteger(result) ? result : null
 }
 const currency = (cents: number) => (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
-export default function NextGen2025Schedules(): ReactElement {
+export default function NextGen2025Schedules({ onReconcile }: { onReconcile?: (value: Schedule1040Candidates2025) => void }): ReactElement {
   // Deliberately in-memory: the current static frontend has no secure taxpayer database.
   const [entries, setEntries] = useState<Entry[]>([])
   const [nextId, setNextId] = useState(1)
@@ -51,6 +52,17 @@ export default function NextGen2025Schedules(): ReactElement {
     schedule3PartINonrefundableCredits: reviewed('s3credits'), schedule3PartIIRefundableCreditsAndPayments: reviewed('s3payments'),
     noDuplicatePaymentsConfirmed: duplicatePaymentsConfirmed, creditOrderingConfirmed
   })
+  const candidateSnapshot = useMemo((): Schedule1040Candidates2025 => ({
+    line8: schedule1 ? schedule1.otherIncome : null,
+    line10: schedule1 ? schedule1.adjustments : null,
+    line17: review.candidates.form1040Line17,
+    line20: review.candidates.form1040Line20,
+    line23: review.candidates.form1040Line23,
+    line31: review.candidates.form1040Line31,
+    blocked: !allValid || review.blockers.length > 0,
+    entryCount: entries.length
+  }), [schedule1, review.candidates.form1040Line17, review.candidates.form1040Line20, review.candidates.form1040Line23, review.candidates.form1040Line31, review.blockers.length, allValid, entries.length])
+  useEffect(() => { if (onReconcile) onReconcile(candidateSnapshot) }, [onReconcile, candidateSnapshot])
   return <section className="v2-card" aria-label="2025 IRS Schedules 1 2 and 3">
     <span className="v2-eyebrow">IRS TAX YEAR 2025</span><h2>Schedules 1, 2 and 3</h2>
     <p>Enter source-supported amounts on their official IRS lines. Multiple records may be entered for a line. A source reference and explicit review are required for every record. This module does not determine eligibility or automatically post amounts to Form 1040.</p>
