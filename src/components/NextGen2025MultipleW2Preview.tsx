@@ -5,7 +5,7 @@ import { filingStatuses2025, FilingStatus2025 } from '../nextgen/taxYears/previe
 import { bridgeMultipleW2ToRestricted1040_2025, W2DocumentInput2025 } from '../nextgen/taxYears/multipleW2Form1040Bridge2025'
 import { reviewW2PreviewInputs2025 } from '../nextgen/taxYears/livePreviewScenario2025'
 import { reconcileMultipleW2_2025 } from '../nextgen/taxYears/multipleW2Reconciliation2025'
-import { summarizeW2ByEmployer2025, checkW2EmployerTotals2025 } from '../nextgen/taxYears/w2EmployerSummary2025'
+import { summarizeW2ByEmployer2025, checkW2EmployerTotals2025, checkW2EmployerMapping2025 } from '../nextgen/taxYears/w2EmployerSummary2025'
 import { findPotentialRepeatedW2_2025, repeatedW2ReviewSignature2025, isRepeatedW2ReviewAcknowledged2025, describePotentialRepeatedW2Groups2025, potentialRepeatedW2ReviewDetails2025, potentialW2WithholdingDifferences2025, potentialW2WageDifferences2025 } from '../nextgen/taxYears/multipleW2DuplicateReview2025'
 
 const newDocument = (id: number): W2DocumentInput2025 => ({ id: `manual-w2-${id}`, employer: '', box1Wages: '', box2FederalWithholding: '' })
@@ -26,6 +26,7 @@ export default function NextGen2025MultipleW2Preview(): ReactElement {
   const wageDifferences = potentialW2WageDifferences2025(documents)
   const employerSummary = summarizeW2ByEmployer2025(documents)
   const employerTotalsCheck = checkW2EmployerTotals2025(documents)
+  const employerMappingCheck = checkW2EmployerMapping2025(documents, bridge)
   const repeatedSignature = repeatedW2ReviewSignature2025(documents, status)
   const repeatedReviewCleared = isRepeatedW2ReviewAcknowledged2025(repeatedSignature, acknowledgedSignature)
   const potentialRepeatedIndexes = new Set<number>()
@@ -97,7 +98,7 @@ export default function NextGen2025MultipleW2Preview(): ReactElement {
     {repeatedSignature !== null && <FormControlLabel style={{ marginTop: 8 }} control={<Checkbox color="primary" checked={repeatedReviewCleared} onChange={event => setAcknowledgedSignature(event.target.checked ? repeatedSignature : null)} inputProps={{ 'aria-label': 'Confirm potential repeated W-2 review' }} />} label="I reviewed the flagged W-2 entries against source documents and verified that all listed entries should be counted. This confirmation resets after any document edit." />}
     {repeatedSignature !== null && !repeatedReviewCleared && <Alert severity="error" role="alert" style={{ marginTop: 8 }}>Restricted Form 1040 totals are hidden until the potential repeated W-2 entries are reviewed and acknowledged. Do not confirm without checking the source documents.</Alert>}
     {reconciliation.kind === 'mismatch' && <Alert severity="error" role="alert" style={{ marginTop: 12 }}>Independent W-2 reconciliation failed: {reconciliation.reason}. Do not rely on mapped totals.</Alert>}
-    {bridge.kind === 'blocked' ? <Alert severity="info" style={{ marginTop: 12 }} role="status">Mapping blocked{bridge.documentIndex === undefined ? '' : ` at W-2 ${bridge.documentIndex + 1}`}: {bridge.reason}. Correct the inputs to display totals.</Alert> : !repeatedReviewCleared ? <Alert severity="warning">Restricted Form 1040 mapping is withheld pending review of possible repeated W-2 entries.</Alert> : reconciliation.kind !== 'matched' ? <Alert severity="error">Form 1040 mapping is withheld until independent W-2 reconciliation passes.</Alert> : employerTotalsCheck.kind !== 'matched' ? <Alert severity="error">Form 1040 mapping is withheld until employer inventory totals reconcile.</Alert> : <>
+    {bridge.kind === 'blocked' ? <Alert severity="info" style={{ marginTop: 12 }} role="status">Mapping blocked{bridge.documentIndex === undefined ? '' : ` at W-2 ${bridge.documentIndex + 1}`}: {bridge.reason}. Correct the inputs to display totals.</Alert> : !repeatedReviewCleared ? <Alert severity="warning">Restricted Form 1040 mapping is withheld pending review of possible repeated W-2 entries.</Alert> : reconciliation.kind !== 'matched' ? <Alert severity="error">Form 1040 mapping is withheld until independent W-2 reconciliation passes.</Alert> : employerTotalsCheck.kind !== 'matched' ? <Alert severity="error">Form 1040 mapping is withheld until employer inventory totals reconcile.</Alert> : employerMappingCheck.kind !== 'matched' ? <Alert severity="error">Form 1040 mapping is withheld until employer source totals independently match restricted Form 1040 lines 1a, 25a and 25d: {employerMappingCheck.reason}</Alert> : <>
       <Typography variant="h6" style={{ marginTop: 16 }}>Restricted Form 1040 mapping — read only</Typography>
       <Table size="small" aria-label="Multiple W-2 Form 1040 totals"><TableBody>
         <TableRow><TableCell>Form 1040 line 1a — combined Box 1 wages</TableCell><TableCell align="right">{usd(bridge.draft.lines['1a'])}</TableCell></TableRow>

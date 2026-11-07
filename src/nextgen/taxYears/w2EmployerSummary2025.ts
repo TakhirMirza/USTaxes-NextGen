@@ -1,4 +1,4 @@
-import { W2DocumentInput2025 } from './multipleW2Form1040Bridge2025'
+import { W2DocumentInput2025, MultipleW2Bridge2025 } from './multipleW2Form1040Bridge2025'
 import { reviewW2PreviewInputs2025 } from './livePreviewScenario2025'
 
 export interface W2EmployerSummary2025 {
@@ -85,4 +85,35 @@ export function checkW2EmployerTotals2025(documents: readonly W2DocumentInput202
     return { kind: 'blocked', reason: 'Employer inventory and W-2 source totals do not reconcile.' }
   }
   return { kind: 'matched', documentCount: documents.length, box1Wages: sourceWagesCents / 100, box2FederalWithholding: sourceWithholdingCents / 100 }
+}
+
+
+export type W2EmployerMappingCheck2025 =
+  | { kind: 'matched'; documentCount: number; box1Wages: number; box2FederalWithholding: number }
+  | { kind: 'blocked'; reason: string }
+
+/** Stage 135: separately compare the employer source inventory with the restricted
+ * Form 1040 draft. Fail closed when the draft is blocked or any amount diverges.
+ * This check does not validate employer identity or authorize filing.
+ */
+export function checkW2EmployerMapping2025(
+  documents: readonly W2DocumentInput2025[],
+  bridge: MultipleW2Bridge2025
+): W2EmployerMappingCheck2025 {
+  const totals = checkW2EmployerTotals2025(documents)
+  if (totals.kind !== 'matched') return { kind: 'blocked', reason: totals.reason }
+  if (bridge.kind !== 'mapped') return { kind: 'blocked', reason: 'Restricted Form 1040 draft is unavailable.' }
+  if (bridge.documentCount !== totals.documentCount) return { kind: 'blocked', reason: 'W-2 document counts differ between inventory and draft.' }
+  const wagesCents = Math.round(totals.box1Wages * 100)
+  const withholdingCents = Math.round(totals.box2FederalWithholding * 100)
+  const line1a = Math.round(bridge.draft.lines['1a'] * 100)
+  const line25a = Math.round(bridge.draft.lines['25a'] * 100)
+  const line25d = Math.round(bridge.draft.lines['25d'] * 100)
+  if (![wagesCents, withholdingCents, line1a, line25a, line25d].every(Number.isSafeInteger)) {
+    return { kind: 'blocked', reason: 'Unsafe cent amount in W-2 inventory or restricted draft.' }
+  }
+  if (wagesCents !== line1a || withholdingCents !== line25a || withholdingCents !== line25d) {
+    return { kind: 'blocked', reason: 'Employer W-2 inventory does not match restricted Form 1040 lines 1a, 25a and 25d.' }
+  }
+  return { kind: 'matched', documentCount: totals.documentCount, box1Wages: totals.box1Wages, box2FederalWithholding: totals.box2FederalWithholding }
 }

@@ -1,4 +1,5 @@
-import { summarizeW2ByEmployer2025, checkW2EmployerTotals2025 } from './w2EmployerSummary2025'
+import { bridgeMultipleW2ToRestricted1040_2025 } from './multipleW2Form1040Bridge2025'
+import { summarizeW2ByEmployer2025, checkW2EmployerTotals2025, checkW2EmployerMapping2025 } from './w2EmployerSummary2025'
 
 const entry = (id: string, employer: string, wages: string, withholding: string) => ({ id, employer, box1Wages: wages, box2FederalWithholding: withholding })
 
@@ -46,5 +47,27 @@ describe('Stage 134 independent employer inventory totals check', () => {
   })
   it('does not treat an empty document list as a verified reconciliation', () => {
     expect(checkW2EmployerTotals2025([]).kind).toBe('blocked')
+  })
+})
+
+
+describe('Stage 135 employer inventory to Form 1040 mapping check', () => {
+  const documents = [entry('a', 'Example', '100.01', '10.02'), entry('b', 'Example', '200.02', '20.03')]
+  it('matches independent employer totals to mapped Form 1040 lines', () => {
+    const bridge = bridgeMultipleW2ToRestricted1040_2025(documents, 'single')
+    expect(checkW2EmployerMapping2025(documents, bridge)).toEqual({ kind: 'matched', documentCount: 2, box1Wages: 300.03, box2FederalWithholding: 30.05 })
+  })
+  it('rejects blocked drafts', () => {
+    expect(checkW2EmployerMapping2025(documents, { kind: 'blocked', reason: 'test' }).kind).toBe('blocked')
+  })
+  it('rejects a stale draft when source amounts change', () => {
+    const bridge = bridgeMultipleW2ToRestricted1040_2025(documents, 'single')
+    const changed = [documents[0], entry('b', 'Example', '200.03', '20.03')]
+    expect(checkW2EmployerMapping2025(changed, bridge).kind).toBe('blocked')
+  })
+  it('rejects mismatched document counts even if totals match', () => {
+    const bridge = bridgeMultipleW2ToRestricted1040_2025(documents, 'single')
+    const split = [entry('a', 'Example', '100.01', '10.02'), entry('b', 'Example', '100.01', '10.01'), entry('c', 'Example', '100.01', '10.02')]
+    expect(checkW2EmployerMapping2025(split, bridge).kind).toBe('blocked')
   })
 })
