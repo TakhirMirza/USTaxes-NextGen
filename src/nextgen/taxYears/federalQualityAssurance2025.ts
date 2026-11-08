@@ -9,7 +9,7 @@ export function runFederalQualityAssurance2025(input: IntegrityInput2025): QaRep
   const exceptions = buildFederalExceptionRegister2025(input)
   const checks: QaCheck2025[] = []
   const add = (id: string, status: QaCheck2025['status'], description: string, detail: string) => checks.push({id,status,description,detail})
-  add('YEAR_2025',input.year === 2025 ? 'pass':'fail','Supported tax year',input.year === 2025 ? '2025 source model selected.':'This diagnostic suite supports 2025 only.')
+  add('YEAR_2025',Number(input.year) === 2025 ? 'pass':'fail','Supported tax year',Number(input.year) === 2025 ? '2025 source model selected.':'This diagnostic suite supports 2025 only.')
   add('SOURCE_INTEGRITY',integrity.blocked === 0 ? 'pass':'fail','Source-to-1040 consistency',`${integrity.blocked} blocking source findings; ${integrity.reviewed} review notices.`)
   add('EXCEPTION_REGISTER',exceptions.counts.blocker === 0 ? 'pass':'fail','Exception register reconciliation',`${exceptions.counts.blocker} blockers, ${exceptions.counts.coverage} coverage gaps, ${exceptions.counts.review} review notices.`)
   const baselineIds = new Set(integrity.issues.map(i=>i.id))

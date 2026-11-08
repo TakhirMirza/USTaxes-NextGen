@@ -10,7 +10,7 @@ export function evaluateFederalReleaseReadiness2025(input:IntegrityInput2025):Re
  const exceptions=buildFederalExceptionRegister2025(input)
  const findings:ReleaseFinding2025[]=[]
  const add=(id:string,category:ReleaseFinding2025['category'],severity:ReleaseFinding2025['severity'],message:string,action:string)=>findings.push({id,category,severity,message,action})
- if(input.year!==2025) add('UNSUPPORTED_YEAR','tax-rule','blocker','This release gate supports tax year 2025 only.','Select a supported tax-year engine.')
+ if(Number(input.year)!==2025) add('UNSUPPORTED_YEAR','tax-rule','blocker','This release gate supports tax year 2025 only.','Select a supported tax-year engine.')
  if(qa.failed) add('QA_FAILURES','validation','blocker',`${qa.failed} QA checks failed.`,'Resolve failed QA checks in Review.')
  if(exceptions.counts.blocker) add('SOURCE_BLOCKERS','source','blocker',`${exceptions.counts.blocker} source reconciliation blockers remain.`,'Reconcile income documents and Form 1040 sources.')
  if(exceptions.counts.coverage) add('COVERAGE_GAPS','source','unverified',`${exceptions.counts.coverage} document coverage gaps remain.`,'Review missing document and schedule coverage.')
@@ -19,7 +19,7 @@ export function evaluateFederalReleaseReadiness2025(input:IntegrityInput2025):Re
  add('PAYMENT_MAPPING','payment','blocker','Independent reconciliation of all withholding and payments is incomplete.','Map and reconcile Form 1040 lines 25–33 with authoritative sources.')
  add('PRIVACY_SECURITY','security','blocker','No verified production security/privacy controls for sensitive taxpayer data.','Complete security assessment and protect all taxpayer information before production use.')
  add('IRS_SUBMISSION','submission','blocker','No approved IRS e-file integration or filing authorization.','Do not submit or present the return as filing-ready.')
- return {year:input.year,status:'NOT_READY',findings,qaPassed:qa.passed,qaFailed:qa.failed,qaUnverified:qa.unverified,generatedAt:new Date().toISOString()}
+ return {year:Number(input.year),status:'NOT_READY',findings,qaPassed:qa.passed,qaFailed:qa.failed,qaUnverified:qa.unverified,generatedAt:new Date().toISOString()}
 }
 export function releaseReadinessCsv2025(report:ReleaseReadiness2025):string {
  const q=(s:string)=>`"${s.replace(/"/g,'""')}"`
