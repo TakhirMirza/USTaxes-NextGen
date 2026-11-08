@@ -1,3 +1,4 @@
+import { computeOrdinaryTax2025, Filing2025 } from '../nextgen/taxYears/irs2025OrdinaryTax'
 import { ReactElement, useState } from 'react'
 import { parseFederalReviewPackage2025, reviewLinesCsv2025, reviewPrintHtml2025, ReviewPackage2025 } from '../nextgen/taxYears/federalReviewPackage2025'
 import { FederalScheduleIncomeResult2025 } from '../nextgen/taxYears/federalScheduleIntegration2025'
@@ -47,6 +48,11 @@ export default function NextGen2025FederalReturn({ income, schedules, w2Withhold
     independentPaymentReview: false, scheduleLineRulesReviewed: false
   })
   const [withholdingConfirmed, setWithholdingConfirmed] = useState(false)
+  const [worksheetStatus, setWorksheetStatus] = useState<Filing2025>('single')
+  const [worksheetTaxable, setWorksheetTaxable] = useState('')
+  const [worksheetOrdinaryOnly, setWorksheetOrdinaryOnly] = useState(false)
+  const [worksheetLine15Reviewed, setWorksheetLine15Reviewed] = useState(false)
+
   const [reviewImport, setReviewImport] = useState('')
   const [reviewNotice, setReviewNotice] = useState('')
   const parsed = Object.fromEntries(fields.map(([id]) => [id, cents(amounts[id])])) as Record<AmountField, number | null>
@@ -79,10 +85,35 @@ export default function NextGen2025FederalReturn({ income, schedules, w2Withhold
       setReviewNotice('Amounts restored. All confirmations reset; reconcile against current sources again.')
     } catch { setReviewNotice('Import rejected: invalid JSON.') }
   }
+  const worksheetIncome = cents(worksheetTaxable)
+  const worksheet = computeOrdinaryTax2025({year:2025, filingStatus:worksheetStatus,
+    taxableIncomeCents:worksheetIncome === null ? -1 : worksheetIncome,
+    ordinaryIncomeOnlyConfirmed:worksheetOrdinaryOnly, line15Reconciled:worksheetLine15Reviewed})
+  const useWorksheet = (): void => {
+    if (worksheet.status !== 'calculated') return
+    setAmounts(p => ({...p,line16TaxCents:(worksheet.line16Cents/100).toFixed(2)}))
+    setChecks(p => ({...p,independentTaxReview:false}))
+    setReviewNotice('IRS worksheet amount copied to line 16. Independently review tax method and source reconciliation before confirming.')
+  }
   return <section className="v2-card" aria-label="Federal Form 1040 integrated return review">
     <span className="v2-eyebrow">2025 / INTEGRATED FEDERAL RETURN</span>
     <h2>Form 1040 — tax, credits, payments and balance</h2>
     <p>Enter independently verified amounts for lines 16–29. Leave a field empty when unknown; enter 0 only after confirming it does not apply. This workpaper does not determine eligibility or permit filing.</p>
+    <details className="v2-note"><summary><strong>2025 IRS line 16 calculator — taxable income $100,000 or more</strong></summary>
+      <p>Only for ordinary-income returns. Below $100,000 requires the IRS Tax Table. Special tax methods are not supported. This does not validate deductions or other Form 1040 lines.</p>
+      <div className="v2-form-grid">
+        <label>Filing status<select value={worksheetStatus} onChange={e=>setWorksheetStatus(e.target.value as Filing2025)}>
+          <option value="single">Single</option><option value="marriedJoint">Married filing jointly</option>
+          <option value="marriedSeparate">Married filing separately</option><option value="headOfHousehold">Head of household</option>
+          <option value="qualifyingSurvivingSpouse">Qualifying surviving spouse</option></select></label>
+        <label>Form 1040 line 15 — verified taxable income ($)<input inputMode="decimal" value={worksheetTaxable} onChange={e=>setWorksheetTaxable(e.target.value)} placeholder="100000.00" /></label>
+      </div>
+      <label className="v2-check"><input type="checkbox" checked={worksheetLine15Reviewed} onChange={e=>setWorksheetLine15Reviewed(e.target.checked)}/>Line 15 reconciled to actual source documents and deductions</label>
+      <label className="v2-check"><input type="checkbox" checked={worksheetOrdinaryOnly} onChange={e=>setWorksheetOrdinaryOnly(e.target.checked)}/>I confirmed no qualified dividends, capital gains, or other special tax methods apply</label>
+      {worksheet.status==='calculated' ? <p>IRS worksheet line 16: <strong>{dollars(worksheet.line16Cents)}</strong> ({worksheet.ratePercent}% row)</p>
+        : <ul className="v2-blockers">{worksheet.blockers.map(b=><li key={b}>{b}</li>)}</ul>}
+      <button type="button" className="v2-secondary" disabled={worksheet.status!=='calculated'} onClick={useWorksheet}>Copy calculated amount to line 16 (requires separate review)</button>
+    </details>
     <div className="v2-form-grid">{fields.map(([id, title]) => <label key={id}>{title}<input type="text" inputMode="decimal" placeholder="Required: 0.00 or amount" value={amounts[id]} onChange={e => setAmounts(p => ({ ...p, [id]: e.target.value }))} /></label>)}</div>
     <div className="v2-note">W-2 box 2 source withholding: {w2WithholdingCents === null ? 'Unavailable' : dollars(w2WithholdingCents)}. The entered line 25a must match the W-2 source total.</div>
     <label className="v2-check"><input type="checkbox" checked={withholdingConfirmed} onChange={e => setWithholdingConfirmed(e.target.checked)}/>I have reconciled line 25a to the entered W-2 withholding records.</label>
