@@ -27,6 +27,7 @@ jobs:
       - name: Build for repository subpath
         env:
           CI: 'false'
+          NODE_OPTIONS: --openssl-legacy-provider
           REACT_APP_GITHUB_PAGES: 'true'
           PUBLIC_URL: /USTaxes-NextGen
         run: npm run build
