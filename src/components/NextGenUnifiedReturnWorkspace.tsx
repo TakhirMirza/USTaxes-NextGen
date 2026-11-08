@@ -5,6 +5,7 @@ import type { DocKind, FieldKey, UnifiedReturn } from '../nextgen/taxYears/unifi
 import './NextGenUnifiedReturnWorkspace.css'
 import NextGenUnifiedCalculationBridge from './NextGenUnifiedCalculationBridge'
 import NextGenReturnWorkflow from './NextGenReturnWorkflow'
+import NextGenMultiYearDashboard from './NextGenMultiYearDashboard'
 function download(text:string,name:string,type:string){const url=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 function read(year:string):{book:UnifiedReturn;message:string}{
   try{const raw=localStorage.getItem(storeKey(year));if(!raw)return {book:emptyReturn(year),message:'No fictional return saved for this tax year.'};const result=validateReturn(JSON.parse(raw),year);return result.value?{book:result.value,message:'Fictional return loaded from this browser.'}:{book:emptyReturn(year),message:`Saved data rejected: ${result.error}`}}
@@ -53,6 +54,7 @@ export default function NextGenUnifiedReturnWorkspace({year}:{year:string}){
     <span className="v2-eyebrow">PHASE 51 / UNIFIED FICTIONAL RETURN</span>
     <h4>Editable source documents &amp; cross-form preview</h4>
     <p><strong>Fictional data only.</strong> This is a separate development store. It does not post edits to existing W-2 / 1099 forms, tax engines, official Form 1040, or filing. Browser storage is unencrypted; never enter real taxpayer information.</p>
+    <NextGenMultiYearDashboard activeYear={year} dirty={dirty} />
     <div className="ng-unified-metrics"><span>{book.documents.length} source documents</span><span>{issues.filter(i=>i.severity==='blocker').length} blockers</span><span>Revision {book.revision}</span><span>{dirty?'Unsaved changes':'Saved / unchanged'}</span><span>{checks.filter(x=>x.passed).length}/{checks.length} checks</span></div>
     <div className="ng-unified-grid"><div className="ng-unified-pane"><h5>Fictional documents — {year}</h5><div className="ng-unified-actions"><select aria-label="New document type" value={kind} onChange={e=>setKind(e.target.value as DocKind)}>{(Object.keys(KINDS) as DocKind[]).map(k=><option key={k}>{k}</option>)}</select><button type="button" onClick={add}>Add source</button></div><div className="ng-unified-list">{book.documents.map(d=><button type="button" key={d.id} aria-pressed={selected===d.id} onClick={()=>setSelected(d.id)}><strong>{d.label}</strong><small>{d.kind} · {d.id}</small></button>)}</div></div>
     <div className="ng-unified-pane"><h5>Source editor</h5>{selectedDoc?<><label>Fictional document label<input value={selectedDoc.label} maxLength={80} onChange={e=>rename(e.target.value)}/></label>{KINDS[selectedDoc.kind].map(key=><label key={key}>{LABELS[key]} (USD)<input inputMode="decimal" placeholder="0.00" value={selectedDoc.fields[key]??''} onChange={e=>update(key,e.target.value)}/></label>)}<button type="button" onClick={remove}>Delete selected source</button></>:<p>Select a source to edit fictional amounts. Empty or invalid values block the preview.</p>}</div></div>
