@@ -15,6 +15,7 @@ import { Schedule1040Candidates2025, emptySchedule1040Candidates2025 } from '../
 import { reconcileFederalScheduleIncome2025 } from '../nextgen/taxYears/federalScheduleIntegration2025'
 import { stepFromV2Path, v2PathForStep, V2Step } from '../nextgen/navigation/v2Routes'
 import { assessScenarioQuality } from '../nextgen/navigation/scenarioQuality'
+import { createScenarioAudit, scenarioAuditCsv } from '../nextgen/navigation/scenarioAudit'
 
 type Step = V2Step
 type Wage = { id: number; employer: string; wages: string; withholding: string }
@@ -74,6 +75,18 @@ export default function NextGenV2Foundation(): ReactElement {
     const a = document.createElement('a'); a.href = url; a.download = `ustaxes-tax-return-${year}.json`; a.click()
     URL.revokeObjectURL(url)
     setNotice('Tax return data exported. Protect this file; secure storage is not yet configured.')
+  }
+  const downloadAudit = (format: 'json' | 'csv'): void => {
+    const audit = createScenarioAudit(workspace)
+    const content = format === 'json' ? JSON.stringify(audit, null, 2) : scenarioAuditCsv(audit)
+    const blob = new Blob([content], { type: format === 'json' ? 'application/json' : 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `nextgen-scenario-audit-${year}.${format}`
+    link.click()
+    URL.revokeObjectURL(url)
+    setNotice('Development audit exported without employer labels, payer labels, or financial amounts. This is not filing authorization.')
   }
   const importWorkspace = (): void => {
     try {
@@ -154,6 +167,8 @@ export default function NextGenV2Foundation(): ReactElement {
         <h3>Development scenario checks</h3>
         <p>Checks source completeness, unsupported tax situations and review confirmations. These checks do not establish filing readiness.</p>
         <div className="v2-review-grid"><div><span>Blocking findings</span><strong>{scenarioErrors}</strong></div><div><span>Review warnings</span><strong>{scenarioWarnings}</strong></div><div><span>Filing</span><strong>Disabled</strong></div></div>
+        <div className="v2-footer-right"><button type="button" className="v2-secondary" onClick={() => downloadAudit('json')}>Download privacy-safe audit JSON</button><button type="button" className="v2-secondary" onClick={() => downloadAudit('csv')}>Download findings CSV</button></div>
+        <p>Audit downloads exclude employer and payer labels, wage and interest amounts. Filing remains disabled regardless of diagnostic results.</p>
         <details><summary>Show {scenarioFindings.length} findings and navigate to sections</summary>
           <ul className="v2-blockers">{scenarioFindings.map(f => <li key={f.code}><strong>{f.severity.toUpperCase()}</strong> — {f.message} <button type="button" className="v2-text-button" onClick={() => go(f.step)}>Open {f.step}</button></li>)}</ul>
         </details>

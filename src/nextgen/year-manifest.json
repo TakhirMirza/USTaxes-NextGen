@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "generatedFrom": "platform/rules/catalog.js",
+  "years": [
+    {
+      "year": 2020,
+      "status": "legacy",
+      "reason": "Existing legacy implementation; not verified in NextGen",
+      "capabilities": [],
+      "formsStatus": "unavailable",
+      "filingReady": false
+    },
+    {
+      "year": 2021,
+      "status": "legacy",
+      "reason": "Existing legacy implementation; not verified in NextGen",
+      "capabilities": [],
+      "formsStatus": "unavailable",
+      "filingReady": false
+    },
+    {
+      "year": 2025,
+      "status": "reference",
+      "reason": "Ordinary brackets and standard deduction only; 1040 tax table, credits, schedules and PDFs not integrated",
+      "capabilities": [
+        "ordinary-brackets",
+        "standard-deduction"
+      ],
+      "formsStatus": "pending",
+      "filingReady": false
+    },
+    {
+      "year": 2026,
+      "status": "unavailable",
+      "reason": "2026 return engine, schedules and forms not verified",
+      "capabilities": [],
+      "formsStatus": "pending",
+      "filingReady": false
+    },
+    {
+      "year": 2027,
+      "status": "unavailable",
+      "reason": "Await verified annual tax rules and forms",
+      "capabilities": [],
+      "formsStatus": "unavailable",
+      "filingReady": false
+    },
+    {
+      "year": 2028,
+      "status": "unavailable",
+      "reason": "Await verified annual tax rules and forms",
+      "capabilities": [],
+      "formsStatus": "unavailable",
+      "filingReady": false
+    }
+  ]
+}
