@@ -313,7 +313,7 @@ export default function NextGenV2Foundation(): ReactElement {
       </section>
       </details>
       <div className="v2-progress" aria-label={`Step ${current + 1} of ${steps.length}`}><div style={{ width: `${((current + 1) / steps.length) * 100}%` }}/></div>
-      <div className="legacy-workspace-toolbar" aria-label="Return workspace shortcuts">
+      {step !== 'overview' && <div className="legacy-workspace-toolbar" aria-label="Return workspace shortcuts">
         <div><strong>2025 Federal Return</strong><span>Local test scenario · filing disabled</span></div>
         <div className="legacy-toolbar-actions">
           <button type="button" onClick={() => go('profile')}>Taxpayer</button>
@@ -321,36 +321,26 @@ export default function NextGenV2Foundation(): ReactElement {
           <button type="button" onClick={() => go('deductions')}>Deductions</button>
           <button type="button" onClick={() => go('review')}>Form 1040</button>
         </div>
-      </div>
+      </div>}
       {step !== 'overview' && <div className="legacy-page-context"><span>Federal / {year} / {steps[current].title}</span><span>Step {current + 1} of {steps.length}</span></div>}
 
 
-      {step === 'overview' && <section className="v2-card legacy-guided-profile" aria-label="Quick start and progress">
-        <div className="legacy-register-head"><div><span className="v2-eyebrow">RETURN PREPARATION</span><h2>Return checklist</h2><p>Track the sections that need attention, or load a completely fictional example to explore the working forms.</p></div><button type="button" className="v2-secondary" onClick={loadFictionalExample}>Load fictional example</button></div>
-        <div className="legacy-interview-list">{profileItems.map(item => <button type="button" key={item.title} onClick={() => go(item.step)}><span className={item.done ? 'legacy-interview-done' : 'legacy-interview-pending'}>{item.done ? '✓' : '!'}</span><strong>{item.title}</strong><small>{item.done ? 'Reviewed' : 'Open section →'}</small></button>)}</div>
-      </section>}
-      {step === 'overview' && <section className="v2-card phase57-start" aria-label="Quick return actions">
-        <span className="v2-eyebrow">YOUR WORKSPACE / PHASE 57</span>
-        <h2>What would you like to work on?</h2>
-        <p>Go straight to your fictional return. Technical audit reports are available separately below.</p>
-        <div className="phase57-actions">
-          <button type="button" onClick={() => go('income')}><strong>Enter W-2 / 1099</strong><small>Income documents and Schedule C</small></button>
-          <button type="button" onClick={() => go('profile')}><strong>Filing information</strong><small>Status and eligibility questions</small></button>
-          <button type="button" onClick={() => go('deductions')}><strong>Deductions</strong><small>Review available options</small></button>
-          <button type="button" onClick={() => { setReviewTab('return'); go('review') }}><strong>Review Form 1040</strong><small>Restricted preview and checks</small></button>
+      {step === 'overview' && <section className="v2-card phase58-home" aria-label="Return preparation dashboard">
+        <div className="phase58-heading">
+          <div><span className="v2-eyebrow">YOUR FEDERAL RETURN / {year}</span><h2>Continue your return</h2><p>Choose a section to enter fictional information. Your draft is not approved for filing.</p></div>
+          <button type="button" className="v2-secondary" onClick={loadFictionalExample}>Load fictional example</button>
+        </div>
+        <div className="phase58-status" aria-label="Return overview">
+          <div><span>Filing status</span><strong>{filingStatus === 'joint' ? 'Married filing jointly' : filingStatus === 'single' ? 'Single' : filingStatus === 'separate' ? 'Married filing separately' : filingStatus === 'head' ? 'Head of household' : 'Surviving spouse'}</strong></div>
+          <div><span>W-2 documents</span><strong>{selectedWages ? wages.length : 0}</strong></div>
+          <div><span>Review blockers</span><strong>{readiness.filter(f => f.severity === 'blocker').length}</strong></div>
+          <div><span>Filing</span><strong>Disabled</strong></div>
+        </div>
+        <div className="phase58-steps" aria-label="Preparation sections">
+          {profileItems.map((item, index) => <button type="button" key={item.title} onClick={() => go(item.step)}><span className={item.done ? 'phase58-ok' : 'phase58-pending'}>{item.done ? '✓' : index + 1}</span><span><strong>{item.title}</strong><small>{item.done ? 'Entered / reviewed' : 'Needs attention'}</small></span><span aria-hidden="true">→</span></button>)}
+          <button type="button" onClick={() => { setReviewTab('return'); go('review') }}><span className="phase58-pending">6</span><span><strong>Form 1040 review</strong><small>Draft amounts and outstanding checks</small></span><span aria-hidden="true">→</span></button>
         </div>
       </section>}
-      {step === 'overview' && <>
-        <section className="v2-card legacy-dashboard-intro"><div><span className="v2-eyebrow">YOUR FEDERAL RETURN / 2025</span><h2>Continue your tax return</h2><p>Enter filing information, review income documents and deductions, then inspect your Form 1040 draft. Use fictional test data only.</p><button type="button" className="v2-primary" onClick={() => go('profile')}>Continue preparing return →</button></div><div className="legacy-return-stamp"><strong>1040</strong><span>U.S. Individual Income Tax Return</span><small>2025 · TEST DRAFT</small></div></section>
-        <div className="v2-stat-grid"><div className="v2-stat"><span>Filing status</span><strong>{filingStatus === 'joint' ? 'Married filing jointly' : filingStatus === 'single' ? 'Single' : filingStatus === 'separate' ? 'Married filing separately' : filingStatus === 'head' ? 'Head of household' : 'Surviving spouse'}</strong><small>Change in About you</small></div><div className="v2-stat"><span>W-2 documents</span><strong>{selectedWages ? wages.length : 0}</strong><small>Review in Income</small></div><div className="v2-stat"><span>Return status</span><strong>Draft</strong><small>Not approved for filing</small></div></div>
-        <section className="legacy-return-overview" aria-label="Draft return overview">
-          <div className="legacy-overview-panel"><span>W-2 wages entered</span><strong>{wageEntriesValid ? usd(wageCents) : 'Incomplete'}</strong><button type="button" onClick={() => go('income')}>Review W-2 →</button></div>
-          <div className="legacy-overview-panel"><span>Federal withholding</span><strong>{wageEntriesValid ? usd(withholdingCents) : 'Incomplete'}</strong><button type="button" onClick={() => go('income')}>Review payments →</button></div>
-          <div className="legacy-overview-panel"><span>Taxable interest</span><strong>{selectedInterest ? (interestValid ? usd(interestCents) : 'Incomplete') : 'Not selected'}</strong><button type="button" onClick={() => go('income')}>Review 1099-INT →</button></div>
-          <div className="legacy-overview-panel"><span>Review findings</span><strong>{readiness.filter(f => f.severity === 'blocker').length} blockers</strong><button type="button" onClick={() => go('review')}>Open review →</button></div>
-        </section>
-        <section className="v2-card legacy-return-sections"><h3>Prepare your return</h3><div className="legacy-section-grid">{steps.slice(1).map((item, index) => <button key={item.id} type="button" onClick={() => go(item.id)}><span className="legacy-section-icon">{index + 1}</span><span><strong>{item.title}</strong><small>{item.id === 'profile' ? 'Filing status, dependents and eligibility' : item.id === 'income' ? 'W-2, 1099 and schedule worksheets' : item.id === 'deductions' ? 'Standard or itemized deductions' : 'Form 1040 and reconciliation'}</small></span><span aria-hidden="true">→</span></button>)}</div></section>
-      </>}
       {step === 'overview' && <details className="phase57-diagnostics" aria-label="Developer diagnostics and annual rule reports">
         <summary><strong>Developer Diagnostics &amp; tax-year architecture</strong><span>Advanced Phase 40–55 reports · not required for everyday navigation</span></summary>
         <NextGenMultiYearCenter activeYear={year} />
