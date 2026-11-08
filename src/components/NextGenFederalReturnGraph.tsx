@@ -1,3 +1,4 @@
+import NextGenReturnValidationCenter from './NextGenReturnValidationCenter'
 import { useState } from 'react'
 import type { MappingReport } from '../nextgen/taxYears/form1040Mapping'
 import { buildFederalReturnGraph, graphCsv, runGraphFixtures } from '../nextgen/taxYears/federalReturnGraph'
@@ -25,6 +26,7 @@ export default function NextGenFederalReturnGraph({ mapping }: { mapping: Mappin
     <div className="ng-graph-actions"><button type="button" onClick={() => setDetails(v => !v)}>{details ? 'Hide' : 'Show'} diagnostics</button><button type="button" onClick={() => setBlockedOnly(v => !v)}>{blockedOnly ? 'All edges' : 'Unresolved only'}</button><button type="button" onClick={() => downloadCsv(graphCsv(graph))}>Export graph CSV</button></div>
     <div className="ng-graph-nodes">{graph.documents.map(doc => <article key={doc.id}><strong>{doc.kind}</strong><small>{doc.label}</small></article>)}</div>
     <div className="ng-graph-scroll"><table><thead><tr><th>Source</th><th>Destination</th><th>1040 line</th><th>State</th><th>Candidate</th></tr></thead><tbody>{graph.links.filter(link => !blockedOnly || link.status !== 'candidate').map(link => <tr key={`${link.from}-${link.line}`}><td>{graph.documents.find(doc => doc.id === link.from)?.kind}</td><td>Form 1040</td><td>{link.line}</td><td>{link.status}</td><td>{link.cents === null ? 'Unavailable' : `$${(link.cents / 100).toFixed(2)} (source only)`}{details && <ul>{link.findings.map((finding, i) => <li key={i}>{finding}</li>)}</ul>}</td></tr>)}</tbody></table></div>
+    <NextGenReturnValidationCenter mapping={mapping} graph={graph} />
     {details && <div className="ng-graph-findings"><h4>Blocking and informational findings</h4><ul>{graph.findings.map(finding => <li key={finding.code}><strong>{finding.code}:</strong> {finding.message}</li>)}</ul><h4>Deterministic regression checks</h4><ul>{fixtures.map(fixture => <li key={fixture.name}>{fixture.passed ? 'PASS' : 'FAIL'} — {fixture.name}</li>)}</ul></div>}
   </section>
 }
