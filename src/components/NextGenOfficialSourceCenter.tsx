@@ -1,3 +1,4 @@
+import NextGenCalculationPipeline from './NextGenCalculationPipeline'
 import { useState } from 'react'
 import { auditOfficialSources, IRS_PRIOR_YEAR_PORTAL, IRS_REFERENCE_PORTAL, qualityChecksCsv, runSourceQualityChecks, sourceAuditCsv } from '../nextgen/taxYears/officialSourceAudit'
 import { type TaxYear, isSupportedTaxYear } from '../nextgen/taxYears/multiYearRegistry'
@@ -31,5 +32,6 @@ export default function NextGenOfficialSourceCenter({ activeYear }: { activeYear
     {showFindings && <div className="ng-os-detail"><h3>{selectedYear} — source findings ({audit.findings.length})</h3><ul>{audit.findings.map((finding, index) => <li key={`${finding.category}-${finding.code}-${index}`}><strong>{finding.category}: {finding.code}</strong> — {finding.detail}</li>)}</ul></div>}
     {showChecks && <div className="ng-os-detail"><h3>Architecture checks ({checks.length})</h3><ul>{checks.map(check => <li key={check.id}><strong>{check.pass ? 'PASS' : 'FAIL'} — {check.id}</strong>: {check.detail}</li>)}</ul></div>}
     <p className="ng-os-note">Reference libraries: <a href={IRS_REFERENCE_PORTAL} target="_blank" rel="noopener noreferrer">IRS forms and instructions</a> · <a href={IRS_PRIOR_YEAR_PORTAL} target="_blank" rel="noopener noreferrer">IRS prior-year forms</a>. Sources must be selected and reviewed for each tax year. Development-only; no real taxpayer data.</p>
+    <NextGenCalculationPipeline activeYear={selectedYear} />
   </section>
 }
