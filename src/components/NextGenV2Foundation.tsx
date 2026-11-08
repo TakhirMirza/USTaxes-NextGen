@@ -42,6 +42,7 @@ import NextGen2025UnifiedGraph from './NextGen2025UnifiedGraph'
 import NextGen2025ScenarioRegression from './NextGen2025ScenarioRegression'
 import NextGen2025CalculationCoverage from './NextGen2025CalculationCoverage'
 import NextGen2025FormWorkspace from './NextGen2025FormWorkspace'
+import NextGen2025FormsNavigator from './NextGen2025FormsNavigator'
 import NextGen2025ScheduleEditors, { emptyScheduleDraft2025, ScheduleDraft2025, reviewScheduleDraft2025 } from './NextGen2025ScheduleEditors'
 import { readScheduleDraft2025, parseScheduleDraft2025, SCHEDULE_DRAFT_KEY } from '../nextgen/taxYears/scheduleDraftExchange2025'
 import { Schedule1040Candidates2025, emptySchedule1040Candidates2025 } from '../nextgen/taxYears/schedules1040Bridge2025'
@@ -422,14 +423,15 @@ export default function NextGenV2Foundation(): ReactElement {
       {step === 'review' && reviewTab === 'validation' && <section className="v2-card legacy-review-action-center" aria-label="Return review action center"><div className="legacy-register-head"><div><span className="v2-eyebrow">RETURN REVIEW / ACTION CENTER</span><h2>Items requiring attention</h2><p>Resolve draft data issues before reviewing calculation previews. This checklist does not certify filing readiness.</p></div><button type="button" className="v2-secondary" onClick={() => setShowAllReview(v => !v)}>{showAllReview ? 'Show fewer' : 'Show all findings'}</button></div>
       <div className="legacy-action-count"><strong>{readiness.filter(f => f.severity === 'blocker').length}</strong><span>blocking readiness findings</span><strong>{sourceIntegrity.findings.filter(f => f.severity === 'error').length}</strong><span>source errors</span></div>
       <div className="legacy-review-actions">{readiness.filter(f => f.severity === 'blocker').slice(0, showAllReview ? undefined : 5).map((f, i) => <div className="legacy-review-action" key={i}><span className="legacy-incomplete">Needs review</span><span>{f.title}</span><button type="button" onClick={() => go(f.area)}>Open {f.area} →</button></div>)}{readiness.filter(f => f.severity === 'blocker').length === 0 && <p>No blocking readiness findings from this limited checklist. Filing is still disabled.</p>}</div></section>}
-      {step === 'review' && reviewTab === 'return' && <NextGen2025FormWorkspace
+      {step === 'review' && reviewTab === 'return' && <NextGen2025FormsNavigator year={year} onNavigate={go} onDiagnostics={() => setReviewTab('diagnostics')} />}
+      {step === 'review' && reviewTab === 'return' && <div id="ng38-form1040"><NextGen2025FormWorkspace
         year={year}
         filingStatus={filingStatus}
         wages={{ selected: selectedWages, valid: wageEntriesValid, cents: wageCents }}
         interest={{ selected: selectedInterest, valid: interestValid && payer.trim().length > 0, cents: interestCents }}
         withholding={{ selected: selectedWages, valid: wageEntriesValid, cents: withholdingCents }}
         onNavigate={go}
-      />}
+      /></div>}
       {step === 'review' && reviewTab === 'return' && <section className="legacy-review-summary" aria-label="Federal return summary"><div><span>Wages</span><strong>{wageEntriesValid ? usd(wageCents) : 'Incomplete'}</strong></div><div><span>Interest</span><strong>{selectedInterest ? (interestValid ? usd(interestCents) : 'Incomplete') : 'Not selected'}</strong></div><div><span>Withholding</span><strong>{wageEntriesValid ? usd(withholdingCents) : 'Incomplete'}</strong></div><div><span>Filing status</span><strong>{filingStatus.replace(/^(.)/, c => c.toUpperCase())}</strong></div><p>Draft source values only. Tax, refund and filing remain unavailable until independently validated.</p></section>}
       {step === 'review' && reviewTab === 'validation' && <section className="v2-card" aria-label="2025 consolidated readiness checklist">
         <span className="v2-eyebrow">CONSOLIDATED 2025 REVIEW</span>
