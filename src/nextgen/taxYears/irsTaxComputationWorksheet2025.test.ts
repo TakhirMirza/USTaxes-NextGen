@@ -20,5 +20,5 @@ test('blocks Tax Table range, unconfirmed special-rate review and invalid inputs
   expect(compute(100000, 'single', false).status).toBe('blocked')
   expect(compute(100000.01, 'single', true).status).toBe('blocked')
   expect(compute(-1, 'single', true).status).toBe('blocked')
-  expect(compute(100000, 'invalid' as any, true).status).toBe('blocked')
+  expect(compute(100000, 'invalid' as Parameters<typeof compute>[1], true).status).toBe('blocked')
 })

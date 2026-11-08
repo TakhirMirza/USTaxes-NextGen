@@ -13,13 +13,8 @@ test('roundtrip preserves entries', () => {
   expect(importWorkpaper2025(exportWorkpaper2025(entries), allowed)).toEqual(entries)
 })
 test('rejects wrong year, duplicate ids and invalid IRS line', () => {
-  const doc = JSON.parse(exportWorkpaper2025(entries))
-  doc.taxYear = 2026
-  expect(() => importWorkpaper2025(JSON.stringify(doc), allowed)).toThrow()
-  doc.taxYear = 2025
-  doc.entries[1].id = 1
-  expect(() => importWorkpaper2025(JSON.stringify(doc), allowed)).toThrow()
-  doc.entries[1].id = 2
-  doc.entries[1].line = '99'
-  expect(() => importWorkpaper2025(JSON.stringify(doc), allowed)).toThrow()
+  const exported = exportWorkpaper2025(entries)
+  expect(() => importWorkpaper2025(exported.replace('"taxYear": 2025', '"taxYear": 2026').replace('"taxYear":2025', '"taxYear":2026'), allowed)).toThrow()
+  expect(() => importWorkpaper2025(exportWorkpaper2025([{ ...entries[0] }, { ...entries[1], id: 1 }]), allowed)).toThrow()
+  expect(() => importWorkpaper2025(exportWorkpaper2025([{ ...entries[0] }, { ...entries[1], line: '99' }]), allowed)).toThrow()
 })
