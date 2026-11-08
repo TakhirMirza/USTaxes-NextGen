@@ -59,3 +59,16 @@
 .phase36-summary { margin-bottom: 18px; }
 .phase36-summary h3 { margin: 8px 0; }
 @media (max-width: 650px) { .phase36-tabs { flex-direction: column; } .phase36-tabs button { width: 100%; text-align: left; } }
+
+/* Phase 57: the working return takes precedence over the diagnostic chain. */
+.phase57-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:18px; }
+.phase57-actions button { text-align:left; border:1px solid #d3e1ef; background:#f8fbff; border-radius:10px; padding:18px; color:#173e62; cursor:pointer; }
+.phase57-actions button:hover,.phase57-actions button:focus-visible { border-color:#276c9d; background:#eef6ff; }
+.phase57-actions strong,.phase57-actions small { display:block; }
+.phase57-actions small { color:#5c7088; margin-top:5px; font-size:12px; }
+.phase57-diagnostics { margin:20px 0 35px; border:1px solid #d2dfeb; border-radius:12px; background:#fff; }
+.phase57-diagnostics > summary { cursor:pointer; padding:19px 22px; color:#214c72; }
+.phase57-diagnostics > summary span { display:block; font-size:12px; font-weight:400; color:#64758c; margin-top:5px; }
+.phase57-diagnostics[open] > summary { border-bottom:1px solid #d2dfeb; }
+.phase57-diagnostics > .ng-year-center { margin:16px; }
+@media(max-width:700px){ .phase57-actions { grid-template-columns:1fr; } }
