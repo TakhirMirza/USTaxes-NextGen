@@ -41,6 +41,7 @@ import NextGen2025FederalBalanceValidation from './NextGen2025FederalBalanceVali
 import NextGen2025UnifiedGraph from './NextGen2025UnifiedGraph'
 import NextGen2025ScenarioRegression from './NextGen2025ScenarioRegression'
 import NextGen2025CalculationCoverage from './NextGen2025CalculationCoverage'
+import NextGen2025FormWorkspace from './NextGen2025FormWorkspace'
 import NextGen2025ScheduleEditors, { emptyScheduleDraft2025, ScheduleDraft2025, reviewScheduleDraft2025 } from './NextGen2025ScheduleEditors'
 import { readScheduleDraft2025, parseScheduleDraft2025, SCHEDULE_DRAFT_KEY } from '../nextgen/taxYears/scheduleDraftExchange2025'
 import { Schedule1040Candidates2025, emptySchedule1040Candidates2025 } from '../nextgen/taxYears/schedules1040Bridge2025'
@@ -421,19 +422,14 @@ export default function NextGenV2Foundation(): ReactElement {
       {step === 'review' && reviewTab === 'validation' && <section className="v2-card legacy-review-action-center" aria-label="Return review action center"><div className="legacy-register-head"><div><span className="v2-eyebrow">RETURN REVIEW / ACTION CENTER</span><h2>Items requiring attention</h2><p>Resolve draft data issues before reviewing calculation previews. This checklist does not certify filing readiness.</p></div><button type="button" className="v2-secondary" onClick={() => setShowAllReview(v => !v)}>{showAllReview ? 'Show fewer' : 'Show all findings'}</button></div>
       <div className="legacy-action-count"><strong>{readiness.filter(f => f.severity === 'blocker').length}</strong><span>blocking readiness findings</span><strong>{sourceIntegrity.findings.filter(f => f.severity === 'error').length}</strong><span>source errors</span></div>
       <div className="legacy-review-actions">{readiness.filter(f => f.severity === 'blocker').slice(0, showAllReview ? undefined : 5).map((f, i) => <div className="legacy-review-action" key={i}><span className="legacy-incomplete">Needs review</span><span>{f.title}</span><button type="button" onClick={() => go(f.area)}>Open {f.area} →</button></div>)}{readiness.filter(f => f.severity === 'blocker').length === 0 && <p>No blocking readiness findings from this limited checklist. Filing is still disabled.</p>}</div></section>}
-      {step === 'review' && reviewTab === 'return' && <section className="v2-card legacy-1040-ledger" aria-label="Form 1040 source document line ledger">
-        <div className="legacy-register-head"><div><span className="v2-eyebrow">FORM 1040 / 2025 · SOURCE LEDGER</span><h2>Federal return — line-by-line workspace</h2><p>Amounts below come only from entered W-2 and 1099-INT documents. Other Form 1040 lines are deliberately unavailable until verified by the tax engine.</p></div><button type="button" className="v2-secondary" onClick={() => go('income')}>Edit source documents</button></div>
-        <div className="legacy-ledger-table" role="table" aria-label="Form 1040 document source lines">
-          <div className="legacy-ledger-row legacy-ledger-heading" role="row"><span>1040 line</span><span>Description</span><span>Source</span><span>Draft amount</span><span>Validation</span></div>
-          {([
-            { line: '1a', label: 'Wages, salaries, tips', source: 'W-2 Box 1', active: selectedWages, valid: wageEntriesValid, cents: wageCents, target: 'income' as Step },
-            { line: '2b', label: 'Taxable interest', source: '1099-INT Box 1', active: selectedInterest, valid: interestValid && payer.trim().length > 0, cents: interestCents, target: 'income' as Step },
-            { line: '25a', label: 'Federal income tax withheld on W-2', source: 'W-2 Box 2', active: selectedWages, valid: wageEntriesValid, cents: withholdingCents, target: 'income' as Step }
-          ]).map(row => <div className="legacy-ledger-row" role="row" key={row.line}><strong>{row.line}</strong><span>{row.label}</span><span>{row.source}</span><strong>{!row.active ? 'Not selected' : row.valid ? usd(row.cents) : 'Incomplete'}</strong><button type="button" className={row.active && row.valid ? 'legacy-valid' : 'legacy-incomplete'} onClick={() => go(row.target)}>{row.active && row.valid ? 'Review ↗' : 'Complete ↗'}</button></div>)}
-          {['9 — Total income','11a — Adjusted gross income','15 — Taxable income','16 — Income tax','24 — Total tax','33 — Total payments','34 / 37 — Refund or amount owed'].map(label => <div className="legacy-ledger-row legacy-ledger-unavailable" role="row" key={label}><strong>{label.split(' — ')[0]}</strong><span>{label.split(' — ')[1]}</span><span>Tax engine / eligibility</span><strong>Not verified</strong><button type="button" onClick={() => go('deductions')}>Review ↗</button></div>)}
-        </div>
-        <div className="v2-note"><strong>Draft source ledger only.</strong> No tax, refund, or amount owed is inferred from missing lines. Filing and PDF submission remain unavailable.</div>
-      </section>}
+      {step === 'review' && reviewTab === 'return' && <NextGen2025FormWorkspace
+        year={year}
+        filingStatus={filingStatus}
+        wages={{ selected: selectedWages, valid: wageEntriesValid, cents: wageCents }}
+        interest={{ selected: selectedInterest, valid: interestValid && payer.trim().length > 0, cents: interestCents }}
+        withholding={{ selected: selectedWages, valid: wageEntriesValid, cents: withholdingCents }}
+        onNavigate={go}
+      />}
       {step === 'review' && reviewTab === 'return' && <section className="legacy-review-summary" aria-label="Federal return summary"><div><span>Wages</span><strong>{wageEntriesValid ? usd(wageCents) : 'Incomplete'}</strong></div><div><span>Interest</span><strong>{selectedInterest ? (interestValid ? usd(interestCents) : 'Incomplete') : 'Not selected'}</strong></div><div><span>Withholding</span><strong>{wageEntriesValid ? usd(withholdingCents) : 'Incomplete'}</strong></div><div><span>Filing status</span><strong>{filingStatus.replace(/^(.)/, c => c.toUpperCase())}</strong></div><p>Draft source values only. Tax, refund and filing remain unavailable until independently validated.</p></section>}
       {step === 'review' && reviewTab === 'validation' && <section className="v2-card" aria-label="2025 consolidated readiness checklist">
         <span className="v2-eyebrow">CONSOLIDATED 2025 REVIEW</span>
