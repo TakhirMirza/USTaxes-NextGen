@@ -1,3 +1,4 @@
+import NextGenFederalReturnGraph from './NextGenFederalReturnGraph'
 import { useState } from 'react'
 import type { CalcReport } from '../nextgen/taxYears/calculationPipeline'
 import { formatCents } from '../nextgen/taxYears/calculationPipeline'
@@ -25,6 +26,7 @@ export default function NextGenForm1040Mapping({ pipeline }: { pipeline: CalcRep
     <div className="ng-map-warning"><strong>FILING / FORM POSTING DISABLED.</strong> The map does not calculate IRS tax liability, authorize credits, produce a return or enable e-file.</div>
     <div className="ng-map-actions"><button type="button" onClick={() => setShowFindings(v => !v)}>{showFindings ? 'Hide' : 'Show'} findings</button><button type="button" onClick={() => setUnresolvedOnly(v => !v)}>{unresolvedOnly ? 'Show all lines' : 'Unresolved only'}</button><button type="button" onClick={() => downloadCsv(mappingCsv(report))}>Export mapping CSV</button></div>
     <div className="ng-map-table-wrap"><table className="ng-map-table"><thead><tr><th>1040 line</th><th>Mapping</th><th>Source</th><th>Status / candidate</th></tr></thead><tbody>{report.lines.filter(l => !unresolvedOnly || l.status !== 'candidate').map(l => <tr key={l.line}><td><strong>{l.line}</strong></td><td>{l.label}{showFindings && l.findings.length > 0 && <ul>{l.findings.map((issue,i) => <li key={i}>{issue}</li>)}</ul>}</td><td>{l.source.join(', ')}</td><td><strong>{l.status.replace(/-/g,' ')}</strong>{l.cents !== null && <div>{formatCents(l.cents)} (source only)</div>}</td></tr>)}</tbody></table></div>
+    <NextGenFederalReturnGraph mapping={report} />
     {showFindings && <div className="ng-map-tests"><h4>Deterministic mapping fixtures</h4><ul>{fixtures.map(f => <li key={f.name}>{f.passed ? 'PASS' : 'FAIL'} — {f.name}</li>)}</ul></div>}
   </section>
 }
