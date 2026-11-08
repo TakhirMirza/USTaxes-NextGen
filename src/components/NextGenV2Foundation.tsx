@@ -44,6 +44,7 @@ import NextGen2025CalculationCoverage from './NextGen2025CalculationCoverage'
 import NextGen2025FormWorkspace from './NextGen2025FormWorkspace'
 import NextGen2025FormsNavigator from './NextGen2025FormsNavigator'
 import NextGen2025DocumentEntryWorkbench from './NextGen2025DocumentEntryWorkbench'
+import NextGenMultiYearCenter from './NextGenMultiYearCenter'
 import NextGen2025ScheduleEditors, { emptyScheduleDraft2025, ScheduleDraft2025, reviewScheduleDraft2025 } from './NextGen2025ScheduleEditors'
 import { readScheduleDraft2025, parseScheduleDraft2025, SCHEDULE_DRAFT_KEY } from '../nextgen/taxYears/scheduleDraftExchange2025'
 import { Schedule1040Candidates2025, emptySchedule1040Candidates2025 } from '../nextgen/taxYears/schedules1040Bridge2025'
@@ -323,6 +324,7 @@ export default function NextGenV2Foundation(): ReactElement {
       </div>
       {step !== 'overview' && <div className="legacy-page-context"><span>Federal / {year} / {steps[current].title}</span><span>Step {current + 1} of {steps.length}</span></div>}
 
+      {step === 'overview' && <NextGenMultiYearCenter activeYear={year} />}
       {step === 'overview' && <section className="v2-card legacy-guided-profile" aria-label="Quick start and progress">
         <div className="legacy-register-head"><div><span className="v2-eyebrow">RETURN PREPARATION</span><h2>Return checklist</h2><p>Track the sections that need attention, or load a completely fictional example to explore the working forms.</p></div><button type="button" className="v2-secondary" onClick={loadFictionalExample}>Load fictional example</button></div>
         <div className="legacy-interview-list">{profileItems.map(item => <button type="button" key={item.title} onClick={() => go(item.step)}><span className={item.done ? 'legacy-interview-done' : 'legacy-interview-pending'}>{item.done ? '✓' : '!'}</span><strong>{item.title}</strong><small>{item.done ? 'Reviewed' : 'Open section →'}</small></button>)}</div>
