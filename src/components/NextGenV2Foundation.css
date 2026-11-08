@@ -49,3 +49,13 @@
 .legacy-source-checklist{list-style:none;margin:16px 0 0;padding:0}.legacy-source-checklist li{display:flex;gap:12px;align-items:center;padding:12px 4px;border-bottom:1px solid #e7edf3;font-size:13px}.legacy-source-checklist li span:nth-child(2){flex:1}.legacy-source-checklist li span:first-child{font-weight:900}
 @media(max-width:850px){.legacy-ledger-row{grid-template-columns:65px minmax(120px,1fr) minmax(95px,1fr) 75px}.legacy-ledger-row span:nth-child(3){display:none}}
 @media(max-width:520px){.legacy-ledger-row{grid-template-columns:55px 1fr 95px}.legacy-ledger-row button{grid-column:2/-1}.legacy-ledger-heading{display:none}}
+
+/* Phase 36: accessible unified review navigation */
+.phase36-workspace { border-top: 3px solid #26749b; }
+.phase36-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0; border-bottom: 1px solid #d6e2ec; padding-bottom: 10px; }
+.phase36-tabs button { border: 1px solid #d6e2ec; background: #fff; color: #254a69; padding: 12px 18px; border-radius: 8px; cursor: pointer; font: inherit; font-weight: 650; }
+.phase36-tabs button[aria-selected="true"] { color: #fff; background: #216995; border-color: #216995; }
+.phase36-tabs button:focus-visible { outline: 3px solid #e5a932; outline-offset: 2px; }
+.phase36-summary { margin-bottom: 18px; }
+.phase36-summary h3 { margin: 8px 0; }
+@media (max-width: 650px) { .phase36-tabs { flex-direction: column; } .phase36-tabs button { width: 100%; text-align: left; } }
