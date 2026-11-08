@@ -6,6 +6,7 @@ import type { DraftValue } from '../nextgen/taxYears/fieldResolution'
 import { emptyBook, parseBook, runPersistenceFixtures, serializeBook, storageKey } from '../nextgen/taxYears/fictionalDraftStore'
 import './NextGenFieldResolutionWorkspace.css'
 import './NextGenFictionalDraftPersistence.css'
+import NextGenUnifiedReturnWorkspace from './NextGenUnifiedReturnWorkspace'
 
 function download(content: string, filename: string, mime: string): void {
   const url = URL.createObjectURL(new Blob([content], {type:mime}))
@@ -100,6 +101,7 @@ export default function NextGenFieldResolutionWorkspace({year,issues}:{year:stri
       <input ref={fileRef} type="file" accept=".json,application/json" onChange={importJson} className="ng-persist-file" aria-label="Import fictional draft JSON" />
     </div>
     {message&&<p role="status" className="ng-persist-status">{message}</p>}
+    <NextGenUnifiedReturnWorkspace year={year} />
     <details><summary>Regression checks ({fixtures.filter(f=>f.passed).length}/{fixtures.length})</summary><ul>{fixtures.map(f=><li key={f.name}>{f.passed?'PASS':'FAIL'} — {f.name}</li>)}</ul></details>
   </section>
 }
