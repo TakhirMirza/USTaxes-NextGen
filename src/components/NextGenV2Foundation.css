@@ -40,3 +40,12 @@
 .legacy-deduction-paths>div {border:1px solid #dce5ec;border-radius:10px;padding:18px;background:#fbfcfd}
 .legacy-deduction-paths p {font-size:13px;line-height:1.6;color:#566981}
 @media(max-width:760px){.legacy-interview-list,.legacy-deduction-paths{grid-template-columns:1fr}.legacy-interview-kpis{grid-template-columns:1fr}.legacy-interview-list button{flex-wrap:wrap}}
+
+/* Phase 5: source-document validation and Form 1040 line ledger */
+.legacy-1040-ledger,.legacy-income-control{border-top:3px solid #0c8176}
+.legacy-ledger-table{border:1px solid #dce5ed;border-radius:9px;overflow:hidden;margin:18px 0}
+.legacy-ledger-row{display:grid;grid-template-columns:80px minmax(170px,2fr) minmax(120px,1.3fr) minmax(125px,1fr) 100px;gap:12px;align-items:center;padding:12px 14px;border-top:1px solid #e7edf3;font-size:12px}
+.legacy-ledger-row:first-child{border-top:0}.legacy-ledger-row strong{color:#1e3854}.legacy-ledger-heading{background:#eaf1f7;font-weight:800;text-transform:uppercase;font-size:11px;color:#536b83}.legacy-ledger-unavailable{background:#fafbfd;color:#78899b}.legacy-ledger-row button,.legacy-source-checklist button{background:transparent;border:0;color:#286a94;font-weight:700;cursor:pointer;text-align:left;padding:6px 0}
+.legacy-source-checklist{list-style:none;margin:16px 0 0;padding:0}.legacy-source-checklist li{display:flex;gap:12px;align-items:center;padding:12px 4px;border-bottom:1px solid #e7edf3;font-size:13px}.legacy-source-checklist li span:nth-child(2){flex:1}.legacy-source-checklist li span:first-child{font-weight:900}
+@media(max-width:850px){.legacy-ledger-row{grid-template-columns:65px minmax(120px,1fr) minmax(95px,1fr) 75px}.legacy-ledger-row span:nth-child(3){display:none}}
+@media(max-width:520px){.legacy-ledger-row{grid-template-columns:55px 1fr 95px}.legacy-ledger-row button{grid-column:2/-1}.legacy-ledger-heading{display:none}}
