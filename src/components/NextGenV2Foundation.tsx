@@ -32,6 +32,7 @@ import NextGen2025CalculationIntegrity from './NextGen2025CalculationIntegrity'
 import NextGen2025ExceptionRegister from './NextGen2025ExceptionRegister'
 import NextGen2025QualityAssurance from './NextGen2025QualityAssurance'
 import NextGen2025ReleaseReadiness from './NextGen2025ReleaseReadiness'
+import NextGen2025ScheduleC from './NextGen2025ScheduleC'
 import NextGen2025ScheduleEditors, { emptyScheduleDraft2025, ScheduleDraft2025, reviewScheduleDraft2025 } from './NextGen2025ScheduleEditors'
 import { readScheduleDraft2025, parseScheduleDraft2025, SCHEDULE_DRAFT_KEY } from '../nextgen/taxYears/scheduleDraftExchange2025'
 import { Schedule1040Candidates2025, emptySchedule1040Candidates2025 } from '../nextgen/taxYears/schedules1040Bridge2025'
@@ -336,6 +337,7 @@ export default function NextGenV2Foundation(): ReactElement {
   ...((filingStatus === 'joint' || filingStatus === 'separate') ? [['spouse65', 'Spouse age 65 or older at end of 2025'], ['spouseBlind', 'Spouse legally blind']] : [])
 ] as [keyof ProfileFacts2025, string][]).map(([key, label]) => <label key={key}>{label}<select value={profileFacts[key]} onChange={e => updateProfileFact(key, e.target.value as Answer2025)}><option value="unknown">Not reviewed</option><option value="no">No</option><option value="yes">Yes</option></select></label>)}</div><div className="v2-note">Simple deduction eligibility: {profileReview.simpleStandardDeductionEligible ? 'Facts support the simplified path; further verification still required.' : 'Not established — advanced deduction calculations are not implemented.'}</div><div className="v2-note">Identity verification, residency, dependent eligibility, and other filing-status rules will be added before real returns are supported.</div></section>}
       {(step === 'income' || step === 'review') && <NextGen2025SourceLedger year={year} wages={selectedWages ? wages : []} interest={interest} payer={payer} incomeKinds={incomeKinds} onNavigate={go} />}
+      {step === 'income' && <NextGen2025ScheduleC year={year} />}
       {step === 'income' && <NextGen2025DocumentAudit year={year} wages={wages} interest={interest} payer={payer} incomeKinds={incomeKinds} onNavigate={go} />}
       {step === 'income' && <section className="v2-card legacy-income-control" aria-label="Income document validation dashboard">
         <div className="legacy-register-head"><div><span className="v2-eyebrow">DOCUMENT VALIDATION / 2025</span><h2>Income entry quality</h2><p>Check the source documents before proceeding to Form 1040. Amounts are kept as integer cents for reconciliation.</p></div><button type="button" className="v2-secondary" onClick={() => go('review')}>Open Form 1040 →</button></div>
