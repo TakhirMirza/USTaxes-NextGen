@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { KINDS, LABELS, diagnostics, emptyReturn, exportCsv, fixtures, money, previewLines, storeKey, validateReturn } from '../nextgen/taxYears/unifiedReturnStore'
 import type { DocKind, FieldKey, UnifiedReturn } from '../nextgen/taxYears/unifiedReturnStore'
+import { readDraftWorkspace } from '../nextgen/navigation/draftWorkspace'
+import { legacyImportFixtures, previewLegacyImport } from '../nextgen/taxYears/legacyDraftImport'
 import './NextGenUnifiedReturnWorkspace.css'
 import './NextGenPhase56.css'
 import NextGenUnifiedCalculationBridge from './NextGenUnifiedCalculationBridge'
@@ -49,6 +51,15 @@ export default function NextGenUnifiedReturnWorkspace({year}:{year:string}){
       localStorage.setItem(storeKey(year),JSON.stringify(book));setDirty(false);setBaseRevision(book.revision);setMessage(`Saved fictional return revision ${book.revision} for ${year}. No official tax forms changed.`)
     }catch{setMessage('Save failed. Browser storage unavailable; export JSON as backup.')}
   }
+  const importFromIncome=()=>{
+    if(loadedYear!==year){setMessage('Wait for the selected tax year to finish loading.');return}
+    const source=readDraftWorkspace()
+    if(!source){setMessage('No valid Income draft found in this browser tab. Open Income and enter fictional W-2/1099-INT data first.');return}
+    const result=previewLegacyImport(source,book)
+    if(!result.value){setMessage(`Import blocked: ${result.error}`);return}
+    if(!confirm(`Import ${result.imported} fictional W-2/1099-INT document(s) from Income for ${year}? Previous legacy imports will be replaced. Other documents are preserved. This does NOT update Form 1040 or save automatically.`))return
+    setBook(result.value);setSelected('');setDirty(true);setMessage(`Imported ${result.imported} fictional documents from Income. Preview the values and click Save fictional return. Form 1040 remains unchanged.`)
+  }
   const reload=()=>{if(dirty&&!confirm('Discard unsaved fictional changes and reload?'))return;const result=read(year);setBook(result.book);setSelected('');setDirty(false);setBaseRevision(result.book.revision);setMessage(result.message)}
   const importFile=async(e:ChangeEvent<HTMLInputElement>)=>{
     const file=e.target.files?.[0];e.target.value='';if(!file)return
@@ -68,9 +79,10 @@ export default function NextGenUnifiedReturnWorkspace({year}:{year:string}){
     <h5 id="ng56-preview">Cross-form calculation preview (not a tax return)</h5><div className="ng-unified-scroll"><table><thead><tr><th>Form / line</th><th>Derived amount</th><th>Status</th><th>Source lineage</th></tr></thead><tbody>{lines.map(l=><tr key={l.line}><td>{l.line}: {l.label}</td><td>{money(l.cents)}</td><td>{l.status}</td><td>{l.sources.join(', ')||'No source'}</td></tr>)}</tbody></table></div><p>Only source aggregation and a basic Schedule C arithmetic preview are shown. Self-employment tax, deductions, credits, AGI, taxable income, total tax, refund and e-file are deliberately unavailable.</p>
     <details id="ng56-review" className="ng56-fold"><summary>Review workflow and calculation lineage</summary><NextGenReturnWorkflow book={book} dirty={dirty} selectedId={selected} onSelectDocument={setSelected} /><NextGenUnifiedCalculationBridge book={book} dirty={dirty} /></details>
     <details><summary>Validation findings ({issues.length})</summary><ul>{issues.map((i,index)=><li key={`${i.documentId}-${index}`}><strong>{i.severity}</strong> — {i.message}</li>)}</ul></details>
-    <div className="ng-unified-actions"><button type="button" onClick={save}>Save fictional return</button><button type="button" onClick={reload}>Reload saved</button><button type="button" onClick={()=>download(JSON.stringify(book,null,2),`fictional-return-${year}.json`,'application/json')}>Export JSON</button><label className="ng-unified-import">Import JSON<input type="file" accept=".json,application/json" onChange={importFile}/></label><button type="button" onClick={()=>download(exportCsv(book),`fictional-return-${year}.csv`,'text/csv;charset=utf-8')}>Export CSV</button><button type="button" onClick={reset}>Delete saved return</button></div>
+    <div className="ng-unified-actions"><button type="button" onClick={importFromIncome}>Import W-2 / 1099-INT from Income</button><button type="button" onClick={save}>Save fictional return</button><button type="button" onClick={reload}>Reload saved</button><button type="button" onClick={()=>download(JSON.stringify(book,null,2),`fictional-return-${year}.json`,'application/json')}>Export JSON</button><label className="ng-unified-import">Import JSON<input type="file" accept=".json,application/json" onChange={importFile}/></label><button type="button" onClick={()=>download(exportCsv(book),`fictional-return-${year}.csv`,'text/csv;charset=utf-8')}>Export CSV</button><button type="button" onClick={reset}>Delete saved return</button></div>
     {message&&<p role="status">{message}</p>}
     <details id="ng56-tools" className="ng56-fold"><summary>Management, tax years and developer diagnostics</summary><NextGenMultiYearDashboard activeYear={year} dirty={dirty} /><NextGenReturnManagement book={book} dirty={dirty} selectedId={selected} onSelectDocument={setSelected} onAddDocument={addKind} onSave={save} onReload={reload} /></details>
+    <details><summary>Phase 61 import regression fixtures ({legacyImportFixtures().filter(x=>x.passed).length}/{legacyImportFixtures().length})</summary><ul>{legacyImportFixtures().map(c=><li key={c.name}>{c.passed?'PASS':'FAIL'} — {c.name}</li>)}</ul></details>
     <details><summary>Phase 51 regression fixtures ({checks.filter(x=>x.passed).length}/{checks.length})</summary><ul>{checks.map(c=><li key={c.name}>{c.passed?'PASS':'FAIL'} — {c.name}</li>)}</ul></details>
   </section>
 }
