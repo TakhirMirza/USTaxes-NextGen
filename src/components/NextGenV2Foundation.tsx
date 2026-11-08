@@ -16,6 +16,7 @@ import { reconcileFederalScheduleIncome2025 } from '../nextgen/taxYears/federalS
 import { stepFromV2Path, v2PathForStep, V2Step } from '../nextgen/navigation/v2Routes'
 import { assessScenarioQuality } from '../nextgen/navigation/scenarioQuality'
 import { createScenarioAudit, scenarioAuditCsv } from '../nextgen/navigation/scenarioAudit'
+import { buildFederalCoverageMatrix2025, federalCoverageCsv2025 } from '../nextgen/taxYears/federalCoverageMatrix2025'
 
 type Step = V2Step
 type Wage = { id: number; employer: string; wages: string; withholding: string }
@@ -58,6 +59,7 @@ export default function NextGenV2Foundation(): ReactElement {
   const [showImport, setShowImport] = useState(false)
   const workspace: DraftWorkspace = { version: 1, year, filingStatus, hasDependents, deduction, incomeKinds, wages, interest, payer, basicDeductionConfirmed, noOtherItemsConfirmed, ordinaryTaxMethodConfirmed }
   const scenarioFindings = assessScenarioQuality(workspace)
+  const federalCoverage = buildFederalCoverageMatrix2025(workspace)
   const scenarioErrors = scenarioFindings.filter(f => f.severity === 'error').length
   const scenarioWarnings = scenarioFindings.filter(f => f.severity === 'warning').length
   useEffect(() => {
@@ -88,16 +90,28 @@ export default function NextGenV2Foundation(): ReactElement {
     URL.revokeObjectURL(url)
     setNotice('Development audit exported without employer labels, payer labels, or financial amounts. This is not filing authorization.')
   }
+  const downloadCoverage = (): void => {
+    const content = federalCoverageCsv2025(federalCoverage)
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `nextgen-2025-coverage-${year}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    setNotice('Coverage matrix exported. No financial amounts or source labels are included.')
+  }
   const importWorkspace = (): void => {
     try {
       const parsed = parseDraftWorkspace(JSON.parse(importText))
       if (!parsed) { setNotice('Import rejected: invalid or unsupported tax return draft.'); return }
-      applyWorkspace(parsed); setImportText(''); setShowImport(false)
+      applyWorkspace({ ...parsed, basicDeductionConfirmed: false, noOtherItemsConfirmed: false, ordinaryTaxMethodConfirmed: false }); setSchedulesEligibilityReviewed(false); setOtherIncomeReviewed(false); setDeductionEligibilityReviewed(false); setImportText(''); setShowImport(false)
       setNotice('Tax return data imported. Review all entries and confirmations again.')
     } catch { setNotice('Import rejected: invalid JSON.') }
   }
   const clearWorkspace = (): void => {
     if (!window.confirm('Clear all tax return draft entries in this tab?')) return
+    setSchedulesEligibilityReviewed(false); setOtherIncomeReviewed(false); setDeductionEligibilityReviewed(false)
     applyWorkspace({ version: 1, year: '2025', filingStatus: 'single', hasDependents: 'unknown', deduction: 'unknown', incomeKinds: ['W-2 wages'], wages: [{id: 1, employer: '', wages: '', withholding: ''}], interest: '', payer: '', basicDeductionConfirmed: false, noOtherItemsConfirmed: false, ordinaryTaxMethodConfirmed: false })
     try { window.sessionStorage.removeItem(WORKSPACE_KEY) } catch { /* ignore */ }
     setNotice('Draft workspace reset.')
@@ -172,6 +186,14 @@ export default function NextGenV2Foundation(): ReactElement {
         <details><summary>Show {scenarioFindings.length} findings and navigate to sections</summary>
           <ul className="v2-blockers">{scenarioFindings.map(f => <li key={f.code}><strong>{f.severity.toUpperCase()}</strong> — {f.message} <button type="button" className="v2-text-button" onClick={() => go(f.step)}>Open {f.step}</button></li>)}</ul>
         </details>
+      </section>
+      <section className="v2-card" aria-label="Federal 2025 coverage matrix">
+        <span className="v2-eyebrow">2025 / FEDERAL COVERAGE MATRIX</span>
+        <h3>Federal forms and schedules — implementation status</h3>
+        <p>This matrix separates available development previews from missing tax logic. A covered source does not imply an accurate, complete, or fileable return.</p>
+        <div className="v2-review-grid"><div><span>Preview modules</span><strong>{federalCoverage.filter(x => x.status === 'preview').length}</strong></div><div><span>Blocked or not implemented</span><strong>{federalCoverage.filter(x => x.status !== 'preview').length}</strong></div><div><span>Filing readiness</span><strong>NOT READY</strong></div></div>
+        <button type="button" className="v2-secondary" onClick={downloadCoverage}>Export coverage matrix CSV</button>
+        <details><summary>View {federalCoverage.length} federal coverage items</summary><ul className="v2-blockers">{federalCoverage.map(item => <li key={item.id}><strong>{item.status.toUpperCase()} — {item.title}</strong><div>{item.detail}</div><button type="button" className="v2-text-button" onClick={() => go(item.step)}>Open {item.step}</button></li>)}</ul></details>
       </section>
       <div className="v2-progress" aria-label={`Step ${current + 1} of ${steps.length}`}><div style={{ width: `${((current + 1) / steps.length) * 100}%` }}/></div>
       {step === 'overview' && <>
