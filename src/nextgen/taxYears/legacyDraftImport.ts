@@ -41,3 +41,30 @@ export function legacyImportFixtures():{name:string;passed:boolean}[]{
     {name:'Invalid monetary value rejected',passed:previewLegacyImport({...base,wages:[{...base.wages[0],wages:'invalid'}]},current).value===null},
   ]
 }
+
+/** Non-destructive automatic projection of Income sources into the fictional return. */
+export function projectIncomeSafely(source: DraftWorkspace | null, current: UnifiedReturn): LegacyImport {
+  if (!source) return {value:null,error:'Income draft unavailable.',imported:0}
+  if (source.year !== current.taxYear) return {value:null,error:'Different tax year.',imported:0}
+  const independentlyEdited=current.documents.some(d=>(d.kind==='W2'||d.kind==='1099-INT')&&!d.id.startsWith('legacy_w2_')&&d.id!=='legacy_1099_int_1')
+  if (independentlyEdited) return {value:null,error:'Independent W-2/1099 documents exist in Unified Return; automatic sync paused to prevent duplicate income. Use the existing manual review workflow.',imported:0}
+  const result=previewLegacyImport(source,current)
+  if (!result.value) return result
+  const same=JSON.stringify(result.value.documents)===JSON.stringify(current.documents)
+  return same?{value:null,error:null,imported:0}:result
+}
+export function incomeProjectionFixtures():{name:string;passed:boolean}[]{
+ const source:DraftWorkspace={version:1,year:'2025',filingStatus:'single',hasDependents:'no',deduction:'standard',incomeKinds:['W-2 wages'],wages:[{id:1,employer:'Example',wages:'150.25',withholding:'12.30'}],interest:'',payer:'',basicDeductionConfirmed:false,noOtherItemsConfirmed:false,ordinaryTaxMethodConfirmed:false}
+ const empty:UnifiedReturn={schema:1,taxYear:'2025',revision:0,updatedAt:'',documents:[]}
+ const first=projectIncomeSafely(source,empty)
+ const second=first.value?projectIncomeSafely(source,first.value):null
+ const independent={...empty,documents:[{id:'manual',kind:'W2' as const,label:'Manual',fields:{wages:'4',withholding:'1'}}]}
+ return [
+ {name:'Income W-2 projected',passed:first.value?.documents[0]?.fields.wages==='150.25'},
+ {name:'No duplicate projection',passed:second?.value===null&&second?.error===null},
+ {name:'Independent W-2 protected',passed:projectIncomeSafely(source,independent).value===null},
+ {name:'Different year protected',passed:projectIncomeSafely({...source,year:'2026'},empty).value===null},
+ {name:'Invalid amount rejected',passed:projectIncomeSafely({...source,wages:[{...source.wages[0],wages:'bad'}]},empty).value===null},
+ {name:'Schedule C preserved',passed:projectIncomeSafely(source,{...empty,documents:[{id:'business',kind:'SCHEDULE-C',label:'Business',fields:{grossReceipts:'40',expenses:'10'}}]}).value?.documents.length===2}
+ ]
+}

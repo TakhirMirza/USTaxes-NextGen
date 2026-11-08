@@ -124,7 +124,7 @@ export default function NextGenV2Foundation(): ReactElement {
   const scenarioErrors = scenarioFindings.filter(f => f.severity === 'error').length
   const scenarioWarnings = scenarioFindings.filter(f => f.severity === 'warning').length
   useEffect(() => {
-    try { window.sessionStorage.setItem(WORKSPACE_KEY, JSON.stringify(workspace)) } catch { /* storage may be disabled */ }
+    try { window.sessionStorage.setItem(WORKSPACE_KEY, JSON.stringify(workspace)); window.dispatchEvent(new Event('ustaxes:income-draft-updated')) } catch { /* storage may be disabled */ }
   }, [profileFacts, year, filingStatus, hasDependents, deduction, incomeKinds, wages, interest, payer, basicDeductionConfirmed, noOtherItemsConfirmed, ordinaryTaxMethodConfirmed])
   useEffect(() => {
     try { window.sessionStorage.setItem(SCHEDULE_DRAFT_KEY, JSON.stringify(scheduleDraft)) } catch { /* optional draft storage */ }
