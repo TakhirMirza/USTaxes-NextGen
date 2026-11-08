@@ -23,7 +23,7 @@ export default function NextGen2025TaxBalance({ mapping, worksheet }: { mapping:
   const [values, setValues] = useState<Record<string, string>>({})
   const [confirmed, setConfirmed] = useState(false)
   const parsed = components.map(({ key }) => ({ key, cents: parseDollarsToCents2025((values[key] || '').trim()) }))
-  const incomplete = parsed.filter(({ cents }) => cents === null).map(({ key }) => components.find(field => field.key === key)!.line)
+  const incomplete = parsed.filter(({ cents }) => cents === null).map(({ key }) => components.find(field => field.key === key)?.line ?? key)
   const verified = incomplete.length === 0 ? parsed.reduce((result, item) => ({ ...result, [item.key]: item.cents }), {} as VerifiedTaxComponents2025) : null
   const reconciliation = reconcileForm1040Arithmetic2025(mapping, verified, confirmed && incomplete.length === 0)
   const update = (key: Field, value: string): void => { setValues(old => ({ ...old, [key]: value })); setConfirmed(false) }

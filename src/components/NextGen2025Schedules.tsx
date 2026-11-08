@@ -32,7 +32,7 @@ export default function NextGen2025Schedules({ onReconcile }: { onReconcile?: (v
   const [duplicatePaymentsConfirmed, setDuplicatePaymentsConfirmed] = useState(false)
   const [creditOrderingConfirmed, setCreditOrderingConfirmed] = useState(false)
   const add = (section: Section) => {
-    setEntries(old => [...old, { id: nextId, section, line: sections.find(s => s.id === section)!.lines[0], description: '', amount: '', source: '', reviewed: false }])
+    setEntries(old => [...old, { id: nextId, section, line: sections.find(s => s.id === section)?.lines[0] ?? sections[0].lines[0], description: '', amount: '', source: '', reviewed: false }])
     setNextId(n => n + 1)
   }
   const update = (id: number, changes: Partial<Entry>) => setEntries(old => old.map(e => e.id === id ? { ...e, ...changes, reviewed: false } : e))

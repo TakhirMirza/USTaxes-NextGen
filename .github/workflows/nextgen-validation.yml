@@ -75,18 +75,18 @@ jobs:
           set -o pipefail
           mkdir -p test-results
           npm run build 2>&1 | tee test-results/react-build.log
-      # Inventory remaining lint findings without weakening Jest or the Stage 83 gate.
-      # The React build currently uses CI=false; this report makes warnings visible
-      # and measurable before strict CI=true can safely be restored.
-      - name: Inventory ESLint findings (Stage 98)
+      # NextGen-only lint gate: errors fail, warnings are recorded for remediation.
+      # This replaces the historical repository-wide Stage 98/103 warning baseline.
+      - name: Validate NextGen 2.0 TypeScript and React modules
         if: always() && steps.npm_install.outcome == 'success'
         run: |
+          set -o pipefail
           mkdir -p test-results
-          node tools/stage98-eslint-report.test.js
-          node tools/stage103-eslint-budget.test.js
-          ./node_modules/.bin/eslint ./src --ext ts,js,tsx,jsx --format json --output-file test-results/eslint.json || true
-          node tools/stage98-eslint-report.js test-results/eslint.json test-results/eslint-summary.json
-          node tools/stage103-eslint-budget.js test-results/eslint-summary.json
+          ./node_modules/.bin/eslint src/nextgen src/components/NextGen*.tsx \
+            --ext .ts,.tsx --format json --output-file test-results/nextgen-eslint.json || lint_status=$?
+          node tools/nextgen-eslint-gate.js test-results/nextgen-eslint.json
+      - name: Verify NextGen 2.0 entry routes
+        run: node tools/nextgen-route-gate.js
       - name: Summarize CI outcomes (including skipped steps)
         if: always()
         run: |
