@@ -18,7 +18,7 @@ function read(year:string):{book:UnifiedReturn;message:string}{
 export default function NextGenUnifiedReturnWorkspace({year}:{year:string}){
   const [book,setBook]=useState<UnifiedReturn>(()=>emptyReturn(year))
   const [loadedYear,setLoadedYear]=useState('')
-  const [kind,setKind]=useState<DocKind>('W2')
+  const [kind,setKind]=useState<DocKind>('SCHEDULE-C')
   const [selected,setSelected]=useState('')
   const [message,setMessage]=useState('')
   const [dirty,setDirty]=useState(false)
@@ -42,22 +42,27 @@ export default function NextGenUnifiedReturnWorkspace({year}:{year:string}){
     window.addEventListener('ustaxes:income-draft-updated',sync)
     return()=>window.removeEventListener('ustaxes:income-draft-updated',sync)
   },[year,loadedYear,dirty,book])
+  // PHASE63_CANONICAL_INCOME: Income is the sole editor for W-2 and 1099-INT.
   const selectedDoc=book.documents.find(d=>d.id===selected)
+  const incomeReadOnly=selectedDoc?.kind==='W2'||selectedDoc?.kind==='1099-INT'
+  const independentIncome=book.documents.filter(d=>(d.kind==='W2'||d.kind==='1099-INT')&&!d.id.startsWith('legacy_w2_')&&d.id!=='legacy_1099_int_1')
   const checks=fixtures();const issues=diagnostics(book);const lines=previewLines(book)
   const mutate=(next:UnifiedReturn)=>{setBook({...next,revision:next.revision+1,updatedAt:new Date().toISOString()});setDirty(true);setMessage('Unsaved fictional edits. Review the preview and save explicitly.')}
   const add=()=>{
+    if(kind!=='SCHEDULE-C'){setMessage('W-2 and 1099-INT must be entered in Income. Choose Schedule C here.');return}
     const id=`doc_${Date.now()}_${Math.random().toString(36).slice(2,8)}`
     const next={...book,documents:[...book.documents,{id,kind,label:`Fictional ${kind} ${book.documents.filter(d=>d.kind===kind).length+1}`,fields:{}}]}
     mutate(next);setSelected(id)
   }
   const addKind=(newKind:DocKind)=>{
+    if(newKind!=='SCHEDULE-C'){setMessage('Open Income to add W-2 or 1099-INT. This workspace only edits Schedule C.');return}
     const id=`doc_${Date.now()}_${Math.random().toString(36).slice(2,8)}`
     mutate({...book,documents:[...book.documents,{id,kind:newKind,label:`Fictional ${newKind} ${book.documents.filter(d=>d.kind===newKind).length+1}`,fields:{}}]})
     setSelected(id);setKind(newKind)
   }
-  const update=(field:FieldKey,value:string)=>{if(!selectedDoc)return;mutate({...book,documents:book.documents.map(d=>d.id===selected?{...d,fields:{...d.fields,[field]:value}}:d)})}
-  const rename=(label:string)=>{if(!selectedDoc)return;mutate({...book,documents:book.documents.map(d=>d.id===selected?{...d,label}:d)})}
-  const remove=()=>{if(!selectedDoc||!confirm(`Delete fictional source ${selectedDoc.label}?`))return;mutate({...book,documents:book.documents.filter(d=>d.id!==selected)});setSelected('')}
+  const update=(field:FieldKey,value:string)=>{if(!selectedDoc||selectedDoc.kind!=='SCHEDULE-C')return;mutate({...book,documents:book.documents.map(d=>d.id===selected?{...d,fields:{...d.fields,[field]:value}}:d)})}
+  const rename=(label:string)=>{if(!selectedDoc||selectedDoc.kind!=='SCHEDULE-C')return;mutate({...book,documents:book.documents.map(d=>d.id===selected?{...d,label}:d)})}
+  const remove=()=>{if(!selectedDoc||selectedDoc.kind!=='SCHEDULE-C'||!confirm(`Delete fictional source ${selectedDoc.label}?`))return;mutate({...book,documents:book.documents.filter(d=>d.id!==selected)});setSelected('')}
   const save=()=>{
     if(loadedYear!==year){setMessage('Tax year is loading.');return}
     const validated=validateReturn(book,year)
@@ -74,6 +79,7 @@ export default function NextGenUnifiedReturnWorkspace({year}:{year:string}){
     if(!source){setMessage('No valid Income draft found in this browser tab. Open Income and enter fictional W-2/1099-INT data first.');return}
     const result=previewLegacyImport(source,book)
     if(!result.value){setMessage(`Import blocked: ${result.error}`);return}
+    if(independentIncome.length){setMessage('Import blocked: independently created W-2 / 1099-INT documents exist. Export a JSON backup and reconcile them before importing; no documents were replaced.');return}
     if(!confirm(`Import ${result.imported} fictional W-2/1099-INT document(s) from Income for ${year}? Previous legacy imports will be replaced. Other documents are preserved. This does NOT update Form 1040 or save automatically.`))return
     setBook(result.value);setSelected('');setDirty(true);setMessage(`Imported ${result.imported} fictional documents from Income. Preview the values and click Save fictional return. Form 1040 remains unchanged.`)
   }
@@ -81,7 +87,7 @@ export default function NextGenUnifiedReturnWorkspace({year}:{year:string}){
   const importFile=async(e:ChangeEvent<HTMLInputElement>)=>{
     const file=e.target.files?.[0];e.target.value='';if(!file)return
     if(file.size>150000){setMessage('File exceeds 150 KB.');return}
-    try{const parsed=validateReturn(JSON.parse(await file.text()),year);if(!parsed.value){setMessage(`Import rejected: ${parsed.error}`);return}setBook({...parsed.value,revision:book.revision+1,updatedAt:new Date().toISOString()});setSelected('');setDirty(true);setMessage('Imported fictional return into memory. Select Save to persist it.')}
+    try{const parsed=validateReturn(JSON.parse(await file.text()),year);if(!parsed.value){setMessage(`Import rejected: ${parsed.error}`);return}setBook({...parsed.value,revision:book.revision+1,updatedAt:new Date().toISOString()});setSelected('');setDirty(true);setMessage('Imported fictional return into memory. Income documents are read-only here; review independent sources and Save explicitly.')}
     catch{setMessage('Invalid JSON import; existing return unchanged.')}
   }
   const reset=()=>{if(!confirm(`Delete locally saved fictional return for ${year}?`))return;try{localStorage.removeItem(storeKey(year));setBook(emptyReturn(year));setSelected('');setDirty(false);setBaseRevision(0);setMessage('Fictional return deleted from browser storage.')}catch{setMessage('Browser storage unavailable.')}}
@@ -91,8 +97,10 @@ export default function NextGenUnifiedReturnWorkspace({year}:{year:string}){
     <p><strong>Fictional data only.</strong> This is a separate development store. It does not post edits to existing W-2 / 1099 forms, tax engines, official Form 1040, or filing. Browser storage is unencrypted; never enter real taxpayer information.</p>
     <nav className="ng56-jump" aria-label="Return workspace sections"><a href="#ng56-documents">Edit documents</a><a href="#ng56-preview">Form preview</a><a href="#ng56-review">Review</a><a href="#ng56-tools">Management &amp; diagnostics</a></nav>
     <div className="ng-unified-metrics"><span>{book.documents.length} source documents</span><span>{issues.filter(i=>i.severity==='blocker').length} blockers</span><span>Revision {book.revision}</span><span>{dirty?'Unsaved changes':'Saved / unchanged'}</span><span>{checks.filter(x=>x.passed).length}/{checks.length} checks</span></div>
-    <div id="ng56-documents" className="ng-unified-grid"><div className="ng-unified-pane"><h5>Fictional documents — {year}</h5><div className="ng-unified-actions"><select aria-label="New document type" value={kind} onChange={e=>setKind(e.target.value as DocKind)}>{(Object.keys(KINDS) as DocKind[]).map(k=><option key={k}>{k}</option>)}</select><button type="button" onClick={add}>Add source</button></div><div className="ng-unified-list">{book.documents.map(d=><button type="button" key={d.id} aria-pressed={selected===d.id} onClick={()=>setSelected(d.id)}><strong>{d.label}</strong><small>{d.kind} · {d.id}</small></button>)}</div></div>
-    <div className="ng-unified-pane"><h5>Source editor</h5>{selectedDoc?<><label>Fictional document label<input value={selectedDoc.label} maxLength={80} onChange={e=>rename(e.target.value)}/></label>{KINDS[selectedDoc.kind].map(key=><label key={key}>{LABELS[key]} (USD)<input inputMode="decimal" placeholder="0.00" value={selectedDoc.fields[key]??''} onChange={e=>update(key,e.target.value)}/></label>)}<button type="button" onClick={remove}>Delete selected source</button></>:<p>Select a source to edit fictional amounts. Empty or invalid values block the preview.</p>}</div></div>
+    <p><strong>One income editor:</strong> enter W-2 and 1099-INT in the Income tab. This workspace shows read-only copies and edits Schedule C only. Existing independently created income documents remain intact.</p>
+    {independentIncome.length>0&&<p role="alert">{independentIncome.length} independently created income document(s) detected. Automatic synchronization is paused. Export JSON and reconcile manually before relying on the preview.</p>}
+    <div id="ng56-documents" className="ng-unified-grid"><div className="ng-unified-pane"><h5>Fictional documents — {year}</h5><div className="ng-unified-actions"><select aria-label="New document type" value={kind} onChange={e=>setKind(e.target.value as DocKind)}>{(Object.keys(KINDS) as DocKind[]).map(k=><option key={k} value={k} disabled={k!=='SCHEDULE-C'}>{k}</option>)}</select><button type="button" onClick={add}>Add Schedule C</button></div><div className="ng-unified-list">{book.documents.map(d=><button type="button" key={d.id} aria-pressed={selected===d.id} onClick={()=>setSelected(d.id)}><strong>{d.label}</strong><small>{d.kind} · {d.id}</small></button>)}</div></div>
+    <div className="ng-unified-pane"><h5>Source editor</h5>{selectedDoc?<><label>Fictional document label<input value={selectedDoc.label} maxLength={80} readOnly={incomeReadOnly} onChange={e=>rename(e.target.value)}/></label>{KINDS[selectedDoc.kind].map(key=><label key={key}>{LABELS[key]} (USD)<input inputMode="decimal" placeholder="0.00" readOnly={incomeReadOnly} value={selectedDoc.fields[key]??''} onChange={e=>update(key,e.target.value)}/></label>)}{incomeReadOnly?<p>Read-only Income source. Edit this document in the Income tab; do not edit its projection here.</p>:<button type="button" onClick={remove}>Delete selected Schedule C</button>}</>:<p>Select a source to edit fictional amounts. Empty or invalid values block the preview.</p>}</div></div>
     <h5 id="ng56-preview">Cross-form calculation preview (not a tax return)</h5><div className="ng-unified-scroll"><table><thead><tr><th>Form / line</th><th>Derived amount</th><th>Status</th><th>Source lineage</th></tr></thead><tbody>{lines.map(l=><tr key={l.line}><td>{l.line}: {l.label}</td><td>{money(l.cents)}</td><td>{l.status}</td><td>{l.sources.join(', ')||'No source'}</td></tr>)}</tbody></table></div><p>Only source aggregation and a basic Schedule C arithmetic preview are shown. Self-employment tax, deductions, credits, AGI, taxable income, total tax, refund and e-file are deliberately unavailable.</p>
     <details id="ng56-review" className="ng56-fold"><summary>Review workflow and calculation lineage</summary><NextGenReturnWorkflow book={book} dirty={dirty} selectedId={selected} onSelectDocument={setSelected} /><NextGenUnifiedCalculationBridge book={book} dirty={dirty} /></details>
     <details><summary>Validation findings ({issues.length})</summary><ul>{issues.map((i,index)=><li key={`${i.documentId}-${index}`}><strong>{i.severity}</strong> — {i.message}</li>)}</ul></details>
