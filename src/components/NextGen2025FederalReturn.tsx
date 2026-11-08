@@ -1,3 +1,4 @@
+import { preview2025TaxTable } from '../nextgen/taxYears/irs2025TaxTablePreview'
 import { computeOrdinaryTax2025, Filing2025 } from '../nextgen/taxYears/irs2025OrdinaryTax'
 import { ReactElement, useState } from 'react'
 import { parseFederalReviewPackage2025, reviewLinesCsv2025, reviewPrintHtml2025, ReviewPackage2025 } from '../nextgen/taxYears/federalReviewPackage2025'
@@ -89,6 +90,9 @@ export default function NextGen2025FederalReturn({ income, schedules, w2Withhold
   const worksheet = computeOrdinaryTax2025({year:2025, filingStatus:worksheetStatus,
     taxableIncomeCents:worksheetIncome === null ? -1 : worksheetIncome,
     ordinaryIncomeOnlyConfirmed:worksheetOrdinaryOnly, line15Reconciled:worksheetLine15Reviewed})
+  const tablePreview = preview2025TaxTable({year:2025, filingStatus:worksheetStatus,
+    taxableIncomeCents:worksheetIncome === null ? -1 : worksheetIncome,
+    ordinaryIncomeOnlyConfirmed:worksheetOrdinaryOnly, line15Reconciled:worksheetLine15Reviewed})
   const useWorksheet = (): void => {
     if (worksheet.status !== 'calculated') return
     setAmounts(p => ({...p,line16TaxCents:(worksheet.line16Cents/100).toFixed(2)}))
@@ -113,6 +117,13 @@ export default function NextGen2025FederalReturn({ income, schedules, w2Withhold
       {worksheet.status==='calculated' ? <p>IRS worksheet line 16: <strong>{dollars(worksheet.line16Cents)}</strong> ({worksheet.ratePercent}% row)</p>
         : <ul className="v2-blockers">{worksheet.blockers.map(b=><li key={b}>{b}</li>)}</ul>}
       <button type="button" className="v2-secondary" disabled={worksheet.status!=='calculated'} onClick={useWorksheet}>Copy calculated amount to line 16 (requires separate review)</button>
+    </details>
+    <details className="v2-note"><summary><strong>2025 Tax Table preview — taxable income below $100,000</strong></summary>
+      <p>This is a reconstructed interval calculation, NOT a verified IRS Tax Table lookup. It is intentionally not transferable to Form 1040 line 16 until every official table cell has been independently validated.</p>
+      <p>Use the filing status, line 15 and confirmation controls in the IRS calculator above.</p>
+      {tablePreview.status==='preview'
+        ? <p>Interval ${tablePreview.intervalStart.toLocaleString('en-US')}–${tablePreview.intervalEnd.toLocaleString('en-US')}: <strong>{dollars(tablePreview.taxCents)}</strong> (unverified preview; copying disabled)</p>
+        : <ul className="v2-blockers">{tablePreview.blockers.map(b=><li key={b}>{b}</li>)}</ul>}
     </details>
     <div className="v2-form-grid">{fields.map(([id, title]) => <label key={id}>{title}<input type="text" inputMode="decimal" placeholder="Required: 0.00 or amount" value={amounts[id]} onChange={e => setAmounts(p => ({ ...p, [id]: e.target.value }))} /></label>)}</div>
     <div className="v2-note">W-2 box 2 source withholding: {w2WithholdingCents === null ? 'Unavailable' : dollars(w2WithholdingCents)}. The entered line 25a must match the W-2 source total.</div>
