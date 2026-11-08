@@ -1,6 +1,8 @@
+import { ProfileFacts2025, parseProfileFacts2025 } from '../taxYears/profileFacts2025'
 /** Versioned tax return draft data. Browser session storage is not approved for taxpayer PII. */
 export type DraftWorkspace = {
   version: 1
+  profileFacts?: ProfileFacts2025
   year: string
   filingStatus: string
   hasDependents: string
@@ -28,10 +30,11 @@ export function parseDraftWorkspace(input: unknown): DraftWorkspace | null {
     !input.wages.every((w: unknown) => isRecord(w) && typeof w.id === 'number' && Number.isSafeInteger(w.id) && w.id > 0 && typeof w.employer === 'string' && w.employer.length <= 120 && money(w.wages) && money(w.withholding)) ||
     !money(input.interest) || typeof input.payer !== 'string' || input.payer.length > 120 ||
     !['basicDeductionConfirmed','noOtherItemsConfirmed','ordinaryTaxMethodConfirmed'].every(k => typeof input[k] === 'boolean')) return null
+  if (input.profileFacts !== undefined && !parseProfileFacts2025(input.profileFacts)) return null
   const ids = input.wages.map((w: Record<string, unknown>) => w.id)
   if (new Set(ids).size !== ids.length || new Set(input.incomeKinds).size !== input.incomeKinds.length) return null
   return {
-    version: 1, year: String(input.year), filingStatus: String(input.filingStatus),
+    version: 1, profileFacts: input.profileFacts === undefined ? undefined : parseProfileFacts2025(input.profileFacts)!, year: String(input.year), filingStatus: String(input.filingStatus),
     hasDependents: String(input.hasDependents), deduction: String(input.deduction),
     incomeKinds: input.incomeKinds.map((kind: string) => kind),
     wages: input.wages.map((w: Record<string, unknown>) => ({ id: Number(w.id), employer: String(w.employer), wages: String(w.wages), withholding: String(w.withholding) })),
