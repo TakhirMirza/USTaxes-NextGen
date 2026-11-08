@@ -19,3 +19,24 @@
 
 /* Phase 3: document-first workspace and actionable review */
 .legacy-register-head{display:flex;justify-content:space-between;align-items:start;gap:20px}.legacy-register-head h2{margin:9px 0}.legacy-register-head p{margin:0 0 18px}.legacy-register-buttons{display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0}.legacy-document-search{display:block;max-width:450px;margin:8px 0 17px;font-size:12px;font-weight:700;color:#425a73}.legacy-document-search input{display:block;width:100%;margin-top:7px}.legacy-document-table{border:1px solid #dce5ed;border-radius:8px;overflow:hidden}.legacy-document-row{display:grid;grid-template-columns:85px minmax(130px,2fr) minmax(105px,1fr) 100px 65px;align-items:center;gap:12px;padding:13px 16px;border-top:1px solid #e8edf3;font-size:13px}.legacy-document-row:first-child{border-top:0}.legacy-document-row>span{overflow-wrap:anywhere}.legacy-document-row button,.legacy-review-action button{background:transparent;border:0;color:#246b9a;font-weight:700;cursor:pointer;text-align:left}.legacy-document-heading{background:#eef3f8;color:#62758b;font-size:11px;font-weight:800;text-transform:uppercase}.legacy-valid{color:#13734d;font-weight:700}.legacy-incomplete{color:#a4611c;font-weight:700}.legacy-register-footnote{font-size:11px;color:#77889a;margin:14px 0 0}.legacy-action-count{display:flex;gap:10px;align-items:center;background:#f3f7fb;padding:15px;border-radius:8px;margin:12px 0 18px}.legacy-action-count strong{font-size:23px;color:#2a4f72}.legacy-action-count span{font-size:12px;color:#62758a;margin-right:20px}.legacy-review-actions{border:1px solid #dce5ed;border-radius:8px;overflow:hidden}.legacy-review-action{display:grid;grid-template-columns:115px 1fr 115px;gap:12px;align-items:center;padding:13px 15px;border-top:1px solid #e8edf3;font-size:13px}.legacy-review-action:first-child{border-top:0}.legacy-review-action:nth-child(even){background:#f8fafc}#legacy-w2-editor,#legacy-interest-editor{scroll-margin-top:20px}@media(max-width:800px){.legacy-register-head{flex-direction:column}.legacy-document-row{grid-template-columns:65px 1fr 90px}.legacy-document-heading{display:none}.legacy-document-row>span:nth-of-type(3){display:none}.legacy-review-action{grid-template-columns:1fr}.legacy-action-count{flex-wrap:wrap}}
+
+/* Phase 4: compact, guided legacy tax interview. */
+.legacy-guided-profile {border-top:3px solid #0b8277}
+.legacy-completion-pill {background:#e6f5f1;color:#07594e;border-radius:999px;padding:9px 14px;font-weight:700;white-space:nowrap}
+.legacy-interview-list {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:18px}
+.legacy-interview-list button {display:flex;align-items:center;gap:12px;text-align:left;background:#fff;border:1px solid #dce5ec;border-radius:9px;padding:14px;cursor:pointer;color:#182b46}
+.legacy-interview-list button:hover,.legacy-interview-list button:focus-visible {border-color:#0b8277;background:#f4fbf9}
+.legacy-interview-list button strong {font-size:13px;flex:1}
+.legacy-interview-list button small {font-size:11px;color:#65768d}
+.legacy-interview-done,.legacy-interview-pending {width:26px;height:26px;display:grid;place-items:center;border-radius:50%;font-weight:800;flex-shrink:0}
+.legacy-interview-done {background:#d9f2e9;color:#087360}
+.legacy-interview-pending {background:#fff0d7;color:#975900}
+.legacy-interview-help {margin-top:14px;padding:14px;background:#f0f7fa;border-left:3px solid #0b8277;line-height:1.6}
+.legacy-interview-kpis {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:18px}
+.legacy-interview-kpis>div {padding:14px;background:#f4f7fa;border-radius:8px;display:flex;flex-direction:column;gap:8px}
+.legacy-interview-kpis span {font-size:12px;color:#63748b}
+.legacy-interview-kpis strong {font-size:17px;color:#182b46}
+.legacy-deduction-paths {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:16px}
+.legacy-deduction-paths>div {border:1px solid #dce5ec;border-radius:10px;padding:18px;background:#fbfcfd}
+.legacy-deduction-paths p {font-size:13px;line-height:1.6;color:#566981}
+@media(max-width:760px){.legacy-interview-list,.legacy-deduction-paths{grid-template-columns:1fr}.legacy-interview-kpis{grid-template-columns:1fr}.legacy-interview-list button{flex-wrap:wrap}}
