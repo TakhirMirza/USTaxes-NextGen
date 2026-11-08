@@ -30,6 +30,11 @@ export function reviewFederalSources2025(draft: DraftWorkspace): IntegrityReport
     findings.push({ code, severity, source, message })
   }
   if (draft.year !== '2025') add('YEAR_UNSUPPORTED', 'error', 'profile', 'Only tax year 2025 has development-preview rules.')
+  if (draft.incomeKinds.length === 0) add('INCOME_SELECTION_EMPTY', 'warning', 'income', 'No income category has been selected; verify that this is intentional.')
+  if (new Set(draft.incomeKinds).size !== draft.incomeKinds.length) add('INCOME_SELECTION_DUPLICATE', 'error', 'income', 'Income category selection contains duplicates.')
+  if (new Set(draft.wages.map(w => w.id)).size !== draft.wages.length) add('W2_DUPLICATE_ID', 'error', 'income', 'W-2 entries contain duplicate internal identifiers.')
+  if (!draft.incomeKinds.includes('W-2 wages') && draft.wages.some(w => w.employer.trim() || w.wages.trim() || w.withholding.trim())) add('W2_NOT_SELECTED', 'warning', 'income', 'W-2 entries contain data, but W-2 wages are not selected.')
+  if (!draft.incomeKinds.includes('1099-INT interest') && (draft.interest.trim() || draft.payer.trim())) add('INTEREST_NOT_SELECTED', 'warning', 'income', '1099-INT fields contain data, but interest income is not selected.')
   if (draft.hasDependents === 'unknown') add('DEPENDENTS_UNREVIEWED', 'warning', 'profile', 'Dependent status has not been reviewed.')
   if (draft.hasDependents === 'yes') add('DEPENDENTS_UNSUPPORTED', 'error', 'profile', 'Dependent-related tax rules are not supported.')
   if (draft.deduction !== 'standard' || !draft.basicDeductionConfirmed) add('DEDUCTION_UNVERIFIED', 'warning', 'deductions', 'Standard deduction eligibility is not independently established.')
@@ -48,6 +53,7 @@ export function reviewFederalSources2025(draft: DraftWorkspace): IntegrityReport
     if (!w.employer.trim()) add(`W2_${index + 1}_EMPLOYER`, 'error', 'income', `${label}: employer label is missing.`)
     if (amount === null) add(`W2_${index + 1}_WAGES`, 'error', 'income', `${label}: Box 1 must contain a valid nonnegative amount with at most two decimals.`)
     if (withheld === null) add(`W2_${index + 1}_WITHHOLDING`, 'error', 'income', `${label}: Box 2 must contain a valid nonnegative amount with at most two decimals.`)
+    if (amount === 0 && withheld !== null && withheld > 0) add(`W2_${index + 1}_ZERO_WAGES`, 'warning', 'income', `${label}: withholding is present but Box 1 wages are zero.`)
     if (amount !== null && withheld !== null && withheld > amount) add(`W2_${index + 1}_HIGH_WITHHOLDING`, 'warning', 'income', `${label}: Box 2 exceeds Box 1; verify against the original document.`)
     if (wagesCents !== null) wagesCents = amount === null || !Number.isSafeInteger(wagesCents + amount) ? null : wagesCents + amount
     if (withholdingCents !== null) withholdingCents = withheld === null || !Number.isSafeInteger(withholdingCents + withheld) ? null : withholdingCents + withheld
