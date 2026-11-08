@@ -17,6 +17,7 @@ import { stepFromV2Path, v2PathForStep, V2Step } from '../nextgen/navigation/v2R
 import { assessScenarioQuality } from '../nextgen/navigation/scenarioQuality'
 import { createScenarioAudit, scenarioAuditCsv } from '../nextgen/navigation/scenarioAudit'
 import { buildFederalCoverageMatrix2025, federalCoverageCsv2025 } from '../nextgen/taxYears/federalCoverageMatrix2025'
+import { reviewFederalSources2025, federalSourceIntegrityCsv2025 } from '../nextgen/taxYears/federalSourceIntegrity2025'
 
 type Step = V2Step
 type Wage = { id: number; employer: string; wages: string; withholding: string }
@@ -60,6 +61,7 @@ export default function NextGenV2Foundation(): ReactElement {
   const workspace: DraftWorkspace = { version: 1, year, filingStatus, hasDependents, deduction, incomeKinds, wages, interest, payer, basicDeductionConfirmed, noOtherItemsConfirmed, ordinaryTaxMethodConfirmed }
   const scenarioFindings = assessScenarioQuality(workspace)
   const federalCoverage = buildFederalCoverageMatrix2025(workspace)
+  const sourceIntegrity = reviewFederalSources2025(workspace)
   const scenarioErrors = scenarioFindings.filter(f => f.severity === 'error').length
   const scenarioWarnings = scenarioFindings.filter(f => f.severity === 'warning').length
   useEffect(() => {
@@ -194,6 +196,19 @@ export default function NextGenV2Foundation(): ReactElement {
         <div className="v2-review-grid"><div><span>Preview modules</span><strong>{federalCoverage.filter(x => x.status === 'preview').length}</strong></div><div><span>Blocked or not implemented</span><strong>{federalCoverage.filter(x => x.status !== 'preview').length}</strong></div><div><span>Filing readiness</span><strong>NOT READY</strong></div></div>
         <button type="button" className="v2-secondary" onClick={downloadCoverage}>Export coverage matrix CSV</button>
         <details><summary>View {federalCoverage.length} federal coverage items</summary><ul className="v2-blockers">{federalCoverage.map(item => <li key={item.id}><strong>{item.status.toUpperCase()} — {item.title}</strong><div>{item.detail}</div><button type="button" className="v2-text-button" onClick={() => go(item.step)}>Open {item.step}</button></li>)}</ul></details>
+      </section>
+      <section className="v2-card" aria-label="2025 source document integrity review">
+        <span className="v2-eyebrow">2025 / SOURCE DOCUMENT INTEGRITY</span>
+        <h3>W-2 and 1099-INT cross-document checks</h3>
+        <p>Independent integer-cent validation of selected income sources, document completeness, withholding anomalies and unsupported categories. No tax liability or filing authorization is inferred.</p>
+        <div className="v2-review-grid"><div><span>Source errors</span><strong>{sourceIntegrity.findings.filter(f => f.severity === 'error').length}</strong></div><div><span>Warnings</span><strong>{sourceIntegrity.findings.filter(f => f.severity === 'warning').length}</strong></div><div><span>Filing readiness</span><strong>NOT READY</strong></div></div>
+        <button type="button" className="v2-secondary" onClick={() => {
+          const blob = new Blob([federalSourceIntegrityCsv2025(sourceIntegrity)], { type: 'text/csv;charset=utf-8' })
+          const url = URL.createObjectURL(blob)
+          const link = document.createElement('a'); link.href = url; link.download = `nextgen-source-integrity-${year}.csv`; link.click(); URL.revokeObjectURL(url)
+          setNotice('Source integrity findings exported without personal labels or financial amounts.')
+        }}>Export source integrity CSV</button>
+        <details><summary>View {sourceIntegrity.findings.length} integrity findings</summary><ul className="v2-blockers">{sourceIntegrity.findings.map(f => <li key={f.code}><strong>{f.severity.toUpperCase()} — {f.code}</strong><div>{f.message}</div><button type="button" className="v2-text-button" onClick={() => go(f.source)}>Open {f.source}</button></li>)}</ul></details>
       </section>
       <div className="v2-progress" aria-label={`Step ${current + 1} of ${steps.length}`}><div style={{ width: `${((current + 1) / steps.length) * 100}%` }}/></div>
       {step === 'overview' && <>
