@@ -13,3 +13,6 @@ Deploys using `.github/workflows/pages.yml` and hash routing.
 
 ## Validation status
 Static import closure and architecture check completed. Full `npm install`, Vite build, and GitHub Pages deployment must still pass in Actions.
+
+## Scenario quality dashboard
+The standalone application now includes a scenario diagnostics dashboard covering missing W-2/1099-INT values, unsupported income and tax years, deduction review, and unverified tax methods. Findings link to the relevant step. These are preview diagnostics only, never a filing authorization.

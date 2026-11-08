@@ -14,6 +14,7 @@ import NextGen2025Schedules from './NextGen2025Schedules'
 import { Schedule1040Candidates2025, emptySchedule1040Candidates2025 } from '../nextgen/taxYears/schedules1040Bridge2025'
 import { reconcileFederalScheduleIncome2025 } from '../nextgen/taxYears/federalScheduleIntegration2025'
 import { stepFromV2Path, v2PathForStep, V2Step } from '../nextgen/navigation/v2Routes'
+import { assessScenarioQuality } from '../nextgen/navigation/scenarioQuality'
 
 type Step = V2Step
 type Wage = { id: number; employer: string; wages: string; withholding: string }
@@ -55,6 +56,9 @@ export default function NextGenV2Foundation(): ReactElement {
   const [importText, setImportText] = useState('')
   const [showImport, setShowImport] = useState(false)
   const workspace: DraftWorkspace = { version: 1, year, filingStatus, hasDependents, deduction, incomeKinds, wages, interest, payer, basicDeductionConfirmed, noOtherItemsConfirmed, ordinaryTaxMethodConfirmed }
+  const scenarioFindings = assessScenarioQuality(workspace)
+  const scenarioErrors = scenarioFindings.filter(f => f.severity === 'error').length
+  const scenarioWarnings = scenarioFindings.filter(f => f.severity === 'warning').length
   useEffect(() => {
     try { window.sessionStorage.setItem(WORKSPACE_KEY, JSON.stringify(workspace)) } catch { /* storage may be disabled */ }
   }, [year, filingStatus, hasDependents, deduction, incomeKinds, wages, interest, payer, basicDeductionConfirmed, noOtherItemsConfirmed, ordinaryTaxMethodConfirmed])
@@ -133,7 +137,7 @@ export default function NextGenV2Foundation(): ReactElement {
       <div className="v2-logo"><span className="v2-mark">U</span><span>USTaxes <strong>NextGen</strong><small>Federal tax preparation</small></span></div>
       <div className="v2-side-label">2025 TAX RETURN</div>
       <nav>{steps.map((item, i) => <button key={item.id} type="button" className={`v2-nav ${step === item.id ? 'active' : ''}`} onClick={() => go(item.id)}><span className="v2-num">{i + 1}</span><span><strong>{item.title}</strong><small>{item.detail}</small></span></button>)}</nav>
-      <div className="v2-side-bottom"><span className="v2-status-dot"/> Development foundation<br/><small>Not approved for real taxpayer data or filing</small><a href="#/legacy">Legacy editor (archive)</a><a href="#/nextgen/2025/review">2025 diagnostic workspace</a></div>
+      <div className="v2-side-bottom"><span className="v2-status-dot"/> Development foundation<br/><small>Not approved for real taxpayer data or filing</small></div>
     </aside>
     <main className="v2-main">
       <header className="v2-top"><div><span className="v2-eyebrow">USTAXES NEXTGEN 2.0</span><h1>{step === 'overview' ? 'Your tax return, simplified.' : steps[current].title}</h1><p>{step === 'overview' ? 'A new preparation experience, built around clarity and accuracy.' : steps[current].detail}</p></div><span className="v2-preview-tag">FOUNDATION PREVIEW</span></header>
@@ -144,6 +148,15 @@ export default function NextGenV2Foundation(): ReactElement {
         <p>The current browser-only draft mechanism is not secure persistent storage. Do not enter SSNs, addresses or other personal identifiers until authenticated encrypted server storage is integrated.</p>
         <div className="v2-footer-right"><button type="button" className="v2-secondary" onClick={exportWorkspace}>Export scenario JSON</button><button type="button" className="v2-secondary" onClick={() => setShowImport(v => !v)}>Import scenario JSON</button><button type="button" className="v2-secondary" onClick={clearWorkspace}>Reset scenario</button></div>
         {showImport && <div><label>Paste previously exported tax return draft JSON<textarea rows={5} style={{width:'100%'}} value={importText} onChange={e => setImportText(e.target.value)} /></label><button type="button" className="v2-primary" onClick={importWorkspace}>Validate and import</button></div>}
+      </section>
+      <section className="v2-card" aria-label="Scenario quality report">
+        <span className="v2-eyebrow">NEXTGEN 2.0 / SCENARIO QUALITY</span>
+        <h3>Development scenario checks</h3>
+        <p>Checks source completeness, unsupported tax situations and review confirmations. These checks do not establish filing readiness.</p>
+        <div className="v2-review-grid"><div><span>Blocking findings</span><strong>{scenarioErrors}</strong></div><div><span>Review warnings</span><strong>{scenarioWarnings}</strong></div><div><span>Filing</span><strong>Disabled</strong></div></div>
+        <details><summary>Show {scenarioFindings.length} findings and navigate to sections</summary>
+          <ul className="v2-blockers">{scenarioFindings.map(f => <li key={f.code}><strong>{f.severity.toUpperCase()}</strong> — {f.message} <button type="button" className="v2-text-button" onClick={() => go(f.step)}>Open {f.step}</button></li>)}</ul>
+        </details>
       </section>
       <div className="v2-progress" aria-label={`Step ${current + 1} of ${steps.length}`}><div style={{ width: `${((current + 1) / steps.length) * 100}%` }}/></div>
       {step === 'overview' && <>
