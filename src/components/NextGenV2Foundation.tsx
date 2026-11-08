@@ -39,6 +39,7 @@ import NextGen2025SelfEmploymentPipeline from './NextGen2025SelfEmploymentPipeli
 import NextGen2025CrossScheduleReconciliation from './NextGen2025CrossScheduleReconciliation'
 import NextGen2025FederalBalanceValidation from './NextGen2025FederalBalanceValidation'
 import NextGen2025ScenarioRegression from './NextGen2025ScenarioRegression'
+import NextGen2025CalculationCoverage from './NextGen2025CalculationCoverage'
 import NextGen2025ScheduleEditors, { emptyScheduleDraft2025, ScheduleDraft2025, reviewScheduleDraft2025 } from './NextGen2025ScheduleEditors'
 import { readScheduleDraft2025, parseScheduleDraft2025, SCHEDULE_DRAFT_KEY } from '../nextgen/taxYears/scheduleDraftExchange2025'
 import { Schedule1040Candidates2025, emptySchedule1040Candidates2025 } from '../nextgen/taxYears/schedules1040Bridge2025'
@@ -350,6 +351,7 @@ export default function NextGenV2Foundation(): ReactElement {
       {step === 'review' && <NextGen2025CrossScheduleReconciliation year={year} />}
       {step === 'review' && <NextGen2025FederalBalanceValidation year={year} />}
       {step === 'review' && <NextGen2025ScenarioRegression year={year} />}
+      {step === 'review' && <NextGen2025CalculationCoverage year={year} />}
       {step === 'income' && <NextGen2025DocumentAudit year={year} wages={wages} interest={interest} payer={payer} incomeKinds={incomeKinds} onNavigate={go} />}
       {step === 'income' && <section className="v2-card legacy-income-control" aria-label="Income document validation dashboard">
         <div className="legacy-register-head"><div><span className="v2-eyebrow">DOCUMENT VALIDATION / 2025</span><h2>Income entry quality</h2><p>Check the source documents before proceeding to Form 1040. Amounts are kept as integer cents for reconciliation.</p></div><button type="button" className="v2-secondary" onClick={() => go('review')}>Open Form 1040 →</button></div>
