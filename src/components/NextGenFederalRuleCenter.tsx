@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { auditFederalRules, FEDERAL_RULE_MANIFESTS, federalRulesCsv } from '../nextgen/taxYears/versionedRules'
 import { isSupportedTaxYear, TaxYear } from '../nextgen/taxYears/multiYearRegistry'
 import './NextGenFederalRuleCenter.css'
+import NextGenOfficialSourceCenter from './NextGenOfficialSourceCenter'
 
 export default function NextGenFederalRuleCenter({ activeYear }: { activeYear: string }) {
   const [year, setYear] = useState<TaxYear>(isSupportedTaxYear(activeYear) ? activeYear : '2025')
@@ -30,5 +31,6 @@ export default function NextGenFederalRuleCenter({ activeYear }: { activeYear: s
     <h3>Release blockers</h3><ul>{audit.blockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul>
     <button type="button" onClick={download}>Export four-year rules CSV</button>
     <p className="ng-rule-note">Read-only diagnostics. This module does not compute tax, change Form 1040, save taxpayer information, or enable filing.</p></>}
+    <NextGenOfficialSourceCenter activeYear={activeYear} />
   </section>
 }
