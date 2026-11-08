@@ -1,4 +1,3 @@
-import NextGenForm1040Mapping from './NextGenForm1040Mapping'
 import { useState } from 'react'
 import type { CalcReport } from '../nextgen/taxYears/calculationPipeline'
 import { formatCents } from '../nextgen/taxYears/calculationPipeline'
@@ -27,6 +26,5 @@ export default function NextGenCalculationOrchestrator({ pipeline }: { pipeline:
     <div className="ng-orch-actions"><button type="button" onClick={() => setDetails(v => !v)}>{details ? 'Hide' : 'Show'} stage diagnostics</button><button type="button" onClick={() => downloadCsv(orchestrationCsv(report))}>Export orchestration CSV</button></div>
     <div className="ng-orch-stages">{report.stages.map(stage => <article key={stage.id}><div><strong>{stage.label}</strong><span>{stage.status.replace(/-/g, ' ')}</span></div><small>Sources: {stage.sourceNodes.join(', ')}</small><p>{stage.amountCents === null ? 'No certified amount' : formatCents(stage.amountCents) + ' — arithmetic preview only'}</p>{details && <ul>{stage.issues.map((issue, i) => <li key={i}>{issue}</li>)}</ul>}</article>)}</div>
     {details && <div className="ng-orch-tests"><h4>Deterministic regression checks</h4><ul>{fixtures.map(f => <li key={f.name}>{f.passed ? 'PASS' : 'FAIL'} — {f.name}</li>)}</ul></div>}
-    <NextGenForm1040Mapping pipeline={pipeline} />
   </section>
 }
