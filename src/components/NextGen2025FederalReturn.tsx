@@ -1,4 +1,5 @@
 import { ReactElement, useState } from 'react'
+import { parseFederalReviewPackage2025, reviewLinesCsv2025, reviewPrintHtml2025, ReviewPackage2025 } from '../nextgen/taxYears/federalReviewPackage2025'
 import { FederalScheduleIncomeResult2025 } from '../nextgen/taxYears/federalScheduleIntegration2025'
 import { Schedule1040Candidates2025 } from '../nextgen/taxYears/schedules1040Bridge2025'
 import { calculateFederalReturnBalance2025, FederalReturnBalanceInputs2025 } from '../nextgen/taxYears/federalReturnBalance2025'
@@ -46,20 +47,37 @@ export default function NextGen2025FederalReturn({ income, schedules, w2Withhold
     independentPaymentReview: false, scheduleLineRulesReviewed: false
   })
   const [withholdingConfirmed, setWithholdingConfirmed] = useState(false)
+  const [reviewImport, setReviewImport] = useState('')
+  const [reviewNotice, setReviewNotice] = useState('')
   const parsed = Object.fromEntries(fields.map(([id]) => [id, cents(amounts[id])])) as Record<AmountField, number | null>
   const w2Mismatch = withholdingConfirmed && (w2WithholdingCents === null || parsed.line25aWithholdingCents !== w2WithholdingCents)
   const input: FederalReturnBalanceInputs2025 = { income, schedules, ...parsed, ...checks }
   const result = calculateFederalReturnBalance2025(input)
   const blockers = [...result.blockers, ...(!withholdingConfirmed ? ['W-2 withholding source reconciliation must be confirmed.'] : []), ...(w2Mismatch ? ['Form 1040 line 25a does not equal W-2 box 2 withholding total.'] : [])]
   const reconciled = result.status === 'reconciled' && blockers.length === 0
-  const exportReview = (): void => {
-    const payload = { taxYear: 2025, reviewType: 'non-filing-reconciliation', filingReady: false,
-      amounts: parsed, checks, withholdingConfirmed, w2WithholdingCents,
-      status: reconciled ? 'reconciled' : 'blocked', blockers,
-      lines: reconciled && result.status === 'reconciled' ? result.lines : null }
-    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }))
-    const a = document.createElement('a'); a.href = url; a.download = 'ustaxes-2025-federal-review.json'; a.click()
+  const reviewPackage = (): ReviewPackage2025 => ({
+    schema: 'ustaxes-federal-review-2025/v1', taxYear: 2025, filingReady: false,
+    amounts, checks, withholdingConfirmed, w2WithholdingCents,
+    status: reconciled ? 'reconciled' : 'blocked', blockers,
+    lines: reconciled && result.status === 'reconciled' ? result.lines : null
+  })
+  const download = (name: string, content: string, mime: string): void => {
+    const url = URL.createObjectURL(new Blob([content], { type: mime }))
+    const a = document.createElement('a'); a.href = url; a.download = name; a.click()
     URL.revokeObjectURL(url)
+  }
+  const exportReview = (): void => download('ustaxes-2025-federal-review.json', JSON.stringify(reviewPackage(), null, 2), 'application/json')
+  const importReview = (): void => {
+    try {
+      const imported = parseFederalReviewPackage2025(JSON.parse(reviewImport))
+      if (!imported) { setReviewNotice('Import rejected: unsupported or invalid 2025 review package.'); return }
+      setAmounts(imported.amounts as Record<AmountField,string>)
+      // Confirmations must be repeated after import, never inherited from a file.
+      setChecks({ independentTaxReview: false, independentCreditReview: false, independentPaymentReview: false, scheduleLineRulesReviewed: false })
+      setWithholdingConfirmed(false)
+      setReviewImport('')
+      setReviewNotice('Amounts restored. All confirmations reset; reconcile against current sources again.')
+    } catch { setReviewNotice('Import rejected: invalid JSON.') }
   }
   return <section className="v2-card" aria-label="Federal Form 1040 integrated return review">
     <span className="v2-eyebrow">2025 / INTEGRATED FEDERAL RETURN</span>
@@ -72,7 +90,18 @@ export default function NextGen2025FederalReturn({ income, schedules, w2Withhold
     <h3>{reconciled ? 'Arithmetic reconciled — not filing ready' : 'Calculation blocked pending review'}</h3>
     {reconciled && result.status === 'reconciled' && <div className="v2-review-grid">{Object.entries(result.lines).map(([line, amount]) => <div key={line}><span>Form 1040 line {line}</span><strong>{dollars(amount)}</strong></div>)}</div>}
     {blockers.length > 0 && <ul className="v2-blockers">{blockers.map((reason, i) => <li key={`${i}-${reason}`}>{reason}</li>)}</ul>}
-    <button type="button" className="v2-secondary" onClick={exportReview}>Export reconciliation report (JSON)</button>
+    <h3>Complete review package — exports and restore</h3>
+    <p>Export the versioned review, line-by-line CSV for audit, or a printable HTML workpaper. Imported amounts must be independently confirmed again.</p>
+    <div className="v2-form-grid">
+      <button type="button" className="v2-secondary" onClick={exportReview}>Export review JSON</button>
+      <button type="button" className="v2-secondary" onClick={() => download('ustaxes-2025-1040-lines.csv', reviewLinesCsv2025(reconciled && result.status === 'reconciled' ? result.lines : null), 'text/csv')}>Export Form 1040 lines CSV</button>
+      <button type="button" className="v2-secondary" onClick={() => download('ustaxes-2025-review-print.html', reviewPrintHtml2025(reconciled ? 'Reconciled — not filing ready' : 'Blocked', blockers, reconciled && result.status === 'reconciled' ? result.lines : null), 'text/html')}>Export printable workpaper</button>
+    </div>
+    <label>Import previous review JSON (amounts only)
+      <textarea rows={4} value={reviewImport} onChange={e => setReviewImport(e.target.value)} placeholder="Paste exported federal review JSON" />
+    </label>
+    <button type="button" className="v2-secondary" onClick={importReview}>Restore reviewed amounts</button>
+    {reviewNotice && <div className="v2-note" role="status">{reviewNotice}</div>}
     <div className="v2-note"><strong>Not filing ready.</strong> No SSN or personal identity is collected here. A successful arithmetic reconciliation does not validate IRS eligibility, produce an official PDF, or submit a return. Do not enter actual confidential taxpayer information on this static preview.</div>
   </section>
 }
