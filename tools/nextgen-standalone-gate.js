@@ -1,0 +1,13 @@
+const fs = require('fs')
+const read = (p) => fs.readFileSync(p, 'utf8')
+const app = read('src/App.tsx')
+const index = read('src/index.js')
+const router = read('src/components/NextGenAppRouter.tsx')
+const foundation = read('src/components/NextGenV2Foundation.tsx')
+const fail = (reason) => { console.error('FAIL NextGen standalone boundary: ' + reason); process.exit(1) }
+if (!app.includes("./components/NextGenAppRouter") || app.includes("./components/Main")) fail('App must mount only NextGen router')
+if (/react-redux|redux-persist|\.\/redux\/store/.test(index)) fail('Legacy Redux bootstrapping remains')
+if (/\.\/Main|\.\/Menu|\.\/GettingStarted|\.\/DataPropagator/.test(router)) fail('Legacy components imported in NextGen router')
+for (const route of ['path="/start"', 'path="/v2/*"']) if (!router.includes(route)) fail('Missing route ' + route)
+if (!foundation.includes('Tax year ${year} is not implemented')) fail('Unsupported years must remain blocked')
+console.log('PASS independent NextGen 2.0 app entry; legacy UI not mounted; unsupported tax years blocked')

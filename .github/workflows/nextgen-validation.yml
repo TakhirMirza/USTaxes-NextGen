@@ -2,7 +2,7 @@ name: NextGen 2025 validation (non-filing)
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    branches: [main]
     paths:
       - 'src/nextgen/**'
       - 'src/components/**'
@@ -14,7 +14,7 @@ on:
       - 'tsconfig.json'
       - '.github/workflows/nextgen-validation.yml'
   pull_request:
-    branches: [main, master]
+    branches: [main]
 permissions:
   contents: read
 jobs:
@@ -85,8 +85,8 @@ jobs:
           ./node_modules/.bin/eslint src/nextgen src/components/NextGen*.tsx \
             --ext .ts,.tsx --format json --output-file test-results/nextgen-eslint.json || lint_status=$?
           node tools/nextgen-eslint-gate.js test-results/nextgen-eslint.json
-      - name: Verify NextGen 2.0 entry routes
-        run: node tools/nextgen-route-gate.js
+      - name: Verify independent NextGen 2.0 application entry
+        run: node tools/nextgen-standalone-gate.js
       - name: Summarize CI outcomes (including skipped steps)
         if: always()
         run: |

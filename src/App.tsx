@@ -1,5 +1,5 @@
 import { ReactElement, useMemo } from 'react'
-import Main from './components/Main'
+import NextGenAppRouter from './components/NextGenAppRouter'
 import './App.css'
 import { createTheme, ThemeProvider, useMediaQuery } from '@material-ui/core'
 
@@ -37,7 +37,7 @@ const App = (): ReactElement => {
   return (
     <div className="App">
       <ThemeProvider theme={theme}>
-        <Main />
+        <NextGenAppRouter />
       </ThemeProvider>
     </div>
   )

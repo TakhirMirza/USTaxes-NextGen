@@ -67,7 +67,7 @@ export default function NextGenV2Foundation(): ReactElement {
   const exportWorkspace = (): void => {
     const blob = new Blob([JSON.stringify(workspace, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url; a.download = 'ustaxes-tax-return-2025.json'; a.click()
+    const a = document.createElement('a'); a.href = url; a.download = `ustaxes-tax-return-${year}.json`; a.click()
     URL.revokeObjectURL(url)
     setNotice('Tax return data exported. Protect this file; secure storage is not yet configured.')
   }

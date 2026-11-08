@@ -1,6 +1,5 @@
 import { StrictMode } from 'react'
 import ReactDOM from 'react-dom'
-import { Provider } from 'react-redux'
 import App from './App'
 import * as serviceWorker from './serviceWorker'
 import { BrowserRouter, HashRouter } from 'react-router-dom'
@@ -8,23 +7,14 @@ import { BrowserRouter, HashRouter } from 'react-router-dom'
 // GitHub Pages needs hash routes for deep-link refreshes.
 const Router = process.env.REACT_APP_GITHUB_PAGES === 'true' ? HashRouter : BrowserRouter
 
-import { store, persistor } from './redux/store'
-import { PersistGate } from 'redux-persist/integration/react'
 
 import './index.css'
 
 ReactDOM.render(
   <StrictMode>
-    <Provider store={store}>
-      <PersistGate
-        loading={<h1>Loading from Local Storage</h1>}
-        persistor={persistor}
-      >
-        <Router>
-          <App />
-        </Router>
-      </PersistGate>
-    </Provider>
+    <Router>
+      <App />
+    </Router>
   </StrictMode>,
   document.getElementById('root')
 )

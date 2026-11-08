@@ -17,9 +17,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '16'
+          node-version: '18'
           cache: npm
       - run: npm ci
+      - name: Verify independent NextGen 2.0 application entry
+        run: node tools/nextgen-standalone-gate.js
       - name: Architecture regression tests
         run: npm run nextgen:test && node platform/tests/integration.js
       - name: Build for repository subpath
