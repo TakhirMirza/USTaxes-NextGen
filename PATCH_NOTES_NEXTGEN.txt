@@ -1,9 +1,0 @@
-NextGen UI patch — 2026-11-05
-
-Changed src/components/YearStatusBar.tsx to label the currently selected 2019–2021 tax engine as a legacy editor, not a NextGen filing year.
-
-2025–2028 remain development/reference years and cannot be used for filing.
-No tax calculation rules or personal data were changed.
-
-This archive excludes node_modules, .git, build, and macOS metadata to reduce size.
-To deploy, merge the modified file into your existing project, then commit and push.

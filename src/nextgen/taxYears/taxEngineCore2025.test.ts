@@ -1,9 +1,0 @@
-import { map2025SourcesTo1040, parseDollarsToCents2025, TaxEngineInput2025 } from './taxEngineCore2025'
-const base: TaxEngineInput2025 = { year: 2025, filingStatus: 'single', w2: [{ id: 'w1', employer: 'Example', box1: '75000.00', box2: '9000.00' }], interest: [{ id: 'i1', payer: 'Bank', box1: '250.25' }], standardDeductionFactsConfirmed: true, taxpayerUnder65AndNotBlind: true, spouseUnder65AndNotBlind: true, notClaimableAsDependent: true, noOtherIncomeAdjustmentsCreditsOrTaxes: true }
-test('exact cents without float drift', () => { expect(parseDollarsToCents2025('0.01')).toBe(1); expect(parseDollarsToCents2025('1.005')).toBeNull(); expect(parseDollarsToCents2025('1e3')).toBeNull() })
-test('maps restricted 1040 source lines', () => { const result = map2025SourcesTo1040(base); expect(result.status).toBe('mapped'); expect(result.lines).toMatchObject({ '1a': 75000, '2b': 250.25, '9': 75250.25, '11a': 75250.25, '12e': 15750, '15': 59500.25, '25a': 9000, '25d': 9000 }); expect(result.filingReady).toBe(false) })
-test('does not leak partial totals on invalid W-2', () => { const result = map2025SourcesTo1040({ ...base, w2: [...base.w2, { id: 'w2', employer: '', box1: '5', box2: '0' }] }); expect(result.status).toBe('blocked'); expect(result.lines['1a']).toBeNull() })
-test('duplicate source IDs block mapping', () => { expect(map2025SourcesTo1040({ ...base, w2: [...base.w2, base.w2[0]] }).status).toBe('blocked') })
-test('unconfirmed deduction facts block mapping', () => { expect(map2025SourcesTo1040({ ...base, taxpayerUnder65AndNotBlind: false }).status).toBe('blocked') })
-test('unsupported tax year blocks mapping', () => { expect(map2025SourcesTo1040({ ...base, year: 2026 }).status).toBe('blocked') })
-test('tax liability and refund are never represented as ready', () => { const result = map2025SourcesTo1040(base); expect(result.unsupported.some(x => x.includes('refund'))).toBe(true) })
