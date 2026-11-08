@@ -1,3 +1,4 @@
+import NextGenCalculationOrchestrator from './NextGenCalculationOrchestrator'
 import { useState } from 'react'
 import { INPUTS, evaluatePipeline, formatCents, pipelineCsv, runPipelineFixtures, type NodeId } from '../nextgen/taxYears/calculationPipeline'
 import './NextGenCalculationPipeline.css'
@@ -25,5 +26,6 @@ export default function NextGenCalculationPipeline({ activeYear }: { activeYear:
     <h3>Dependency graph — read-only arithmetic</h3>
     <div className="ng-calc-results">{report.nodes.filter(node => node.dependencies.length > 0).map(node => <div key={node.id}><small>{node.label}</small><strong>{node.state === 'known' ? formatCents(node.cents) : node.state.toUpperCase()}</strong><span>Sources: {node.dependencies.join(' + ')}</span></div>)}</div>
     {showIssues && <div className="ng-calc-issues"><h3>Blocking findings</h3><ul>{report.blockers.map((issue, i) => <li key={i}>{issue}</li>)}</ul><h3>Fixture checks</h3><ul>{fixtures.map(f => <li key={f.name}>{f.passed ? 'PASS' : 'FAIL'} — {f.name}</li>)}</ul></div>}
+    <NextGenCalculationOrchestrator pipeline={report} />
   </section>
 }
