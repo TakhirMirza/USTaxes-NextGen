@@ -1,0 +1,12 @@
+{
+  "taxYear": 2025,
+  "releaseAuthorized": false,
+  "scope": "2025 standard deduction, source-to-1040 limited mapping, ordinary-income Tax Computation Worksheet at $100,000 or above, and blocking conditions",
+  "sources": [
+    {"id":"irs-2025-form1040", "url":"https://www.irs.gov/pub/irs-prior/f1040--2025.pdf", "coverage":"Form 1040 lines and standard deduction"},
+    {"id":"irs-2025-instructions", "url":"https://www.irs.gov/instructions/i1040gi", "coverage":"2025 eligibility and line 16 method selection"},
+    {"id":"irs-2025-publication1040", "url":"https://www.irs.gov/publications/p1040", "coverage":"2025 Tax Table and Tax Computation Worksheet"},
+    {"id":"irs-2025-publication501", "url":"https://www.irs.gov/publications/p501", "coverage":"2025 deduction and dependent eligibility"}
+  ],
+  "unimplemented": ["Tax Table below $100,000", "Special capital gains/dividend tax methods", "Schedule 1-A and other deductions", "Dependent and credit eligibility", "Complete self-employment tax", "Complete Form 1040 line 16-38", "Official PDF", "IRS e-file"]
+}
