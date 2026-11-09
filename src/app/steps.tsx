@@ -1,0 +1,313 @@
+import { ReactElement } from 'react'
+import type { TaxReturnInput, Owner, BusinessExpenses, Person } from '../engine/model.ts'
+import { EXPENSE_LABELS, emptyBusiness, emptyDependent, emptyTransaction, emptyW2, empty1099Div, empty1099Int } from '../engine/model.ts'
+import type { TaxReturnResult } from '../engine/compute.ts'
+import { FILING_STATUS_LABELS } from '../engine/rules2025.ts'
+import type { FilingStatus } from '../engine/rules2025.ts'
+import { Check, Choice, DocList, MoneyField, Section, TextField, usd } from './fields'
+
+export type Setter = (fn: (r: TaxReturnInput) => TaxReturnInput) => void
+export interface StepProps { ret: TaxReturnInput; set: Setter; result: TaxReturnResult }
+
+type ListKey = 'w2s' | 'interest' | 'dividends' | 'capitalTransactions' | 'businesses' | 'dependents'
+function listOps<K extends ListKey>(set: Setter, key: K) {
+  type Item = TaxReturnInput[K][number]
+  return {
+    add: (item: Item) => set((r) => ({ ...r, [key]: [...(r[key] as Item[]), item] })),
+    remove: (id: string) => set((r) => ({ ...r, [key]: (r[key] as Item[]).filter((x) => x.id !== id) })),
+    patch: (id: string, p: Partial<Item>) => set((r) => ({ ...r, [key]: (r[key] as Item[]).map((x) => (x.id === id ? { ...x, ...p } : x)) }))
+  }
+}
+
+function OwnerPicker({ ret, value, onChange }: { ret: TaxReturnInput; value: Owner; onChange: (o: Owner) => void }): ReactElement | null {
+  if (ret.filingStatus !== 'mfj') return null
+  const name = (p: Person, fallback: string): string => p.firstName.trim() || fallback
+  return (
+    <Choice legend="Whose form is this?" value={value} onChange={onChange}
+      options={[{ value: 'taxpayer', label: name(ret.taxpayer, 'Mine') }, { value: 'spouse', label: name(ret.spouse, 'My spouse’s') }]} />
+  )
+}
+
+// ── About you ───────────────────────────────────────────────────────────────
+export function AboutStep({ ret, set }: StepProps): ReactElement {
+  const person = (who: 'taxpayer' | 'spouse', p: Partial<Person>): void => set((r) => ({ ...r, [who]: { ...r[who], ...p } }))
+  const deps = listOps(set, 'dependents')
+  const married = ret.filingStatus === 'mfj' || ret.filingStatus === 'mfs'
+  const statusHints: Record<FilingStatus, string> = {
+    single: 'Unmarried on December 31, 2025',
+    mfj: 'Married, one return for both of you',
+    mfs: 'Married, each files their own return',
+    hoh: 'Unmarried and paid over half the cost of a home for a qualifying person',
+    qss: 'Spouse died in 2023 or 2024 and you have a dependent child'
+  }
+  return (
+    <>
+      <Section title="Filing status" intro="Your status on December 31, 2025 sets your tax brackets and standard deduction.">
+        <Choice legend="Filing status" value={ret.filingStatus} onChange={(v) => set((r) => ({ ...r, filingStatus: v }))}
+          options={(Object.keys(FILING_STATUS_LABELS) as FilingStatus[]).map((k) => ({ value: k, label: FILING_STATUS_LABELS[k], hint: statusHints[k] }))} />
+      </Section>
+
+      <Section title="You">
+        <div className="grid">
+          <TextField label="First name" value={ret.taxpayer.firstName} onChange={(v) => person('taxpayer', { firstName: v })} />
+          <TextField label="Last name" value={ret.taxpayer.lastName} onChange={(v) => person('taxpayer', { lastName: v })} />
+        </div>
+        <div className="checks">
+          <Check label="I was born before January 2, 1961 (65 or older)" checked={ret.taxpayer.age65OrOlder} onChange={(v) => person('taxpayer', { age65OrOlder: v })} />
+          <Check label="I am blind" checked={ret.taxpayer.blind} onChange={(v) => person('taxpayer', { blind: v })} />
+          <Check label="Someone can claim me as a dependent" checked={ret.canBeClaimedAsDependent} onChange={(v) => set((r) => ({ ...r, canBeClaimedAsDependent: v }))} />
+        </div>
+      </Section>
+
+      {ret.filingStatus === 'mfj' && (
+        <Section title="Your spouse">
+          <div className="grid">
+            <TextField label="First name" value={ret.spouse.firstName} onChange={(v) => person('spouse', { firstName: v })} />
+            <TextField label="Last name" value={ret.spouse.lastName} onChange={(v) => person('spouse', { lastName: v })} />
+          </div>
+          <div className="checks">
+            <Check label="My spouse was born before January 2, 1961" checked={ret.spouse.age65OrOlder} onChange={(v) => person('spouse', { age65OrOlder: v })} />
+            <Check label="My spouse is blind" checked={ret.spouse.blind} onChange={(v) => person('spouse', { blind: v })} />
+          </div>
+        </Section>
+      )}
+      {married && ret.filingStatus === 'mfs' && <p className="note">On a separate return, enter only your own income and deductions.</p>}
+
+      <Section title="Dependents" intro="Children and relatives you support. Each qualifying child under 17 is worth up to $2,200; other dependents up to $500.">
+        <DocList items={ret.dependents} addLabel="Add a dependent" emptyText="No dependents added."
+          title={(d, i) => d.name.trim() || `Dependent ${i + 1}`}
+          onAdd={() => deps.add(emptyDependent())} onRemove={deps.remove}
+          render={(d) => (
+            <>
+              <TextField label="Full name" value={d.name} onChange={(v) => deps.patch(d.id, { name: v })} />
+              <TextField label="Relationship" placeholder="Son, daughter, parent…" value={d.relationship} onChange={(v) => deps.patch(d.id, { relationship: v })} />
+              <div className="span-2">
+                <Check label="Under 17 at the end of 2025 and has a Social Security number" hint="Qualifies for the Child Tax Credit. Otherwise the $500 credit for other dependents applies."
+                  checked={d.qualifyingChild} onChange={(v) => deps.patch(d.id, { qualifyingChild: v })} />
+              </div>
+            </>
+          )} />
+      </Section>
+    </>
+  )
+}
+
+// ── Income ──────────────────────────────────────────────────────────────────
+export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
+  const w2 = listOps(set, 'w2s')
+  const int = listOps(set, 'interest')
+  const div = listOps(set, 'dividends')
+  const cap = listOps(set, 'capitalTransactions')
+  const biz = listOps(set, 'businesses')
+  const bizResult = (id: string) => result.scheduleC.find((b) => b.id === id)
+  return (
+    <>
+      <Section title="Wages" intro="One entry for each Form W-2 you received.">
+        <DocList items={ret.w2s} addLabel="Add a W-2" emptyText="No W-2s yet. Skip this if you had no job income."
+          title={(w, i) => w.employer.trim() || `W-2 ${i + 1}`}
+          onAdd={() => w2.add(emptyW2())} onRemove={w2.remove}
+          render={(w) => (
+            <>
+              <div className="span-2"><TextField label="Employer" value={w.employer} onChange={(v) => w2.patch(w.id, { employer: v })} /></div>
+              <div className="span-2"><OwnerPicker ret={ret} value={w.owner} onChange={(v) => w2.patch(w.id, { owner: v })} /></div>
+              <MoneyField label="Wages, tips, other compensation" box="Box 1" value={w.wages} onChange={(n) => w2.patch(w.id, { wages: n })} />
+              <MoneyField label="Federal income tax withheld" box="Box 2" value={w.federalWithholding} onChange={(n) => w2.patch(w.id, { federalWithholding: n })} />
+              <MoneyField label="Social Security wages" box="Box 3" value={w.socialSecurityWages} onChange={(n) => w2.patch(w.id, { socialSecurityWages: n })} />
+              <MoneyField label="Social Security tax withheld" box="Box 4" value={w.socialSecurityWithheld} onChange={(n) => w2.patch(w.id, { socialSecurityWithheld: n })} />
+              <MoneyField label="Medicare wages" box="Box 5" value={w.medicareWages} onChange={(n) => w2.patch(w.id, { medicareWages: n })} />
+              <MoneyField label="Medicare tax withheld" box="Box 6" value={w.medicareWithheld} onChange={(n) => w2.patch(w.id, { medicareWithheld: n })} />
+            </>
+          )} />
+      </Section>
+
+      <Section title="Interest" intro="Form 1099-INT from banks and brokers.">
+        <DocList items={ret.interest} addLabel="Add a 1099-INT" emptyText="No interest income."
+          title={(x, i) => x.payer.trim() || `1099-INT ${i + 1}`}
+          onAdd={() => int.add(empty1099Int())} onRemove={int.remove}
+          render={(x) => (
+            <>
+              <div className="span-2"><TextField label="Payer" value={x.payer} onChange={(v) => int.patch(x.id, { payer: v })} /></div>
+              <MoneyField label="Taxable interest" box="Box 1 + 3" value={x.interest} onChange={(n) => int.patch(x.id, { interest: n })} />
+              <MoneyField label="Tax-exempt interest" box="Box 8" value={x.taxExemptInterest} onChange={(n) => int.patch(x.id, { taxExemptInterest: n })} />
+              <MoneyField label="Federal tax withheld" box="Box 4" value={x.federalWithholding} onChange={(n) => int.patch(x.id, { federalWithholding: n })} />
+            </>
+          )} />
+      </Section>
+
+      <Section title="Dividends" intro="Form 1099-DIV from funds and brokerage accounts.">
+        <DocList items={ret.dividends} addLabel="Add a 1099-DIV" emptyText="No dividend income."
+          title={(x, i) => x.payer.trim() || `1099-DIV ${i + 1}`}
+          onAdd={() => div.add(empty1099Div())} onRemove={div.remove}
+          render={(x) => (
+            <>
+              <div className="span-2"><TextField label="Payer" value={x.payer} onChange={(v) => div.patch(x.id, { payer: v })} /></div>
+              <MoneyField label="Total ordinary dividends" box="Box 1a" value={x.ordinaryDividends} onChange={(n) => div.patch(x.id, { ordinaryDividends: n })} />
+              <MoneyField label="Qualified dividends" box="Box 1b" value={x.qualifiedDividends} onChange={(n) => div.patch(x.id, { qualifiedDividends: n })} />
+              <MoneyField label="Capital gain distributions" box="Box 2a" value={x.capitalGainDistributions} onChange={(n) => div.patch(x.id, { capitalGainDistributions: n })} />
+              <MoneyField label="Federal tax withheld" box="Box 4" value={x.federalWithholding} onChange={(n) => div.patch(x.id, { federalWithholding: n })} />
+            </>
+          )} />
+      </Section>
+
+      <Section title="Sales of stock and other investments" intro="From Form 1099-B. Long-term means you held it more than one year."
+        aside={ret.capitalTransactions.length > 0 ? <span className="pill">Net {usd(result.scheduleD.net)}</span> : undefined}>
+        <DocList items={ret.capitalTransactions} addLabel="Add a sale" emptyText="No investment sales."
+          title={(x, i) => x.description.trim() || `Sale ${i + 1}`}
+          onAdd={() => cap.add(emptyTransaction())} onRemove={cap.remove}
+          render={(x) => (
+            <>
+              <div className="span-2"><TextField label="Description" placeholder="100 sh. XYZ Corp" value={x.description} onChange={(v) => cap.patch(x.id, { description: v })} /></div>
+              <div className="span-2">
+                <Choice legend="Holding period" value={x.term} onChange={(v) => cap.patch(x.id, { term: v })}
+                  options={[{ value: 'short', label: 'Short-term', hint: 'One year or less' }, { value: 'long', label: 'Long-term', hint: 'More than one year' }]} />
+              </div>
+              <MoneyField label="Proceeds" box="Box 1d" value={x.proceeds} onChange={(n) => cap.patch(x.id, { proceeds: n })} />
+              <MoneyField label="Cost basis" box="Box 1e" value={x.costBasis} onChange={(n) => cap.patch(x.id, { costBasis: n })} />
+            </>
+          )} />
+        <details className="more">
+          <summary>Capital loss carried over from 2024</summary>
+          <div className="grid">
+            <MoneyField label="Short-term carryover" value={ret.capitalLossCarryover.shortTerm} onChange={(n) => set((r) => ({ ...r, capitalLossCarryover: { ...r.capitalLossCarryover, shortTerm: n } }))} />
+            <MoneyField label="Long-term carryover" value={ret.capitalLossCarryover.longTerm} onChange={(n) => set((r) => ({ ...r, capitalLossCarryover: { ...r.capitalLossCarryover, longTerm: n } }))} />
+          </div>
+        </details>
+      </Section>
+
+      <Section title="Self-employment" intro="Freelance, gig or small-business income reported on Schedule C. Self-employment tax is figured for you.">
+        <DocList items={ret.businesses} addLabel="Add a business" emptyText="No self-employment income."
+          title={(b, i) => b.name.trim() || `Business ${i + 1}`}
+          onAdd={() => biz.add(emptyBusiness())} onRemove={biz.remove}
+          render={(b) => {
+            const res = bizResult(b.id)
+            const exp = (k: keyof BusinessExpenses, n: number): void => biz.patch(b.id, { expenses: { ...b.expenses, [k]: n } })
+            return (
+              <>
+                <TextField label="Business name" value={b.name} onChange={(v) => biz.patch(b.id, { name: v })} />
+                <TextField label="What you do" placeholder="Web design, rideshare…" value={b.activity} onChange={(v) => biz.patch(b.id, { activity: v })} />
+                <div className="span-2"><OwnerPicker ret={ret} value={b.owner} onChange={(v) => biz.patch(b.id, { owner: v })} /></div>
+                <MoneyField label="Gross receipts or sales" hint="Include all 1099-NEC and 1099-K income" value={b.grossReceipts} onChange={(n) => biz.patch(b.id, { grossReceipts: n })} />
+                <MoneyField label="Returns and allowances" value={b.returnsAndAllowances} onChange={(n) => biz.patch(b.id, { returnsAndAllowances: n })} />
+                <MoneyField label="Cost of goods sold" value={b.costOfGoodsSold} onChange={(n) => biz.patch(b.id, { costOfGoodsSold: n })} />
+                <MoneyField label="Other business income" value={b.otherIncome} onChange={(n) => biz.patch(b.id, { otherIncome: n })} />
+                <details className="more span-2" open={Object.values(b.expenses).some((v) => v > 0)}>
+                  <summary>Expenses {res && res.totalExpenses > 0 ? `· ${usd(res.totalExpenses)}` : ''}</summary>
+                  <div className="grid">
+                    {(Object.keys(EXPENSE_LABELS) as (keyof BusinessExpenses)[]).map((k) => (
+                      <MoneyField key={k} label={EXPENSE_LABELS[k]} value={b.expenses[k]} onChange={(n) => exp(k, n)} />
+                    ))}
+                  </div>
+                </details>
+                {res && (
+                  <p className={`span-2 result-line ${res.netProfit < 0 ? 'is-loss' : ''}`}>
+                    Net {res.netProfit < 0 ? 'loss' : 'profit'} <strong>{usd(res.netProfit)}</strong>
+                  </p>
+                )}
+              </>
+            )
+          }} />
+      </Section>
+
+      <Section title="Other income">
+        <div className="grid">
+          <MoneyField label="Unemployment compensation" box="1099-G" value={ret.unemployment} onChange={(n) => set((r) => ({ ...r, unemployment: n }))} />
+          <MoneyField label="Other taxable income" hint="Prizes, jury duty, and similar (Schedule 1, line 8)" value={ret.otherIncome} onChange={(n) => set((r) => ({ ...r, otherIncome: n }))} />
+        </div>
+      </Section>
+    </>
+  )
+}
+
+// ── Deductions ──────────────────────────────────────────────────────────────
+export function DeductionsStep({ ret, set, result }: StepProps): ReactElement {
+  const adj = (k: keyof TaxReturnInput['adjustments'], n: number): void => set((r) => ({ ...r, adjustments: { ...r.adjustments, [k]: n } }))
+  const s1a = (k: keyof TaxReturnInput['schedule1A'], n: number): void => set((r) => ({ ...r, schedule1A: { ...r.schedule1A, [k]: n } }))
+  const itm = (k: keyof TaxReturnInput['itemized'], n: number): void => set((r) => ({ ...r, itemized: { ...r.itemized, [k]: n } }))
+  const d = result.deduction
+  return (
+    <>
+      <Section title="Adjustments to income" intro="These lower your adjusted gross income (Schedule 1, Part II).">
+        <div className="grid">
+          <MoneyField label="Student loan interest" box="1098-E" hint="Up to $2,500" value={ret.adjustments.studentLoanInterest} onChange={(n) => adj('studentLoanInterest', n)} />
+          <MoneyField label="Deductible IRA contributions" value={ret.adjustments.iraDeduction} onChange={(n) => adj('iraDeduction', n)} />
+          <MoneyField label="HSA deduction" hint="From Form 8889; not employer contributions" value={ret.adjustments.hsaDeduction} onChange={(n) => adj('hsaDeduction', n)} />
+          <MoneyField label="Educator expenses" hint="K–12 teachers, up to $300 each" value={ret.adjustments.educatorExpenses} onChange={(n) => adj('educatorExpenses', n)} />
+          {ret.businesses.length > 0 && (
+            <MoneyField label="Self-employed health insurance" value={ret.adjustments.selfEmployedHealthInsurance} onChange={(n) => adj('selfEmployedHealthInsurance', n)} />
+          )}
+        </div>
+        {result.schedule1.adjustments.deductibleHalfOfSeTax > 0 && (
+          <p className="note">Half of your self-employment tax, {usd(result.schedule1.adjustments.deductibleHalfOfSeTax)}, is deducted automatically.</p>
+        )}
+      </Section>
+
+      <Section title="New deductions for 2025" intro="Schedule 1-A. You can take these whether or not you itemize."
+        aside={result.schedule1A.total > 0 ? <span className="pill">{usd(result.schedule1A.total)}</span> : undefined}>
+        <div className="grid">
+          <MoneyField label="Qualified tips" hint="Up to $25,000; reported on your W-2 or 1099" value={ret.schedule1A.qualifiedTips} onChange={(n) => s1a('qualifiedTips', n)} />
+          <MoneyField label="Qualified overtime premium" hint="Only the extra “half” of time-and-a-half" value={ret.schedule1A.qualifiedOvertime} onChange={(n) => s1a('qualifiedOvertime', n)} />
+          <MoneyField label="Car loan interest" hint="New U.S.-assembled vehicle, up to $10,000" value={ret.schedule1A.carLoanInterest} onChange={(n) => s1a('carLoanInterest', n)} />
+        </div>
+        {result.schedule1A.senior > 0 && <p className="note">Senior deduction for age 65 and older: {usd(result.schedule1A.senior)}, applied automatically.</p>}
+      </Section>
+
+      <Section title="Standard or itemized" intro="Most people take the standard deduction. Enter itemized amounts only if you think they add up to more.">
+        <div className="compare">
+          <div className={d.used === 'standard' ? 'is-used' : ''}><span>Standard deduction</span><strong>{usd(d.standard)}</strong></div>
+          <div className={d.used === 'itemized' ? 'is-used' : ''}><span>Itemized total</span><strong>{usd(d.itemized)}</strong></div>
+        </div>
+        <Choice legend="Which to use" value={ret.deductionChoice} onChange={(v) => set((r) => ({ ...r, deductionChoice: v }))}
+          options={[
+            { value: 'auto', label: 'Whichever is larger' },
+            { value: 'standard', label: 'Standard' },
+            { value: 'itemized', label: 'Itemize' }
+          ]} />
+        <details className="more" open={d.itemized > 0}>
+          <summary>Itemized deductions (Schedule A)</summary>
+          <div className="grid">
+            <MoneyField label="Medical and dental expenses" hint={`Only the part above 7.5% of AGI counts: ${usd(result.scheduleA.medical)}`} value={ret.itemized.medical} onChange={(n) => itm('medical', n)} />
+            <MoneyField label="State and local income or sales tax" value={ret.itemized.stateLocalIncomeOrSalesTax} onChange={(n) => itm('stateLocalIncomeOrSalesTax', n)} />
+            <MoneyField label="Real estate taxes" value={ret.itemized.realEstateTax} onChange={(n) => itm('realEstateTax', n)} />
+            <MoneyField label="Personal property taxes" hint={`State and local taxes are capped at ${usd(result.scheduleA.saltCap)}`} value={ret.itemized.personalPropertyTax} onChange={(n) => itm('personalPropertyTax', n)} />
+            <MoneyField label="Home mortgage interest" box="1098" value={ret.itemized.mortgageInterest} onChange={(n) => itm('mortgageInterest', n)} />
+            <MoneyField label="Gifts to charity by cash or check" value={ret.itemized.charityCash} onChange={(n) => itm('charityCash', n)} />
+            <MoneyField label="Gifts to charity other than cash" value={ret.itemized.charityNonCash} onChange={(n) => itm('charityNonCash', n)} />
+            <MoneyField label="Other itemized deductions" value={ret.itemized.other} onChange={(n) => itm('other', n)} />
+          </div>
+        </details>
+      </Section>
+    </>
+  )
+}
+
+// ── Credits & payments ──────────────────────────────────────────────────────
+export function PaymentsStep({ ret, set, result }: StepProps): ReactElement {
+  const c = result.schedule8812
+  return (
+    <>
+      <Section title="Child Tax Credit" intro={ret.dependents.length ? 'Figured from the dependents you entered.' : 'Add dependents in “About you” to claim this credit.'}>
+        <dl className="facts">
+          <div><dt>Qualifying children</dt><dd>{c.qualifyingChildren}</dd></div>
+          <div><dt>Other dependents</dt><dd>{c.otherDependents}</dd></div>
+          <div><dt>Credit before income limit</dt><dd>{usd(c.creditBeforePhaseout)}</dd></div>
+          {c.phaseoutReduction > 0 && <div><dt>Reduced for income</dt><dd>−{usd(c.phaseoutReduction)}</dd></div>}
+          <div><dt>Applied against your tax</dt><dd>{usd(c.nonrefundable)}</dd></div>
+          <div><dt>Refundable part</dt><dd>{usd(c.refundable)}</dd></div>
+        </dl>
+      </Section>
+
+      <Section title="Tax you already paid">
+        <dl className="facts">
+          <div><dt>Withheld on W-2s</dt><dd>{usd(result.f1040['25a'])}</dd></div>
+          <div><dt>Withheld on 1099s</dt><dd>{usd(result.f1040['25b'] - ret.payments.otherWithholding)}</dd></div>
+          {result.f1040['25c'] > 0 && <div><dt>Additional Medicare tax withheld</dt><dd>{usd(result.f1040['25c'])}</dd></div>}
+          {result.f1040['31'] > 0 && <div><dt>Excess Social Security withheld</dt><dd>{usd(result.f1040['31'])}</dd></div>}
+        </dl>
+        <div className="grid">
+          <MoneyField label="2025 estimated tax payments" hint="Include any 2024 overpayment applied to 2025" value={ret.payments.estimatedTaxPayments} onChange={(n) => set((r) => ({ ...r, payments: { ...r.payments, estimatedTaxPayments: n } }))} />
+          <MoneyField label="Other federal withholding" hint="1099-R, 1099-G, SSA-1099, etc." value={ret.payments.otherWithholding} onChange={(n) => set((r) => ({ ...r, payments: { ...r.payments, otherWithholding: n } }))} />
+        </div>
+      </Section>
+    </>
+  )
+}

@@ -1,9 +1,0 @@
-/* Phase 56: workflow-first UI, existing modules preserved */
-.ng56-jump{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0 24px}
-.ng56-jump a{border:1px solid #cbd9e7;border-radius:8px;padding:10px 14px;color:#174d77;text-decoration:none;font-weight:600;background:#f8fbff}
-.ng56-jump a:hover,.ng56-jump a:focus-visible{background:#e8f3fc;outline:2px solid #7fb6e1}
-.ng56-fold{border:1px solid #d6e1ec;border-radius:10px;padding:14px;margin:22px 0;background:#fff}
-.ng56-fold>summary{cursor:pointer;color:#174d77;font-weight:700;padding:6px}
-.ng56-fold[open]>summary{margin-bottom:20px}
-.ng-unified #ng56-documents,.ng-unified #ng56-preview{scroll-margin-top:24px}
-@media(max-width:640px){.ng56-jump a{flex:1 1 45%;text-align:center}}

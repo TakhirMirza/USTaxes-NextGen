@@ -1,0 +1,132 @@
+/**
+ * Federal individual income tax parameters for tax year 2025.
+ *
+ * Sources
+ *  - Rev. Proc. 2024-40 (inflation adjustments for 2025)
+ *  - Public Law 119-21 ("One Big Beautiful Bill Act" / Working Families Tax Cuts), signed 2025-07-04
+ *      https://www.irs.gov/newsroom/one-big-beautiful-bill-provisions-individuals-and-workers
+ *  - IRS Topic 551, Standard deduction: https://www.irs.gov/taxtopics/tc551
+ *  - 2025 Form 1040 instructions and Schedule 1-A: https://www.irs.gov/instructions/i1040gi
+ *
+ * All dollar amounts are whole dollars.
+ */
+
+export type FilingStatus = 'single' | 'mfj' | 'mfs' | 'hoh' | 'qss'
+
+export const FILING_STATUS_LABELS: Record<FilingStatus, string> = {
+  single: 'Single',
+  mfj: 'Married filing jointly',
+  mfs: 'Married filing separately',
+  hoh: 'Head of household',
+  qss: 'Qualifying surviving spouse'
+}
+
+export type Bracket = readonly [lowerBound: number, rate: number]
+
+export const TAX_YEAR = 2025
+
+/** Ordinary income brackets (Rev. Proc. 2024-40, unchanged by P.L. 119-21 for 2025). */
+export const BRACKETS: Record<FilingStatus, readonly Bracket[]> = {
+  single: [[0, 0.10], [11925, 0.12], [48475, 0.22], [103350, 0.24], [197300, 0.32], [250525, 0.35], [626350, 0.37]],
+  mfj: [[0, 0.10], [23850, 0.12], [96950, 0.22], [206700, 0.24], [394600, 0.32], [501050, 0.35], [751600, 0.37]],
+  mfs: [[0, 0.10], [11925, 0.12], [48475, 0.22], [103350, 0.24], [197300, 0.32], [250525, 0.35], [375800, 0.37]],
+  hoh: [[0, 0.10], [17000, 0.12], [64850, 0.22], [103350, 0.24], [197300, 0.32], [250500, 0.35], [626350, 0.37]],
+  qss: [[0, 0.10], [23850, 0.12], [96950, 0.22], [206700, 0.24], [394600, 0.32], [501050, 0.35], [751600, 0.37]]
+}
+
+/** Standard deduction as amended by P.L. 119-21 §70102. */
+export const STANDARD_DEDUCTION: Record<FilingStatus, number> = {
+  single: 15750, mfj: 31500, mfs: 15750, hoh: 23625, qss: 31500
+}
+/** Additional standard deduction per box checked (age 65+ / blind). */
+export const ADDITIONAL_STD_UNMARRIED = 2000
+export const ADDITIONAL_STD_MARRIED = 1600
+/** Dependent standard deduction: greater of $1,350 or earned income + $450. */
+export const DEPENDENT_STD_MIN = 1350
+export const DEPENDENT_STD_EARNED_ADDON = 450
+
+/** Qualified dividends & capital gain: top of 0% and 15% zones (taxable income). */
+export const CAPITAL_GAIN_ZERO_TOP: Record<FilingStatus, number> = {
+  single: 48350, mfj: 96700, mfs: 48350, hoh: 64750, qss: 96700
+}
+export const CAPITAL_GAIN_FIFTEEN_TOP: Record<FilingStatus, number> = {
+  single: 533400, mfj: 600050, mfs: 300000, hoh: 566700, qss: 600050
+}
+/** Net capital loss deductible against ordinary income. */
+export const CAPITAL_LOSS_LIMIT: Record<FilingStatus, number> = {
+  single: 3000, mfj: 3000, mfs: 1500, hoh: 3000, qss: 3000
+}
+
+/** Self-employment tax (Schedule SE). */
+export const SE_NET_EARNINGS_FACTOR = 0.9235
+export const SE_MINIMUM_NET_EARNINGS = 400
+export const SOCIAL_SECURITY_WAGE_BASE = 176100
+export const SOCIAL_SECURITY_RATE_SE = 0.124
+export const MEDICARE_RATE_SE = 0.029
+
+/** Additional Medicare Tax (Form 8959) and Net Investment Income Tax (Form 8960). */
+export const ADDITIONAL_MEDICARE_RATE = 0.009
+export const MEDICARE_EMPLOYEE_RATE = 0.0145
+export const NIIT_RATE = 0.038
+export const HIGH_INCOME_THRESHOLD: Record<FilingStatus, number> = {
+  single: 200000, mfj: 250000, mfs: 125000, hoh: 200000, qss: 250000
+}
+
+/** Itemized deductions (Schedule A). P.L. 119-21 §70120: SALT cap $40,000 for 2025. */
+export const MEDICAL_AGI_FLOOR = 0.075
+export const SALT_CAP: Record<FilingStatus, number> = {
+  single: 40000, mfj: 40000, mfs: 20000, hoh: 40000, qss: 40000
+}
+export const SALT_PHASEDOWN_THRESHOLD: Record<FilingStatus, number> = {
+  single: 500000, mfj: 500000, mfs: 250000, hoh: 500000, qss: 500000
+}
+export const SALT_PHASEDOWN_RATE = 0.30
+export const SALT_FLOOR: Record<FilingStatus, number> = {
+  single: 10000, mfj: 10000, mfs: 5000, hoh: 10000, qss: 10000
+}
+
+/** Schedule 1-A (P.L. 119-21 §§70103, 70201–70203). Married filers must file jointly to claim. */
+export const TIPS_MAX = 25000
+export const OVERTIME_MAX: Record<FilingStatus, number> = {
+  single: 12500, mfj: 25000, mfs: 0, hoh: 12500, qss: 12500
+}
+export const TIPS_OVERTIME_PHASEOUT_START: Record<FilingStatus, number> = {
+  single: 150000, mfj: 300000, mfs: 0, hoh: 150000, qss: 150000
+}
+/** Reduced by $100 for each $1,000 (or fraction) of MAGI above the threshold. */
+export const TIPS_OVERTIME_PHASEOUT_PER_1000 = 100
+export const CAR_LOAN_INTEREST_MAX = 10000
+export const CAR_LOAN_PHASEOUT_START: Record<FilingStatus, number> = {
+  single: 100000, mfj: 200000, mfs: 100000, hoh: 100000, qss: 100000
+}
+/** Reduced by $200 for each $1,000 (or fraction) of MAGI above the threshold. */
+export const CAR_LOAN_PHASEOUT_PER_1000 = 200
+export const SENIOR_DEDUCTION = 6000
+export const SENIOR_PHASEOUT_START: Record<FilingStatus, number> = {
+  single: 75000, mfj: 150000, mfs: 0, hoh: 75000, qss: 75000
+}
+export const SENIOR_PHASEOUT_RATE = 0.06
+
+/** Child Tax Credit / Credit for Other Dependents (Schedule 8812), P.L. 119-21 §70104. */
+export const CTC_PER_CHILD = 2200
+export const ODC_PER_DEPENDENT = 500
+export const ACTC_REFUNDABLE_MAX_PER_CHILD = 1700
+export const ACTC_EARNED_INCOME_FLOOR = 2500
+export const ACTC_EARNED_INCOME_RATE = 0.15
+export const CTC_PHASEOUT_START: Record<FilingStatus, number> = {
+  single: 200000, mfj: 400000, mfs: 200000, hoh: 200000, qss: 200000
+}
+/** Reduced by $50 for each $1,000 (or fraction) of MAGI above the threshold. */
+export const CTC_PHASEOUT_PER_1000 = 50
+
+/** Qualified business income deduction (Form 8995 simplified path). */
+export const QBI_RATE = 0.20
+export const QBI_SIMPLE_THRESHOLD: Record<FilingStatus, number> = {
+  single: 197300, mfj: 394600, mfs: 197300, hoh: 197300, qss: 197300
+}
+
+/** Student loan interest deduction (Schedule 1 line 21). */
+export const STUDENT_LOAN_INTEREST_MAX = 2500
+export const STUDENT_LOAN_PHASEOUT: Record<FilingStatus, readonly [number, number] | null> = {
+  single: [85000, 100000], mfj: [170000, 200000], mfs: null, hoh: [85000, 100000], qss: [85000, 100000]
+}

@@ -1,9 +1,0 @@
-import assert from 'node:assert/strict'
-import { assessFederalReadiness2025, federalReadinessCsv2025 } from '../src/nextgen/taxYears/federalReadiness2025.ts'
-const base = {year:'2025',filingStatus:'single',hasDependents:'no',deduction:'standard',profileUnresolved:[],simplifiedDeductionEligible:true,incomeKinds:['W-2 wages'],wageEntriesValid:true,interestValid:true,basicDeductionConfirmed:true,noOtherItemsConfirmed:true,sourceIssueCount:0,reconciliationIssueCount:0}
-let count=0
-function check(change, expected) { const ids=assessFederalReadiness2025({...base,...change}).map(x=>x.id); assert(ids.includes(expected),`Missing ${expected}`);count++ }
-check({},'filing-disabled');check({year:'2026'},'year');check({filingStatus:'head'},'complex-status');check({filingStatus:'survivor'},'complex-status');check({hasDependents:'unknown'},'dependents');check({hasDependents:'yes'},'dependents');check({profileUnresolved:['Age unknown']},'profile-0');check({incomeKinds:[]},'income-selection');check({incomeKinds:['Capital gains']},'unsupported-Capital gains');check({wageEntriesValid:false},'w2');check({incomeKinds:['1099-INT interest'],interestValid:false},'interest');check({sourceIssueCount:1},'source-audit');check({deduction:'itemized'},'deduction-choice');check({simplifiedDeductionEligible:false},'deduction-facts');check({basicDeductionConfirmed:false},'deduction-confirmation');check({noOtherItemsConfirmed:false},'scope-confirmation');check({reconciliationIssueCount:1},'reconciliation');
-const csv=federalReadinessCsv2025(assessFederalReadiness2025(base));assert(csv.startsWith('id,area,severity,title,action'));assert(!csv.includes('12345.67'));count+=2;
-assert.equal(assessFederalReadiness2025(base).filter(x=>x.severity==='blocker').length,1);count++;
-console.log(`PASS: ${count} consolidated readiness regression checks`)

@@ -1,0 +1,216 @@
+import { ChangeEvent, ReactElement, useRef, useState } from 'react'
+import type { StepProps } from './steps'
+import type { Issue } from '../engine/compute.ts'
+import { normalizeReturn, emptyReturn } from '../engine/model.ts'
+import { FILING_STATUS_LABELS } from '../engine/rules2025.ts'
+import { Section, usd } from './fields'
+
+const LINES: [line: string, label: string][] = [
+  ['1a', 'Wages from W-2s'],
+  ['1z', 'Total wages'],
+  ['2a', 'Tax-exempt interest'],
+  ['2b', 'Taxable interest'],
+  ['3a', 'Qualified dividends'],
+  ['3b', 'Ordinary dividends'],
+  ['7', 'Capital gain or (loss)'],
+  ['8', 'Additional income (Schedule 1)'],
+  ['9', 'Total income'],
+  ['10', 'Adjustments to income'],
+  ['11', 'Adjusted gross income'],
+  ['12', 'Standard or itemized deduction'],
+  ['13a', 'Qualified business income deduction'],
+  ['13b', 'Additional deductions (Schedule 1-A)'],
+  ['14', 'Total deductions'],
+  ['15', 'Taxable income'],
+  ['16', 'Tax'],
+  ['18', 'Tax before credits'],
+  ['19', 'Child tax credit / credit for other dependents'],
+  ['22', 'Tax after credits'],
+  ['23', 'Other taxes (Schedule 2)'],
+  ['24', 'Total tax'],
+  ['25d', 'Federal income tax withheld'],
+  ['26', 'Estimated tax payments'],
+  ['28', 'Additional child tax credit'],
+  ['31', 'Excess Social Security withheld (Schedule 3)'],
+  ['33', 'Total payments'],
+  ['34', 'Overpaid'],
+  ['37', 'Amount you owe']
+]
+const KEY_LINES = new Set(['9', '11', '15', '24', '33', '34', '37'])
+const ALWAYS = new Set(['1z', '9', '11', '12', '15', '16', '24', '33'])
+
+const STEP_LABEL: Record<Issue['step'], string> = { about: 'About you', income: 'Income', deductions: 'Deductions', credits: 'Credits & payments', review: 'Review' }
+
+export function IssueList({ issues, onGo }: { issues: Issue[]; onGo?: (step: Issue['step']) => void }): ReactElement | null {
+  if (!issues.length) return null
+  const order: Issue['level'][] = ['error', 'warning', 'info']
+  const sorted = [...issues].sort((a, b) => order.indexOf(a.level) - order.indexOf(b.level))
+  return (
+    <ul className="issues">
+      {sorted.map((i, n) => (
+        <li key={n} className={`issue is-${i.level}`}>
+          <span className="issue-kind">{i.level === 'error' ? 'Fix' : i.level === 'warning' ? 'Check' : 'Note'}</span>
+          <span>{i.message}</span>
+          {onGo && i.step !== 'review' && <button type="button" className="link-button" onClick={() => onGo(i.step)}>Go to {STEP_LABEL[i.step]}</button>}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+export function ReviewStep({ ret, set, result, onGo }: StepProps & { onGo: (step: Issue['step']) => void }): ReactElement {
+  const fileInput = useRef<HTMLInputElement>(null)
+  const [message, setMessage] = useState('')
+  const f = result.f1040
+
+  const download = (): void => {
+    const blob = new Blob([JSON.stringify(ret, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `ustaxes-2025-${(ret.taxpayer.lastName || 'return').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.json`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    setMessage('Saved a copy of your return to your downloads.')
+  }
+  const importFile = (e: ChangeEvent<HTMLInputElement>): void => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    file.text().then((text) => {
+      set(() => normalizeReturn(JSON.parse(text)))
+      setMessage(`Loaded ${file.name}.`)
+    }).catch(() => setMessage('That file is not a USTaxes return. Choose a .json file saved from this app.'))
+    e.target.value = ''
+  }
+  const reset = (): void => {
+    if (window.confirm('Clear every entry and start a new return? Download a copy first if you want to keep it.')) {
+      set(() => emptyReturn())
+      setMessage('Started a new return.')
+    }
+  }
+
+  const s2 = result.schedule2
+  return (
+    <>
+      <Section title="Things to look at" intro={result.issues.length ? undefined : 'Nothing needs your attention.'}>
+        <IssueList issues={result.issues} onGo={onGo} />
+      </Section>
+
+      <Section title="Form 1040" intro={`${FILING_STATUS_LABELS[ret.filingStatus]} · tax year 2025`}>
+        <table className="lines">
+          <tbody>
+            {LINES.filter(([line]) => ALWAYS.has(line) || f[line] !== 0).map(([line, label]) => (
+              <tr key={line} className={KEY_LINES.has(line) ? 'is-key' : ''}>
+                <th scope="row"><span className="line-no">{line}</span>{label}</th>
+                <td>{usd(f[line])}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Section>
+
+      <Section title="Schedules">
+        <div className="schedules">
+          {result.schedule1.additionalIncome !== 0 || result.schedule1.totalAdjustments > 0 ? (
+            <details><summary>Schedule 1 <span>Additional income and adjustments</span></summary>
+              <dl className="facts">
+                {result.schedule1.businessIncome !== 0 && <div><dt>Business income</dt><dd>{usd(result.schedule1.businessIncome)}</dd></div>}
+                {result.schedule1.unemployment > 0 && <div><dt>Unemployment</dt><dd>{usd(result.schedule1.unemployment)}</dd></div>}
+                {result.schedule1.otherIncome > 0 && <div><dt>Other income</dt><dd>{usd(result.schedule1.otherIncome)}</dd></div>}
+                {Object.entries(result.schedule1.adjustments).filter(([, v]) => v > 0).map(([k, v]) => (
+                  <div key={k}><dt>{k.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase())}</dt><dd>−{usd(v)}</dd></div>
+                ))}
+              </dl>
+            </details>
+          ) : null}
+          {result.schedule1A.total > 0 && (
+            <details><summary>Schedule 1-A <span>Tips, overtime, car loan, seniors</span></summary>
+              <dl className="facts">
+                {result.schedule1A.tips > 0 && <div><dt>Tips</dt><dd>{usd(result.schedule1A.tips)}</dd></div>}
+                {result.schedule1A.overtime > 0 && <div><dt>Overtime</dt><dd>{usd(result.schedule1A.overtime)}</dd></div>}
+                {result.schedule1A.carLoanInterest > 0 && <div><dt>Car loan interest</dt><dd>{usd(result.schedule1A.carLoanInterest)}</dd></div>}
+                {result.schedule1A.senior > 0 && <div><dt>Seniors</dt><dd>{usd(result.schedule1A.senior)}</dd></div>}
+              </dl>
+            </details>
+          )}
+          {result.deduction.used === 'itemized' && (
+            <details><summary>Schedule A <span>Itemized deductions</span></summary>
+              <dl className="facts">
+                <div><dt>Medical (above 7.5% of AGI)</dt><dd>{usd(result.scheduleA.medical)}</dd></div>
+                <div><dt>Taxes (cap {usd(result.scheduleA.saltCap)})</dt><dd>{usd(result.scheduleA.taxes)}</dd></div>
+                <div><dt>Mortgage interest</dt><dd>{usd(result.scheduleA.interest)}</dd></div>
+                <div><dt>Charity</dt><dd>{usd(result.scheduleA.charity)}</dd></div>
+                {result.scheduleA.other > 0 && <div><dt>Other</dt><dd>{usd(result.scheduleA.other)}</dd></div>}
+              </dl>
+            </details>
+          )}
+          {result.scheduleB.required && (
+            <details><summary>Schedule B <span>Interest and dividends over $1,500</span></summary>
+              <dl className="facts">
+                {ret.interest.map((i) => <div key={i.id}><dt>{i.payer || 'Interest'}</dt><dd>{usd(i.interest)}</dd></div>)}
+                {ret.dividends.map((d) => <div key={d.id}><dt>{d.payer || 'Dividends'}</dt><dd>{usd(d.ordinaryDividends)}</dd></div>)}
+              </dl>
+            </details>
+          )}
+          {result.scheduleC.map((c) => (
+            <details key={c.id}><summary>Schedule C <span>{c.name}</span></summary>
+              <dl className="facts">
+                <div><dt>Gross income</dt><dd>{usd(c.grossIncome)}</dd></div>
+                <div><dt>Expenses</dt><dd>−{usd(c.totalExpenses)}</dd></div>
+                <div><dt>Net profit or loss</dt><dd>{usd(c.netProfit)}</dd></div>
+              </dl>
+            </details>
+          ))}
+          {ret.capitalTransactions.length + ret.dividends.filter((d) => d.capitalGainDistributions > 0).length > 0 && (
+            <details><summary>Schedule D <span>Capital gains and losses</span></summary>
+              <dl className="facts">
+                <div><dt>Net short-term</dt><dd>{usd(result.scheduleD.shortTerm)}</dd></div>
+                <div><dt>Net long-term</dt><dd>{usd(result.scheduleD.longTerm)}</dd></div>
+                <div><dt>On Form 1040 line 7</dt><dd>{usd(f['7'])}</dd></div>
+                {result.scheduleD.carryoverShort + result.scheduleD.carryoverLong > 0 && <div><dt>Carryover to 2026</dt><dd>{usd(result.scheduleD.carryoverShort + result.scheduleD.carryoverLong)}</dd></div>}
+              </dl>
+            </details>
+          )}
+          {result.scheduleSE.map((s) => (
+            <details key={s.owner}><summary>Schedule SE <span>{s.owner === 'spouse' ? ret.spouse.firstName || 'Spouse' : ret.taxpayer.firstName || 'You'}</span></summary>
+              <dl className="facts">
+                <div><dt>Net earnings (92.35%)</dt><dd>{usd(s.netEarnings)}</dd></div>
+                <div><dt>Social Security part</dt><dd>{usd(s.socialSecurityTax)}</dd></div>
+                <div><dt>Medicare part</dt><dd>{usd(s.medicareTax)}</dd></div>
+                <div><dt>Self-employment tax</dt><dd>{usd(s.total)}</dd></div>
+              </dl>
+            </details>
+          ))}
+          {s2.total > 0 && (
+            <details><summary>Schedule 2 <span>Other taxes</span></summary>
+              <dl className="facts">
+                {s2.selfEmploymentTax > 0 && <div><dt>Self-employment tax</dt><dd>{usd(s2.selfEmploymentTax)}</dd></div>}
+                {s2.additionalMedicareTax > 0 && <div><dt>Additional Medicare tax (Form 8959)</dt><dd>{usd(s2.additionalMedicareTax)}</dd></div>}
+                {s2.netInvestmentIncomeTax > 0 && <div><dt>Net investment income tax (Form 8960)</dt><dd>{usd(s2.netInvestmentIncomeTax)}</dd></div>}
+              </dl>
+            </details>
+          )}
+          {result.qbi.deduction > 0 && (
+            <details><summary>Form 8995 <span>Qualified business income deduction</span></summary>
+              <dl className="facts">
+                <div><dt>Qualified business income</dt><dd>{usd(result.qbi.qualifiedBusinessIncome)}</dd></div>
+                <div><dt>Deduction</dt><dd>{usd(result.qbi.deduction)}</dd></div>
+              </dl>
+            </details>
+          )}
+        </div>
+      </Section>
+
+      <Section title="Save your work" intro="Your return stays in this browser and is saved as you type. Nothing is sent anywhere. Download a copy to move it to another device.">
+        <div className="actions">
+          <button type="button" className="button" onClick={download}>Download return file</button>
+          <button type="button" className="button is-quiet" onClick={() => fileInput.current?.click()}>Open a return file</button>
+          <button type="button" className="button is-quiet" onClick={() => window.print()}>Print summary</button>
+          <button type="button" className="button is-danger" onClick={reset}>Start over</button>
+          <input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={importFile} />
+        </div>
+        {message && <p className="note" role="status">{message}</p>}
+      </Section>
+    </>
+  )
+}

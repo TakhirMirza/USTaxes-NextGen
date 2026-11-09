@@ -1,5 +1,0 @@
-# Phase 20 — Schedule A and B source entry (2025 development preview)
-
-Adds source-entry editors to existing Income and Deductions pages without replacing the legacy UI. Schedule A supports five draft expense categories; Schedule B supports up to 50 interest payer rows and a dividend draft total. Validates unsigned monetary amounts with no more than two decimal places and integer-cent safety; flags missing payer details and mismatch against the existing 1099-INT source. Exports fictional-only JSON.
-
-**Deliberate restrictions:** Schedule A subtotal is not an allowable deduction; no AGI, SALT or other tax-year limits are applied. Schedule B data is not automatically posted to Form 1040; existing 1099-INT source remains authoritative. No tax filing, PDF, or e-file. No real taxpayer information. Draft Schedule A/B data lives in React state only and is cleared on page reload; it is not included in scenario JSON import/export. Tax rules, full document reconciliation, durable encrypted storage and 2026+ support remain future work.
