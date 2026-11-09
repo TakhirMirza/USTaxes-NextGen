@@ -21,14 +21,17 @@ the browser's local storage and can be downloaded as a JSON file.
 | QBI | Form 8995 deduction below the income threshold |
 | Tax | IRS Tax Table (< $100,000), Tax Computation Worksheet, Qualified Dividends & Capital Gain worksheet |
 | Other taxes (Schedule 2) | Self-employment tax (Schedule SE), Additional Medicare Tax (8959), Net Investment Income Tax (8960), 10% tax on early retirement distributions |
-| Credits | Earned Income Credit (Schedule EIC), Child Tax Credit $2,200 / credit for other dependents / refundable ACTC (Schedule 8812), child and dependent care (Form 2441), American Opportunity and Lifetime Learning (Form 8863) |
-| Payments | Withholding, Additional Medicare withholding, excess Social Security, estimated payments |
+| Credits | Saver's Credit (Form 8880), Earned Income Credit (Schedule EIC), Child Tax Credit $2,200 / credit for other dependents / refundable ACTC (Schedule 8812), child and dependent care (Form 2441), American Opportunity and Lifetime Learning (Form 8863) |
+| Payments | Withholding, Additional Medicare withholding, excess Social Security, quarterly estimated payments |
+| Penalty | Estimated tax penalty (Form 2210 Part I and the 2025 Penalty Worksheet, 7%), with the 2024 safe harbor |
 
 **IRS forms (PDF):** the Review step fills the official 2025 IRS PDFs in the browser and downloads one
 print-ready file: Form 1040, Schedules 1, 1-A, 2, 3, A, B, C, D, SE, EIC, 8812, Forms 2441, 8863, 8959, 8960, 8995, and the
 1040-V payment voucher when tax is owed. The blank forms live in `public/forms/2025` (official IRS PDFs).
 
-**Not yet supported:** AMT, saver's credit, Form 5329 exceptions, Form 8995-A, depreciation detail,
+**Try it:** the “Try an example” link fills in a made-up household so you can see every step.
+
+**Not yet supported:** AMT, Form 5329 exceptions, Form 8995-A, depreciation detail,
 state returns, e-file. Form 8829 (home office) and Schedule C inventory detail are not prepared; the app lists them when needed. The app flags these when they may apply.
 
 ## Project layout

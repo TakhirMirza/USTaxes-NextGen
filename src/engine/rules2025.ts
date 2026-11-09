@@ -176,3 +176,24 @@ export const LLC_RATE = 0.20
 export const EDUCATION_PHASEOUT: Record<FilingStatus, readonly [number, number] | null> = {
   single: [80000, 90000], mfj: [160000, 180000], mfs: null, hoh: [80000, 90000], qss: [80000, 90000]
 }
+
+/** Saver's Credit (Form 8880), 2025. AGI upper bounds for the 50%, 20% and 10% rates. */
+export const SAVERS_RATE_LIMITS: Record<FilingStatus, readonly [number, number, number]> = {
+  single: [23750, 25500, 39500], mfj: [47500, 51000, 79000], mfs: [23750, 25500, 39500],
+  hoh: [35625, 38250, 59250], qss: [23750, 25500, 39500]
+}
+export const SAVERS_CONTRIBUTION_LIMIT = 2000
+/** Must be born before January 2, 2008 (age 18 by the end of 2025). */
+export const SAVERS_MIN_AGE = 18
+
+/** Estimated tax penalty (Form 2210), 2025. Instructions for Form 2210 (2025), Penalty Worksheet. */
+export const PENALTY_MIN_BALANCE = 1000
+export const PENALTY_CURRENT_YEAR_SHARE = 0.90
+export const PENALTY_HIGH_AGI: Record<FilingStatus, number> = {
+  single: 150000, mfj: 150000, mfs: 75000, hoh: 150000, qss: 150000
+}
+export const PENALTY_HIGH_AGI_SHARE = 1.10
+/** 7% for every rate period from April 16, 2025 through April 15, 2026. */
+export const PENALTY_RATE = 0.07
+export const INSTALLMENT_DUE_DATES = ['2025-04-15', '2025-06-15', '2025-09-15', '2026-01-15'] as const
+export const RETURN_DUE_DATE = '2026-04-15'

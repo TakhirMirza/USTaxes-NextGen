@@ -141,6 +141,7 @@ function form1040(ret: TaxReturnInput, res: TaxReturnResult, attachScheduleD: bo
     'f2_30[0]': amt(f['34']),
     'f2_31[0]': amt(f['34']),
     'f2_35[0]': amt(f['37']),
+    'f2_36[0]': amt(f['38']),
     'f2_40[0]': ret.taxpayer.occupation,
     'f2_44[0]': ret.contact.phone,
     'f2_45[0]': ret.contact.email
@@ -286,7 +287,8 @@ function schedule3(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
       ...header(ret, 'f1_01[0]', 'f1_02[0]'),
       'f1_04[0]': amt(s.dependentCare),
       'f1_05[0]': amt(s.education),
-      'f1_25[0]': amt(s.dependentCare + s.education),
+      'f1_06[0]': amt(s.saversCredit),
+      'f1_25[0]': amt(s.dependentCare + s.education + s.saversCredit),
       'f1_28[0]': amt(s.excessSocialSecurity),
       'f1_37[0]': amt(s.excessSocialSecurity)
     }
@@ -488,7 +490,7 @@ function schedule8812(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
   const over = Math.max(0, magi - threshold)
   const line10 = Math.ceil(over / 1000) * 1000
   const line12 = Math.max(0, c.creditBeforePhaseout - c.phaseoutReduction)
-  const line13 = Math.max(0, res.f1040['18'] - res.schedule3.dependentCare - res.schedule3.education)
+  const line13 = Math.max(0, res.f1040['18'] - res.schedule3.dependentCare - res.schedule3.education - res.schedule3.saversCredit)
   const v: Record<string, FieldValue> = {
     ...header(ret, 'f1_1[0]', 'f1_2[0]'),
     'f1_3[0]': amt(magi, true), 'f1_8[0]': amt(magi, true),
@@ -754,7 +756,7 @@ export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult): Form
   if (res.schedule1.additionalIncome !== 0 || res.schedule1.totalAdjustments > 0) forms.push(schedule1(ret, res))
   if (res.schedule1A.total > 0) forms.push(schedule1A(ret, res))
   if (res.schedule2.total > 0) forms.push(schedule2(ret, res))
-  if (res.schedule3.dependentCare + res.schedule3.education + res.schedule3.excessSocialSecurity > 0) forms.push(schedule3(ret, res))
+  if (res.schedule3.dependentCare + res.schedule3.education + res.schedule3.saversCredit + res.schedule3.excessSocialSecurity > 0) forms.push(schedule3(ret, res))
   if (res.deduction.used === 'itemized') forms.push(scheduleA(ret, res))
   if (res.scheduleB.required) forms.push(scheduleB(ret, res))
   const owners = ret.filingStatus === 'mfj' ? ['taxpayer', 'spouse'] : ['taxpayer']
@@ -775,6 +777,7 @@ export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult): Form
 
   const notIncluded: string[] = []
   if (ret.dependents.length > 4) notIncluded.push('A statement listing dependents after the fourth')
+  if (res.schedule3.saversCredit > 0) notIncluded.push('Form 8880 (Credit for Qualified Retirement Savings Contributions)')
   if (ret.businesses.some((b) => b.expenses.homeOffice > 0)) notIncluded.push('Form 8829 or the simplified-method worksheet for home office expenses')
   return { forms, notIncluded }
 }

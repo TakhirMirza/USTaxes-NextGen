@@ -10,6 +10,8 @@ export interface Person {
   ssn: string
   occupation: string
   presidentialFund: boolean
+  /** Full-time student during any part of 5 months of 2025 (blocks the Saver's Credit). */
+  fullTimeStudent: boolean
   /** Age on December 31, 2025. 0 = not entered. */
   age: number
   age65OrOlder: boolean
@@ -46,6 +48,24 @@ export interface Contact {
   email: string
   /** Main home (and spouse's, if joint) in the U.S. for more than half of 2025. */
   livedInUsHalfYear: boolean
+}
+
+export interface RetirementSavings {
+  /** Traditional and Roth IRA contributions for 2025 (Form 8880 line 1). */
+  iraContributions: number
+  /** 401(k), 403(b), 457, TSP and SIMPLE deferrals (W-2 box 12 codes D, E, G, H, S, AA, BB, EE). */
+  electiveDeferrals: number
+  /** Retirement distributions received from 2023 through the 2025 return due date (Form 8880 line 4). */
+  distributions: number
+}
+
+export interface PriorYear {
+  /** Total 2024 tax (2024 Form 1040 line 22 + line 23 − refundable credits). null = not entered. */
+  tax: number | null
+  /** 2024 adjusted gross income (2024 Form 1040 line 11). */
+  agi: number
+  /** Had no tax liability for 2024 and was a U.S. citizen or resident all year (no penalty). */
+  noLiability: boolean
 }
 
 export interface RefundDeposit {
@@ -250,13 +270,16 @@ export interface TaxReturnInput {
   deductionChoice: DeductionChoice
   dependentCare: { expenses: number; employerBenefits: number; providers: CareProvider[] }
   students: Student[]
-  payments: { estimatedTaxPayments: number; otherWithholding: number }
+  savings: { taxpayer: RetirementSavings; spouse: RetirementSavings }
+  priorYear: PriorYear
+  /** estimatedByQuarter: payments made by 4/15/25, 6/15/25, 9/15/25 and 1/15/26. estimatedTaxPayments is their sum. */
+  payments: { estimatedTaxPayments: number; estimatedByQuarter: [number, number, number, number]; otherWithholding: number }
 }
 
 let counter = 0
 export const newId = (prefix: string): string => `${prefix}-${Date.now().toString(36)}-${(counter++).toString(36)}`
 
-export const emptyPerson = (): Person => ({ firstName: '', lastName: '', ssn: '', occupation: '', presidentialFund: false, age: 0, age65OrOlder: false, blind: false })
+export const emptyPerson = (): Person => ({ firstName: '', lastName: '', ssn: '', occupation: '', presidentialFund: false, fullTimeStudent: false, age: 0, age65OrOlder: false, blind: false })
 
 export const emptyExpenses = (): BusinessExpenses => ({
   advertising: 0, carAndTruck: 0, contractLabor: 0, insurance: 0, legalAndProfessional: 0, office: 0,
@@ -313,6 +336,8 @@ export const emptyStudent = (): Student => ({
 })
 export const emptyProvider = (): CareProvider => ({ id: newId('care'), name: '', address: '', tin: '', householdEmployee: false, amountPaid: 0 })
 
+export const emptySavings = (): RetirementSavings => ({ iraContributions: 0, electiveDeferrals: 0, distributions: 0 })
+
 export const emptyReturn = (): TaxReturnInput => ({
   version: 1,
   filingStatus: 'single',
@@ -343,10 +368,28 @@ export const emptyReturn = (): TaxReturnInput => ({
   deductionChoice: 'auto',
   dependentCare: { expenses: 0, employerBenefits: 0, providers: [] },
   students: [],
-  payments: { estimatedTaxPayments: 0, otherWithholding: 0 }
+  savings: { taxpayer: emptySavings(), spouse: emptySavings() },
+  priorYear: { tax: null, agi: 0, noLiability: false },
+  payments: { estimatedTaxPayments: 0, estimatedByQuarter: [0, 0, 0, 0], otherWithholding: 0 }
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
+/** Older files stored only a yearly total of estimated payments; spread it over the four due dates. */
+const normalizePayments = (p: Partial<TaxReturnInput['payments']> | undefined): TaxReturnInput['payments'] => {
+  const other = p?.otherWithholding ?? 0
+  const q = Array.isArray(p?.estimatedByQuarter) && p.estimatedByQuarter.length === 4
+    ? (p.estimatedByQuarter.map((n) => Number(n) || 0) as [number, number, number, number])
+    : null
+  const total = p?.estimatedTaxPayments ?? 0
+  if (q && q.some((n) => n > 0)) return { estimatedByQuarter: q, estimatedTaxPayments: q.reduce((a, b) => a + b, 0), otherWithholding: other }
+  if (total > 0) {
+    const each = Math.floor((total / 4) * 100) / 100
+    const first = Math.round((total - each * 3) * 100) / 100
+    return { estimatedByQuarter: [first, each, each, each], estimatedTaxPayments: total, otherWithholding: other }
+  }
+  return { estimatedByQuarter: [0, 0, 0, 0], estimatedTaxPayments: 0, otherWithholding: other }
+}
+
 const person = (p: Partial<Person> | undefined): Person => {
   const merged = { ...emptyPerson(), ...(p ?? {}) }
   if (!merged.age && merged.age65OrOlder) merged.age = 65
@@ -391,6 +434,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     adjustments: { ...base.adjustments, ...(r.adjustments ?? {}) },
     schedule1A: { ...base.schedule1A, ...(r.schedule1A ?? {}) },
     itemized: { ...base.itemized, ...(r.itemized ?? {}) },
-    payments: { ...base.payments, ...(r.payments ?? {}) }
+    savings: { taxpayer: { ...emptySavings(), ...(r.savings?.taxpayer ?? {}) }, spouse: { ...emptySavings(), ...(r.savings?.spouse ?? {}) } },
+    priorYear: { ...base.priorYear, ...(r.priorYear ?? {}) },
+    payments: normalizePayments(r.payments)
   }
 }

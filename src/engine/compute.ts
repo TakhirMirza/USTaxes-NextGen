@@ -36,12 +36,17 @@ export interface TaxReturnResult {
   scheduleD: { shortTerm: number; longTerm: number; net: number; allowedLoss: number; carryoverShort: number; carryoverLong: number; preferentialGain: number }
   scheduleSE: ScheduleSEResult[]
   schedule2: { selfEmploymentTax: number; additionalMedicareTax: number; netInvestmentIncomeTax: number; earlyDistributionTax: number; total: number }
-  schedule3: { dependentCare: number; education: number; excessSocialSecurity: number }
+  schedule3: { dependentCare: number; education: number; saversCredit: number; excessSocialSecurity: number }
   form2441: {
     qualifyingPersons: number; expensesUsed: number; rate: number; credit: number
     line3: number; line4: number; line5: number
     partIII: { line12: number; line16: number; line17: number; line18: number; line19: number; line20: number; line21: number; line25: number; line26: number; line27: number; line28: number; line29: number; line30: number; line31: number } | null
   }
+  form8880: {
+    people: { owner: Owner; ira: number; deferrals: number; line3: number; distributions: number; line5: number; line6: number; eligible: boolean }[]
+    line7: number; rate: number; tentative: number; limit: number; credit: number
+  }
+  form2210: PenaltyResult
   form8863Detail: { phaseoutFraction: number; aotcTentative: number; llcTentative: number; llcExpenses: number }
   form8863: { aotc: number; aotcRefundable: number; llc: number; nonrefundableAllowed: number }
   eic: { qualifyingChildren: number; earnedIncome: number; investmentIncome: number; credit: number; notEligibleBecause: string[] }
@@ -142,6 +147,68 @@ export function eicFromTable(amount: number, children: number, phaseoutStart: nu
   const k = Math.min(3, Math.max(0, children))
   const credit = Math.min(mid * R.EIC_CREDIT_RATE[k], R.EIC_MAX_CREDIT[k]) - pos(mid - phaseoutStart) * R.EIC_PHASEOUT_RATE[k]
   return r(pos(credit))
+}
+
+export interface PenaltyResult {
+  applies: boolean
+  /** Why no penalty is due, when applies is false. */
+  reason: string
+  line4: number; line5: number; line6: number; line7: number; line8: number | null; line9: number
+  installments: { due: string; required: number; paid: number; underpaid: number }[]
+  penalty: number
+  priorYearMissing: boolean
+}
+
+const dayNumber = (iso: string): number => Math.round(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86400000)
+
+/**
+ * Form 2210 Part I and the regular-method Penalty Worksheet. Withholding is treated as paid in four
+ * equal parts on the installment due dates; each estimate as paid on its due date. Payments go to the
+ * oldest unpaid installment first. Any underpayment still open is charged through April 15, 2026.
+ */
+export function estimatedTaxPenalty(a: {
+  fs: FilingStatus; currentTax: number; withholding: number
+  estimates: readonly number[]; prior: TaxReturnInput['priorYear']
+}): PenaltyResult {
+  const line4 = r(a.currentTax)
+  const line5 = r(line4 * R.PENALTY_CURRENT_YEAR_SHARE)
+  const line6 = r(a.withholding)
+  const line7 = line4 - line6
+  const enteredPrior = a.prior.tax !== null && a.prior.tax > 0 ? a.prior.tax : null
+  const base = { line4, line5, line6, line7, installments: [], penalty: 0, priorYearMissing: enteredPrior === null && !a.prior.noLiability }
+  const priorTax = a.prior.noLiability ? 0 : enteredPrior
+  const line8 = priorTax === null ? null : r(priorTax * (a.prior.agi > R.PENALTY_HIGH_AGI[a.fs] ? R.PENALTY_HIGH_AGI_SHARE : 1))
+  const line9 = line8 === null ? line5 : Math.min(line5, line8)
+  if (line4 < R.PENALTY_MIN_BALANCE || line7 < R.PENALTY_MIN_BALANCE) return { ...base, applies: false, reason: 'Tax after withholding is under $1,000.', line8, line9 }
+  if (a.prior.noLiability) return { ...base, applies: false, reason: 'You had no tax liability for 2024.', line8, line9 }
+  if (line6 >= line9) return { ...base, applies: false, reason: 'Your withholding covers the required annual payment.', line8, line9 }
+  const required = line9 / 4
+  const open: { amount: number; due: number }[] = []
+  const installments: PenaltyResult['installments'] = []
+  let carry = 0
+  let penalty = 0
+  const charge = (amount: number, from: number, to: number): void => { penalty += amount * Math.max(0, to - from) / 365 * R.PENALTY_RATE }
+  R.INSTALLMENT_DUE_DATES.forEach((due, i) => {
+    const day = dayNumber(due)
+    let available = line6 / 4 + pos(a.estimates[i] ?? 0) + carry
+    const paidThisPeriod = line6 / 4 + pos(a.estimates[i] ?? 0)
+    while (open.length && available > 0) {
+      const u = open[0]
+      const use = Math.min(u.amount, available)
+      charge(use, u.due, day)
+      u.amount -= use
+      available -= use
+      if (u.amount <= 0.004) open.shift()
+    }
+    const short = Math.max(0, required - available)
+    carry = Math.max(0, available - required)
+    if (short > 0) open.push({ amount: short, due: day })
+    installments.push({ due, required: r(required), paid: r(paidThisPeriod), underpaid: r(short) })
+  })
+  const end = dayNumber(R.RETURN_DUE_DATE)
+  for (const u of open) charge(u.amount, u.due, end)
+  const rounded = r(penalty)
+  return { ...base, applies: rounded > 0, reason: rounded > 0 ? '' : 'Your payments were on time and large enough.', line8, line9, installments, penalty: rounded }
 }
 
 export function computeReturn(input: TaxReturnInput): TaxReturnResult {
@@ -488,7 +555,34 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   const take = (amount: number): number => { const used = Math.min(amount, remaining); remaining -= used; return used }
   const careAllowed = take(careCredit)
   const educationAllowed = take(aotc - aotcRefundable + llc)
-  const schedule3Part1 = careAllowed + educationAllowed
+
+  // Form 8880 — Saver's Credit (Schedule 3 line 4)
+  const saverPeople: { owner: Owner; person: Person }[] = joint
+    ? [{ owner: 'taxpayer', person: input.taxpayer }, { owner: 'spouse', person: input.spouse }]
+    : [{ owner: 'taxpayer', person: input.taxpayer }]
+  const saverLines = saverPeople.map(({ owner, person }) => {
+    const s = input.savings[owner]
+    const line3 = pos(s.iraContributions) + pos(s.electiveDeferrals)
+    const line5 = pos(line3 - pos(s.distributions))
+    const eligible = !input.canBeClaimedAsDependent && !person.fullTimeStudent && (person.age === 0 || person.age >= R.SAVERS_MIN_AGE)
+    return { owner, ira: r(pos(s.iraContributions)), deferrals: r(pos(s.electiveDeferrals)), line3: r(line3), distributions: r(pos(s.distributions)), line5: r(line5), line6: eligible ? r(Math.min(line5, R.SAVERS_CONTRIBUTION_LIMIT)) : 0, eligible }
+  })
+  const saverLine7 = sum(saverLines.map((x) => x.line6))
+  const [lim50, lim20, lim10] = R.SAVERS_RATE_LIMITS[fs]
+  const saverRate = agi <= lim50 ? 0.5 : agi <= lim20 ? 0.2 : agi <= lim10 ? 0.1 : 0
+  const saverTentative = r(saverLine7 * saverRate)
+  const saverLimit = remaining
+  const saverAllowed = take(saverTentative)
+  if (saverLines.some((x) => x.line3 > 0)) {
+    if (input.canBeClaimedAsDependent) issues.push({ level: 'info', step: 'credits', message: 'The Saver’s Credit is not available if someone can claim you as a dependent.' })
+    saverLines.filter((x) => x.line3 > 0 && !x.eligible).forEach((x) => {
+      const p = x.owner === 'spouse' ? input.spouse : input.taxpayer
+      if (p.fullTimeStudent) issues.push({ level: 'info', step: 'credits', message: `${p.firstName || (x.owner === 'spouse' ? 'Your spouse' : 'You')}: full-time students cannot take the Saver’s Credit.` })
+    })
+    if (saverRate === 0) issues.push({ level: 'info', step: 'credits', message: `Your AGI is above $${lim10.toLocaleString()}, so the Saver’s Credit does not apply.` })
+    if (saverPeople.some(({ person }) => person.age === 0)) issues.push({ level: 'info', step: 'about', message: 'Enter your age: the Saver’s Credit requires age 18 or older.' })
+  }
+  const schedule3Part1 = careAllowed + educationAllowed + saverAllowed
 
   // Schedule 8812
   const qualifyingChildren = input.dependents.filter(ctcChild).length
@@ -552,7 +646,7 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   const addlMedicareWithheld = r(pos(sum(w2s.map((w) => w.medicareWithheld)) - totalMedicareWages * R.MEDICARE_EMPLOYEE_RATE))
   const line25c = addlMedicareWithheld
   const line25d = line25a + line25b + line25c
-  const line26 = r(input.payments.estimatedTaxPayments)
+  const line26 = r(sum(input.payments.estimatedByQuarter) || input.payments.estimatedTaxPayments)
   const line27 = eic
   const line28 = refundable
   const line29 = aotcRefundable
@@ -567,13 +661,25 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   const line32 = line27 + line28 + line29 + line31
   const line33 = line25d + line26 + line32
 
-  const line34 = pos(line33 - line24)
-  const line37 = pos(line24 - line33)
+  // Form 2210 — Underpayment of estimated tax (Part I and the Penalty Worksheet)
+  const penalty = estimatedTaxPenalty({
+    fs,
+    currentTax: line22 + line23 - (line27 + line28 + line29),
+    withholding: line25d + line31,
+    estimates: input.payments.estimatedByQuarter,
+    prior: input.priorYear
+  })
+  const line38 = penalty.penalty
+  if (penalty.applies && penalty.penalty > 0) issues.push({ level: 'warning', step: 'review', message: `Estimated tax penalty of $${penalty.penalty.toLocaleString()} (Form 2210) is included. Paying more through withholding or quarterly estimates avoids it next year.` })
+  if (penalty.priorYearMissing && penalty.applies) issues.push({ level: 'warning', step: 'credits', message: 'Enter your 2024 tax under “Tax you already paid”. It can lower or remove the estimated tax penalty.' })
+
+  const balance = line33 - line24
+  const line34 = balance > 0 ? pos(balance - line38) : 0
+  const line37 = balance > 0 ? pos(line38 - balance) : pos(-balance) + line38
 
   // ── Coverage notes ────────────────────────────────────────────────────────
   if (eic > 0) issues.push({ level: 'info', step: 'credits', message: 'Earned Income Credit is included. Attach Schedule EIC for each qualifying child, and confirm each child lived with you in the U.S. for more than half of 2025.' })
   if (agi > 200000 && line15 > 0) issues.push({ level: 'info', step: 'review', message: 'Alternative Minimum Tax (Form 6251) is not calculated. Most filers at this income still owe none, but check if you have ISOs or large deductions.' })
-  if (line37 > 1000 && line25d + line26 < Math.min(line24 * 0.9, line24)) issues.push({ level: 'info', step: 'review', message: 'You owe more than $1,000. An underpayment penalty (Form 2210) may apply; it is not calculated here.' })
   if (scheduleSE.length && businesses.length) issues.push({ level: 'info', step: 'income', message: 'Schedule C is figured on the cash method from the totals you enter. Depreciation (Form 4562) and inventory details are not itemized.' })
   if (w2s.some((w) => w.wages > 0 && (w.medicareWages === 0 || w.socialSecurityWages === 0))) issues.push({ level: 'info', step: 'income', message: 'For W-2s where box 3 or box 5 is blank, box 1 wages were used instead.' })
   if (input.dependents.some((d) => !d.name.trim())) issues.push({ level: 'warning', step: 'about', message: 'Enter a name for each dependent.' })
@@ -593,7 +699,7 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
       '14': line14, '15': line15, '16': line16, '17': line17, '18': line18, '19': line19, '20': line20,
       '21': line21, '22': line22, '23': line23, '24': line24, '25a': line25a, '25b': line25b, '25c': line25c,
       '25d': line25d, '26': line26, '27a': line27, '28': line28, '29': line29, '31': line31, '32': line32, '33': line33,
-      '34': line34, '37': line37
+      '34': line34, '37': line37, '38': line38
     },
     schedule1: { businessIncome: r(businessIncome), unemployment, otherIncome, additionalIncome, adjustments, totalAdjustments: line10 },
     schedule1A: {
@@ -607,12 +713,14 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
     scheduleD: { shortTerm, longTerm, net: netCapital, allowedLoss: line7 < 0 ? -line7 : 0, carryoverShort, carryoverLong, preferentialGain },
     scheduleSE,
     schedule2: { selfEmploymentTax: seTax, additionalMedicareTax: addlMedicare, netInvestmentIncomeTax: niit, earlyDistributionTax, total: schedule2Total },
-    schedule3: { dependentCare: careAllowed, education: educationAllowed, excessSocialSecurity: line31 },
+    schedule3: { dependentCare: careAllowed, education: educationAllowed, saversCredit: saverAllowed, excessSocialSecurity: line31 },
     form2441: {
       qualifyingPersons: carePersons, expensesUsed: careExpensesUsed, rate: careRate, credit: careCredit,
       line3: f2441.line3, line4: f2441.line4, line5: f2441.line5,
       partIII: care.employerBenefits > 0 ? { ...p3, line27: f2441.line27, line28: f2441.line28, line29: f2441.line29, line30: f2441.line30, line31: f2441.line31 } : null
     },
+    form8880: { people: saverLines, line7: saverLine7, rate: saverRate, tentative: saverTentative, limit: saverLimit, credit: saverAllowed },
+    form2210: penalty,
     form8863Detail: { phaseoutFraction: eduFraction, aotcTentative: r(aotcTentative), llcTentative: r(llcTentative), llcExpenses: r(Math.min(llcExpenses, R.LLC_EXPENSE_LIMIT)) },
     form8863: { aotc, aotcRefundable, llc, nonrefundableAllowed: educationAllowed },
     eic: { qualifyingChildren: eicChildren, earnedIncome, investmentIncome, credit: eic, notEligibleBecause: eic > 0 ? [] : eicReasons },

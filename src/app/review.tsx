@@ -45,7 +45,8 @@ const LINES: [line: string, label: string][] = [
   ['31', 'Excess Social Security withheld (Schedule 3)'],
   ['33', 'Total payments'],
   ['34', 'Overpaid'],
-  ['37', 'Amount you owe']
+  ['37', 'Amount you owe'],
+  ['38', 'Estimated tax penalty (included above)']
 ]
 const KEY_LINES = new Set(['9', '11a', '15', '24', '33', '34', '37'])
 const ALWAYS = new Set(['1z', '9', '11a', '12e', '15', '16', '24', '33'])
@@ -230,11 +231,12 @@ export function ReviewStep({ ret, set, result, onGo }: StepProps & { onGo: (step
               </dl>
             </details>
           )}
-          {result.schedule3.dependentCare + result.schedule3.education + result.schedule3.excessSocialSecurity > 0 && (
+          {result.schedule3.dependentCare + result.schedule3.education + result.schedule3.saversCredit + result.schedule3.excessSocialSecurity > 0 && (
             <details><summary>Schedule 3 <span>Additional credits and payments</span></summary>
               <dl className="facts">
                 {result.schedule3.dependentCare > 0 && <div><dt>Child and dependent care credit</dt><dd>{usd(result.schedule3.dependentCare)}</dd></div>}
                 {result.schedule3.education > 0 && <div><dt>Education credits (nonrefundable)</dt><dd>{usd(result.schedule3.education)}</dd></div>}
+                {result.schedule3.saversCredit > 0 && <div><dt>Saver’s credit (Form 8880)</dt><dd>{usd(result.schedule3.saversCredit)}</dd></div>}
                 {result.schedule3.excessSocialSecurity > 0 && <div><dt>Excess Social Security withheld</dt><dd>{usd(result.schedule3.excessSocialSecurity)}</dd></div>}
               </dl>
             </details>

@@ -61,6 +61,7 @@ export function AboutStep({ ret, set }: StepProps): ReactElement {
         </div>
         <div className="checks">
           <Check label="I am blind" checked={ret.taxpayer.blind} onChange={(v) => person('taxpayer', { blind: v })} />
+          <Check label="I was a full-time student for at least 5 months of 2025" checked={ret.taxpayer.fullTimeStudent} onChange={(v) => person('taxpayer', { fullTimeStudent: v })} />
           <Check label="Someone can claim me as a dependent" checked={ret.canBeClaimedAsDependent} onChange={(v) => set((r) => ({ ...r, canBeClaimedAsDependent: v }))} />
         </div>
       </Section>
@@ -78,6 +79,7 @@ export function AboutStep({ ret, set }: StepProps): ReactElement {
           </div>
           <div className="checks">
             <Check label="My spouse is blind" checked={ret.spouse.blind} onChange={(v) => person('spouse', { blind: v })} />
+            <Check label="My spouse was a full-time student for at least 5 months of 2025" checked={ret.spouse.fullTimeStudent} onChange={(v) => person('spouse', { fullTimeStudent: v })} />
           </div>
         </Section>
       )}
@@ -518,6 +520,32 @@ export function PaymentsStep({ ret, set, result }: StepProps): ReactElement {
         })()}
       </Section>
 
+      <Section title="Retirement savings" intro="The Saver’s Credit pays back 10% to 50% of up to $2,000 you put into an IRA or workplace plan, if your income is modest."
+        aside={result.form8880.credit > 0 ? <span className="pill">{usd(result.form8880.credit)}</span> : undefined}>
+        {(ret.filingStatus === 'mfj' ? (['taxpayer', 'spouse'] as const) : (['taxpayer'] as const)).map((who) => {
+          const sv = ret.savings[who]
+          const setSv = (p: Partial<typeof sv>): void => set((r) => ({ ...r, savings: { ...r.savings, [who]: { ...r.savings[who], ...p } } }))
+          const name = who === 'spouse' ? (ret.spouse.firstName || 'Your spouse') : (ret.taxpayer.firstName || 'You')
+          return (
+            <div key={who} className="doc" style={{ marginBottom: 12 }}>
+              <header><h3>{name}</h3></header>
+              <div className="grid">
+                <MoneyField label="IRA contributions for 2025" hint="Traditional and Roth" value={sv.iraContributions} onChange={(n) => setSv({ iraContributions: n })} />
+                <MoneyField label="401(k), 403(b), 457 or TSP deferrals" box="W-2 box 12" hint="Codes D, E, G, H, S, AA, BB, EE" value={sv.electiveDeferrals} onChange={(n) => setSv({ electiveDeferrals: n })} />
+                <MoneyField label="Retirement distributions 2023–2025" hint="Withdrawals reduce the credit; rollovers don’t count" value={sv.distributions} onChange={(n) => setSv({ distributions: n })} />
+              </div>
+            </div>
+          )
+        })}
+        {result.form8880.line7 > 0 && (
+          <p className="note">
+            {result.form8880.rate > 0
+              ? `${usd(result.form8880.line7)} of contributions at ${Math.round(result.form8880.rate * 100)}% gives ${usd(result.form8880.tentative)}.${result.form8880.credit < result.form8880.tentative ? ` It can only reduce your income tax, so ${usd(result.form8880.credit)} is used.` : ''}`
+              : 'Your income is above the limit for the Saver’s Credit.'}
+          </p>
+        )}
+      </Section>
+
       {result.summary.refund > 0 && (
         <Section title="Direct deposit" intro={`Get your ${usd(result.summary.refund)} refund faster by direct deposit. Leave blank to get a paper check.`}>
           <div className="grid">
@@ -537,9 +565,33 @@ export function PaymentsStep({ ret, set, result }: StepProps): ReactElement {
           {result.f1040['31'] > 0 && <div><dt>Excess Social Security withheld</dt><dd>{usd(result.f1040['31'])}</dd></div>}
         </dl>
         <div className="grid">
-          <MoneyField label="2025 estimated tax payments" hint="Include any 2024 overpayment applied to 2025" value={ret.payments.estimatedTaxPayments} onChange={(n) => set((r) => ({ ...r, payments: { ...r.payments, estimatedTaxPayments: n } }))} />
           <MoneyField label="Other federal withholding" hint="1099-G, 1099-NEC, 1099-MISC and similar" value={ret.payments.otherWithholding} onChange={(n) => set((r) => ({ ...r, payments: { ...r.payments, otherWithholding: n } }))} />
         </div>
+        <h3 className="subhead">2025 estimated tax payments</h3>
+        <p className="why" style={{ marginTop: 0 }}>Enter each payment under the deadline it was paid by. Include any 2024 overpayment applied to 2025 in the first one.</p>
+        <div className="grid">
+          {(['April 15, 2025', 'June 16, 2025', 'September 15, 2025', 'January 15, 2026'] as const).map((label, i) => (
+            <MoneyField key={label} label={`Paid by ${label}`} value={ret.payments.estimatedByQuarter[i]}
+              onChange={(n) => set((r) => {
+                const q = [...r.payments.estimatedByQuarter] as [number, number, number, number]
+                q[i] = n
+                return { ...r, payments: { ...r.payments, estimatedByQuarter: q, estimatedTaxPayments: q.reduce((a, b) => a + b, 0) } }
+              })} />
+          ))}
+        </div>
+
+        <h3 className="subhead">Your 2024 return</h3>
+        <p className="why" style={{ marginTop: 0 }}>Used only to check the estimated tax penalty. If you paid at least last year’s tax (110% if your AGI was over $150,000), there is no penalty.</p>
+        <div className="grid">
+          <MoneyField label="2024 total tax" hint="2024 Form 1040 line 24 minus lines 27–30" value={ret.priorYear.tax ?? 0} onChange={(n) => set((r) => ({ ...r, priorYear: { ...r.priorYear, tax: n } }))} />
+          <MoneyField label="2024 adjusted gross income" hint="2024 Form 1040 line 11" value={ret.priorYear.agi} onChange={(n) => set((r) => ({ ...r, priorYear: { ...r.priorYear, agi: n } }))} />
+        </div>
+        <div className="checks">
+          <Check label="I had no tax liability for 2024 (and was a U.S. citizen or resident all year)" checked={ret.priorYear.noLiability} onChange={(v) => set((r) => ({ ...r, priorYear: { ...r.priorYear, noLiability: v } }))} />
+        </div>
+        {result.form2210.penalty > 0
+          ? <p className="note is-warn">Estimated tax penalty: <strong>{usd(result.form2210.penalty)}</strong> (Form 1040 line 38), figured quarter by quarter at 7% a year. It is included in your amount owed.</p>
+          : result.form2210.reason && result.form2210.line7 >= 1000 ? <p className="note">No estimated tax penalty: {result.form2210.reason.charAt(0).toLowerCase() + result.form2210.reason.slice(1)}</p> : null}
       </Section>
     </>
   )

@@ -7,6 +7,7 @@ import type { TaxReturnInput } from '../engine/model.ts'
 import { AboutStep, DeductionsStep, IncomeStep, PaymentsStep } from './steps'
 import type { Setter } from './steps'
 import { ReviewStep } from './review'
+import { exampleReturn, hasEntries } from './example'
 import { usd } from './fields'
 import './app.css'
 
@@ -74,6 +75,13 @@ function Workspace(): ReactElement {
   const [summaryOpen, setSummaryOpen] = useState(false)
   const result = useMemo(() => computeReturn(ret), [ret])
   const set: Setter = (fn) => setRet((r) => fn(r))
+  const loadExample = (): void => {
+    if (hasEntries(ret) && ret.taxpayer.lastName !== 'Example' &&
+      !window.confirm('Replace what you have entered with an example household? Download your return first (Review step) if you want to keep it.')) return
+    setRet(exampleReturn())
+    navigate('/about')
+    window.scrollTo({ top: 0 })
+  }
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -96,7 +104,10 @@ function Workspace(): ReactElement {
           <span className="brand-mark" aria-hidden="true">1040</span>
           <span>USTaxes <em>NextGen</em></span>
         </a>
-        <p className="masthead-note">2025 federal return · private, runs in your browser</p>
+        <div className="masthead-side">
+          <p className="masthead-note">2025 federal return · private, runs in your browser</p>
+          <button type="button" className="link-button" onClick={loadExample}>{ret.taxpayer.lastName === 'Example' ? 'Reload the example' : 'Try an example'}</button>
+        </div>
       </header>
 
       <nav className="steps" aria-label="Return steps">

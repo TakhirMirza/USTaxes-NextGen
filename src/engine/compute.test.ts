@@ -252,3 +252,71 @@ test('education phase-out fraction is rounded to three decimals', () => {
   assert.equal(res.form8863Detail.phaseoutFraction, 0.667)
   assert.equal(res.form8863.llc, 1334)
 })
+
+test('Saver’s Credit: 50% of up to $2,000 at low AGI, limited by tax', () => {
+  const ret = base({ w2s: [w2(22000, 500)], savings: { taxpayer: { iraContributions: 1000, electiveDeferrals: 1500, distributions: 0 }, spouse: { iraContributions: 0, electiveDeferrals: 0, distributions: 0 } } })
+  const res = computeReturn(ret)
+  assert.equal(res.form8880.rate, 0.5)
+  assert.equal(res.form8880.tentative, 1000)
+  // Tax Table row $6,250–$6,300 gives $628, so the credit is limited to that
+  assert.equal(res.f1040['16'], 628)
+  assert.equal(res.schedule3.saversCredit, 628)
+  assert.equal(res.f1040['22'], 0)
+})
+
+test('Saver’s Credit: distributions reduce contributions; students are not eligible', () => {
+  const s = (ira: number, dist: number) => ({ iraContributions: ira, electiveDeferrals: 0, distributions: dist })
+  const res = computeReturn(base({ filingStatus: 'mfj', w2s: [w2(50000, 0)], savings: { taxpayer: s(3000, 500), spouse: s(2000, 0) }, spouse: { ...base().spouse, fullTimeStudent: true } }))
+  assert.equal(res.form8880.people[0].line6, 2000)
+  assert.equal(res.form8880.people[1].line6, 0)
+  assert.equal(res.form8880.rate, 0.2)
+  assert.equal(res.form8880.credit, 400)
+})
+
+test('Form 2210: no penalty under $1,000 or when 2024 safe harbor is met', () => {
+  const small = computeReturn(base({ w2s: [w2(60000, 4500)] }))
+  assert.equal(small.form2210.penalty, 0)
+  const safe = computeReturn(base({ w2s: [w2(60000, 2000)], priorYear: { tax: 1800, agi: 50000, noLiability: false } }))
+  assert.equal(safe.form2210.applies, false)
+  assert.equal(safe.f1040['38'], 0)
+})
+
+test('Form 2210: no estimates paid — penalty on each quarter at 7%', () => {
+  const biz = { ...emptyBusiness(), name: 'Shop', grossReceipts: 80000 }
+  const res = computeReturn(base({ businesses: [biz], priorYear: { tax: 9000, agi: 60000, noLiability: false } }))
+  const p = res.form2210
+  assert.equal(p.line9, 9000)
+  // 2,250 per quarter, each unpaid until April 15, 2026
+  const days = [365, 304, 212, 90]
+  const expected = Math.round(days.reduce((t, d) => t + 2250 * d / 365 * 0.07, 0))
+  assert.equal(p.penalty, expected)
+  assert.equal(res.f1040['38'], expected)
+  assert.equal(res.f1040['37'], res.f1040['24'] - res.f1040['33'] + expected)
+})
+
+test('Form 2210: on-time quarterly estimates avoid the penalty; a late start does not', () => {
+  const biz = { ...emptyBusiness(), name: 'Shop', grossReceipts: 80000 }
+  const prior = { tax: 9000, agi: 60000, noLiability: false }
+  const onTime = computeReturn(base({ businesses: [biz], priorYear: prior, payments: { estimatedTaxPayments: 9000, estimatedByQuarter: [2250, 2250, 2250, 2250], otherWithholding: 0 } }))
+  assert.equal(onTime.form2210.penalty, 0)
+  const late = computeReturn(base({ businesses: [biz], priorYear: prior, payments: { estimatedTaxPayments: 9000, estimatedByQuarter: [0, 0, 4500, 4500], otherWithholding: 0 } }))
+  // 9/15 payment clears Q1 (153 days) and Q2 (92 days); Q3 then stays short until 1/15 (122 days)
+  const expected = Math.round(2250 * (153 + 92 + 122) / 365 * 0.07)
+  assert.equal(late.form2210.penalty, expected)
+})
+
+test('normalizeReturn spreads an old yearly estimate total across four quarters', () => {
+  const n = normalizeReturn({ payments: { estimatedTaxPayments: 1000, otherWithholding: 0 } })
+  assert.deepEqual(n.payments.estimatedByQuarter, [250, 250, 250, 250])
+})
+
+test('example household computes without errors and uses the new credits', async () => {
+  const { exampleReturn } = await import('../app/example.ts')
+  const res = computeReturn(exampleReturn())
+  assert.equal(res.issues.filter((i) => i.level === 'error').length, 0)
+  assert.ok(res.schedule3.dependentCare > 0)
+  assert.ok(res.schedule3.saversCredit > 0)
+  assert.ok(res.eic.credit > 0)
+  assert.equal(res.form2210.penalty, 0)
+  assert.ok(res.f1040['34'] > 0)
+})

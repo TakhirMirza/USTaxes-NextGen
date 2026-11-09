@@ -347,3 +347,7 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .note.is-warn { background: var(--warn-tint); }
 .note ul { margin: 6px 0 0; padding-left: 20px; }
 .button:disabled { opacity: 0.6; cursor: progress; }
+.subhead { margin: 26px 0 6px; font-size: 1.02rem; font-weight: 700; }
+.masthead-side { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 760px) { .masthead-side { justify-content: flex-start; } }
+.subhead + .why { margin-bottom: 14px; }
