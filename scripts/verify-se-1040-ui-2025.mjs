@@ -1,0 +1,12 @@
+import fs from 'node:fs'; import assert from 'node:assert/strict';
+const ui=fs.readFileSync('src/components/SE1040Workpaper2025.tsx','utf8');
+const host=fs.readFileSync('src/components/NextGen2025FederalReturn.tsx','utf8');
+const core=fs.readFileSync('src/nextgen/taxYears/se1040Reconciliation2025.ts','utf8');
+assert.match(host, /<SE1040Workpaper2025 schedules=\{schedules\}/);
+assert.match(ui, /reconcileSETo1040Workpaper2025\(input\)/);
+assert.match(ui, /setReviewed\(Object\.fromEntries/);
+assert.match(ui, /result\.status==='reconciled-not-posted'/);
+assert.match(ui, /No values are posted to Form 1040/);
+assert.match(core, /filingReady:false/);
+assert.doesNotMatch(ui, /localStorage|sessionStorage|fetch\(/);
+console.log('PASS: 2025 cross-form audit UI is connected; edits reset reviews; no posting or storage.');

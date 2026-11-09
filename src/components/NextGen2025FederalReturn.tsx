@@ -1,3 +1,4 @@
+import SE1040Workpaper2025 from './SE1040Workpaper2025'
 import { preview2025TaxTable } from '../nextgen/taxYears/irs2025TaxTablePreview'
 import { computeOrdinaryTax2025, Filing2025 } from '../nextgen/taxYears/irs2025OrdinaryTax'
 import { ReactElement, useState } from 'react'
@@ -135,6 +136,7 @@ export default function NextGen2025FederalReturn({ income, schedules, w2Withhold
     <h3>{finalReconciled ? 'Arithmetic reconciled — not filing ready' : 'Calculation blocked pending review'}</h3>
     {finalReconciled && result.status === 'reconciled' && <div className="v2-review-grid">{Object.entries(result.lines).map(([line, amount]) => <div key={line}><span>Form 1040 line {line}</span><strong>{dollars(amount)}</strong></div>)}</div>}
     {blockers.length > 0 && <ul className="v2-blockers">{blockers.map((reason, i) => <li key={`${i}-${reason}`}>{reason}</li>)}</ul>}
+    <SE1040Workpaper2025 schedules={schedules} />
     <h3>Complete review package — exports and restore</h3>
     <p>Export the versioned review, line-by-line CSV for audit, or a printable HTML workpaper. Imported amounts must be independently confirmed again.</p>
     <div className="v2-form-grid">
