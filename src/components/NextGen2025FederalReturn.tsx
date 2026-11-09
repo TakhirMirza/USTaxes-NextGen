@@ -65,8 +65,8 @@ export default function NextGen2025FederalReturn({ income, schedules, w2Withhold
   const reviewPackage = (): ReviewPackage2025 => ({
     schema: 'ustaxes-federal-review-2025/v1', taxYear: 2025, filingReady: false,
     amounts, checks, withholdingConfirmed, w2WithholdingCents,
-    status: reconciled ? 'reconciled' : 'blocked', blockers,
-    lines: reconciled && result.status === 'reconciled' ? result.lines : null
+    status: finalReconciled ? 'reconciled' : 'blocked', blockers,
+    lines: finalReconciled && result.status === 'reconciled' ? result.lines : null
   })
   const download = (name: string, content: string, mime: string): void => {
     const url = URL.createObjectURL(new Blob([content], { type: mime }))
@@ -93,6 +93,9 @@ export default function NextGen2025FederalReturn({ income, schedules, w2Withhold
   const tablePreview = preview2025TaxTable({year:2025, filingStatus:worksheetStatus,
     taxableIncomeCents:worksheetIncome === null ? -1 : worksheetIncome,
     ordinaryIncomeOnlyConfirmed:worksheetOrdinaryOnly, line15Reconciled:worksheetLine15Reviewed})
+  const worksheetMismatch = worksheet.status === 'calculated' && parsed.line16TaxCents !== null && parsed.line16TaxCents !== worksheet.line16Cents
+  if (worksheetMismatch) blockers.push('Line 16 differs from the independently calculated 2025 IRS worksheet. Reconcile or update the amount.')
+  const finalReconciled = reconciled && !worksheetMismatch
   const useWorksheet = (): void => {
     if (worksheet.status !== 'calculated') return
     setAmounts(p => ({...p,line16TaxCents:(worksheet.line16Cents/100).toFixed(2)}))
@@ -106,14 +109,14 @@ export default function NextGen2025FederalReturn({ income, schedules, w2Withhold
     <details className="v2-note"><summary><strong>2025 IRS line 16 calculator — taxable income $100,000 or more</strong></summary>
       <p>Only for ordinary-income returns. Below $100,000 requires the IRS Tax Table. Special tax methods are not supported. This does not validate deductions or other Form 1040 lines.</p>
       <div className="v2-form-grid">
-        <label>Filing status<select value={worksheetStatus} onChange={e=>setWorksheetStatus(e.target.value as Filing2025)}>
+        <label>Filing status<select value={worksheetStatus} onChange={e=>{setWorksheetStatus(e.target.value as Filing2025);setChecks(p=>({...p,independentTaxReview:false}))}}>
           <option value="single">Single</option><option value="marriedJoint">Married filing jointly</option>
           <option value="marriedSeparate">Married filing separately</option><option value="headOfHousehold">Head of household</option>
           <option value="qualifyingSurvivingSpouse">Qualifying surviving spouse</option></select></label>
         <label>Form 1040 line 15 — verified taxable income ($)<input inputMode="decimal" value={worksheetTaxable} onChange={e=>{setWorksheetTaxable(e.target.value);setChecks(p=>({...p,independentTaxReview:false}))}} placeholder="100000.00" /></label>
       </div>
-      <label className="v2-check"><input type="checkbox" checked={worksheetLine15Reviewed} onChange={e=>setWorksheetLine15Reviewed(e.target.checked)}/>Line 15 reconciled to actual source documents and deductions</label>
-      <label className="v2-check"><input type="checkbox" checked={worksheetOrdinaryOnly} onChange={e=>setWorksheetOrdinaryOnly(e.target.checked)}/>I confirmed no qualified dividends, capital gains, or other special tax methods apply</label>
+      <label className="v2-check"><input type="checkbox" checked={worksheetLine15Reviewed} onChange={e=>{setWorksheetLine15Reviewed(e.target.checked);setChecks(p=>({...p,independentTaxReview:false}))}}/>Line 15 reconciled to actual source documents and deductions</label>
+      <label className="v2-check"><input type="checkbox" checked={worksheetOrdinaryOnly} onChange={e=>{setWorksheetOrdinaryOnly(e.target.checked);setChecks(p=>({...p,independentTaxReview:false}))}}/>I confirmed no qualified dividends, capital gains, or other special tax methods apply</label>
       {worksheet.status==='calculated' ? <p>IRS worksheet line 16: <strong>{dollars(worksheet.line16Cents)}</strong> ({worksheet.ratePercent}% row)</p>
         : <ul className="v2-blockers">{worksheet.blockers.map(b=><li key={b}>{b}</li>)}</ul>}
       <button type="button" className="v2-secondary" disabled={worksheet.status!=='calculated'} onClick={useWorksheet}>Copy calculated amount to line 16 (requires separate review)</button>
@@ -129,15 +132,15 @@ export default function NextGen2025FederalReturn({ income, schedules, w2Withhold
     <div className="v2-note">W-2 box 2 source withholding: {w2WithholdingCents === null ? 'Unavailable' : dollars(w2WithholdingCents)}. The entered line 25a must match the W-2 source total.</div>
     <label className="v2-check"><input type="checkbox" checked={withholdingConfirmed} onChange={e => setWithholdingConfirmed(e.target.checked)}/>I have reconciled line 25a to the entered W-2 withholding records.</label>
     {reviews.map(({ id, title }) => <label className="v2-check" key={id}><input type="checkbox" checked={checks[id]} onChange={e => setChecks(p => ({ ...p, [id]: e.target.checked }))}/>{title}</label>)}
-    <h3>{reconciled ? 'Arithmetic reconciled — not filing ready' : 'Calculation blocked pending review'}</h3>
-    {reconciled && result.status === 'reconciled' && <div className="v2-review-grid">{Object.entries(result.lines).map(([line, amount]) => <div key={line}><span>Form 1040 line {line}</span><strong>{dollars(amount)}</strong></div>)}</div>}
+    <h3>{finalReconciled ? 'Arithmetic reconciled — not filing ready' : 'Calculation blocked pending review'}</h3>
+    {finalReconciled && result.status === 'reconciled' && <div className="v2-review-grid">{Object.entries(result.lines).map(([line, amount]) => <div key={line}><span>Form 1040 line {line}</span><strong>{dollars(amount)}</strong></div>)}</div>}
     {blockers.length > 0 && <ul className="v2-blockers">{blockers.map((reason, i) => <li key={`${i}-${reason}`}>{reason}</li>)}</ul>}
     <h3>Complete review package — exports and restore</h3>
     <p>Export the versioned review, line-by-line CSV for audit, or a printable HTML workpaper. Imported amounts must be independently confirmed again.</p>
     <div className="v2-form-grid">
       <button type="button" className="v2-secondary" onClick={exportReview}>Export review JSON</button>
-      <button type="button" className="v2-secondary" onClick={() => download('ustaxes-2025-1040-lines.csv', reviewLinesCsv2025(reconciled && result.status === 'reconciled' ? result.lines : null), 'text/csv')}>Export Form 1040 lines CSV</button>
-      <button type="button" className="v2-secondary" onClick={() => download('ustaxes-2025-review-print.html', reviewPrintHtml2025(reconciled ? 'Reconciled — not filing ready' : 'Blocked', blockers, reconciled && result.status === 'reconciled' ? result.lines : null), 'text/html')}>Export printable workpaper</button>
+      <button type="button" className="v2-secondary" onClick={() => download('ustaxes-2025-1040-lines.csv', reviewLinesCsv2025(finalReconciled && result.status === 'reconciled' ? result.lines : null), 'text/csv')}>Export Form 1040 lines CSV</button>
+      <button type="button" className="v2-secondary" onClick={() => download('ustaxes-2025-review-print.html', reviewPrintHtml2025(finalReconciled ? 'Reconciled — not filing ready' : 'Blocked', blockers, finalReconciled && result.status === 'reconciled' ? result.lines : null), 'text/html')}>Export printable workpaper</button>
     </div>
     <label>Import previous review JSON (amounts only)
       <textarea rows={4} value={reviewImport} onChange={e => setReviewImport(e.target.value)} placeholder="Paste exported federal review JSON" />
