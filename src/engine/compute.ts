@@ -37,7 +37,12 @@ export interface TaxReturnResult {
   scheduleSE: ScheduleSEResult[]
   schedule2: { selfEmploymentTax: number; additionalMedicareTax: number; netInvestmentIncomeTax: number; earlyDistributionTax: number; total: number }
   schedule3: { dependentCare: number; education: number; excessSocialSecurity: number }
-  form2441: { qualifyingPersons: number; expensesUsed: number; rate: number; credit: number }
+  form2441: {
+    qualifyingPersons: number; expensesUsed: number; rate: number; credit: number
+    line3: number; line4: number; line5: number
+    partIII: { line12: number; line16: number; line17: number; line18: number; line19: number; line20: number; line21: number; line25: number; line26: number; line27: number; line28: number; line29: number; line30: number; line31: number } | null
+  }
+  form8863Detail: { phaseoutFraction: number; aotcTentative: number; llcTentative: number; llcExpenses: number }
   form8863: { aotc: number; aotcRefundable: number; llc: number; nonrefundableAllowed: number }
   eic: { qualifyingChildren: number; earnedIncome: number; investmentIncome: number; credit: number; notEligibleBecause: string[] }
   schedule8812: { qualifyingChildren: number; otherDependents: number; creditBeforePhaseout: number; phaseoutReduction: number; nonrefundable: number; refundable: number }
@@ -174,7 +179,6 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
 
   // ── Income ────────────────────────────────────────────────────────────────
   const line1a = r(sum(w2s.map((w) => w.wages)))
-  const line1z = line1a
   const line2a = r(sum(input.interest.map((i) => i.taxExemptInterest)))
   const line2b = r(sum(input.interest.map((i) => i.interest)))
   const line3b = r(sum(input.dividends.map((d) => d.ordinaryDividends)))
@@ -219,6 +223,34 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   }).filter((s) => s.netEarnings > 0)
   const seTax = sum(scheduleSE.map((s) => s.total))
   const halfSeTax = r(seTax / 2)
+
+  // Earned income per person (wages + net SE earnings less the deductible half of SE tax)
+  const earnedOf = (o: Owner): number => {
+    const wages = sum(w2s.filter((w) => w.owner === o).map((w) => w.wages))
+    const se = scheduleSE.find((x) => x.owner === o)
+    return wages + (se ? se.netEarnings - se.total / 2 : 0)
+  }
+  const earnedIncome = r(sum(owners.map(earnedOf)))
+
+  // Form 2441 Part III — dependent care benefits. Benefits above the exclusion are taxable wages (line 1e).
+  const care = input.dependentCare
+  const earnedTaxpayer = r(earnedOf('taxpayer'))
+  const earnedSpouse = joint ? r(earnedOf('spouse')) : earnedTaxpayer
+  const p3 = { line12: 0, line16: 0, line17: 0, line18: 0, line19: 0, line20: 0, line21: 0, line25: 0, line26: 0 }
+  if (care.employerBenefits > 0) {
+    p3.line12 = r(care.employerBenefits)
+    p3.line16 = r(care.expenses)
+    p3.line17 = Math.min(p3.line12, p3.line16)
+    p3.line18 = earnedTaxpayer
+    p3.line19 = earnedSpouse
+    p3.line20 = Math.max(0, Math.min(p3.line17, p3.line18, p3.line19))
+    p3.line21 = R.CARE_BENEFIT_EXCLUSION_LIMIT[fs]
+    p3.line25 = Math.min(p3.line20, p3.line21)
+    p3.line26 = pos(p3.line12 - p3.line25)
+    if (p3.line26 > 0) issues.push({ level: 'info', step: 'credits', message: `$${p3.line26.toLocaleString()} of your dependent care benefits is taxable and was added to Form 1040 line 1e.` })
+  }
+  const line1e = p3.line26
+  const line1z = line1a + line1e
 
   // Retirement distributions (1099-R → lines 4a/4b, 5a/5b)
   input.retirement.forEach((d, i) => {
@@ -378,36 +410,45 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   const line17 = 0
   const line18 = line16 + line17
 
-  // Earned income (wages + net self-employment earnings less the deductible part of SE tax)
-  const earnedOf = (o: Owner): number => {
-    const wages = sum(w2s.filter((w) => w.owner === o).map((w) => w.wages))
-    const se = scheduleSE.find((x) => x.owner === o)
-    return wages + (se ? se.netEarnings - se.total / 2 : 0)
-  }
-  const earnedIncome = r(sum(owners.map(earnedOf)))
-
-  // Form 2441 — Child and Dependent Care Credit (nonrefundable, Schedule 3 line 2)
+  // Form 2441 Parts II and III (lines 27–31) — Child and Dependent Care Credit (Schedule 3 line 2)
   const carePersons = input.dependents.filter(careQualifyingPerson).length
-  let careCredit = 0
-  let careRate = 0
-  let careExpensesUsed = 0
-  const care = input.dependentCare
+  const f2441 = { line3: 0, line4: earnedTaxpayer, line5: earnedSpouse, line6: 0, rate: 0, line9a: 0, line27: 0, line28: 0, line29: 0, line30: 0, line31: 0 }
   if (care.expenses > 0 || care.employerBenefits > 0) {
     if (carePersons === 0) issues.push({ level: 'warning', step: 'credits', message: 'Child care expenses need a qualifying person: a dependent under 13, or a dependent who is disabled.' })
     else if (fs === 'mfs') issues.push({ level: 'warning', step: 'credits', message: 'The child care credit is generally not available when married filing separately.' })
     else {
-      const excludedBenefits = Math.min(care.employerBenefits, R.CARE_BENEFIT_EXCLUSION_LIMIT[fs])
-      if (care.employerBenefits > excludedBenefits) issues.push({ level: 'warning', step: 'credits', message: 'Employer dependent care benefits above the exclusion limit are taxable wages (Form 2441, Part III). Add the excess to your wages.' })
-      const limit = pos((carePersons >= 2 ? R.CARE_EXPENSE_LIMIT_TWO_PLUS : R.CARE_EXPENSE_LIMIT_ONE) - excludedBenefits)
-      const earnedLimit = joint ? Math.min(earnedOf('taxpayer'), earnedOf('spouse')) : earnedOf('taxpayer')
-      careExpensesUsed = r(Math.max(0, Math.min(care.expenses, limit, earnedLimit)))
-      careRate = Math.max(R.CARE_MIN_RATE, R.CARE_MAX_RATE - 0.01 * Math.ceil(pos(agi - R.CARE_RATE_STEP_START) / R.CARE_RATE_STEP))
-      careCredit = r(careExpensesUsed * careRate)
-      if (joint && earnedLimit <= 0) issues.push({ level: 'info', step: 'credits', message: 'Both spouses need earned income for the child care credit, unless one was a full-time student or disabled (not figured here).' })
+      const limit = carePersons >= 2 ? R.CARE_EXPENSE_LIMIT_TWO_PLUS : R.CARE_EXPENSE_LIMIT_ONE
+      if (care.employerBenefits > 0) {
+        f2441.line27 = limit
+        f2441.line28 = p3.line25
+        f2441.line29 = pos(limit - p3.line25)
+        f2441.line30 = r(pos(care.expenses - p3.line25))
+        f2441.line31 = Math.min(f2441.line29, f2441.line30)
+        f2441.line3 = f2441.line31
+      } else {
+        f2441.line3 = r(Math.min(care.expenses, limit))
+      }
+      f2441.line6 = pos(Math.min(f2441.line3, f2441.line4, f2441.line5))
+      f2441.rate = Math.max(R.CARE_MIN_RATE, R.CARE_MAX_RATE - 0.01 * Math.ceil(pos(agi - R.CARE_RATE_STEP_START) / R.CARE_RATE_STEP))
+      f2441.line9a = r(f2441.line6 * f2441.rate)
+      if (joint && Math.min(earnedTaxpayer, earnedSpouse) <= 0) issues.push({ level: 'info', step: 'credits', message: 'Both spouses need earned income for the child care credit, unless one was a full-time student or disabled (not figured here).' })
+      const providerTotal = sum(care.providers.map((p) => p.amountPaid))
+      if (care.providers.length === 0) issues.push({ level: 'warning', step: 'credits', message: 'Form 2441 requires the name, address and SSN or EIN of each care provider. Add them under Child and dependent care.' })
+      else if (Math.abs(providerTotal - care.expenses) > 1) issues.push({ level: 'info', step: 'credits', message: `Amounts paid to care providers (${'$'}${r(providerTotal).toLocaleString()}) differ from the care expenses you entered (${'$'}${r(care.expenses).toLocaleString()}).` })
+      if (care.providers.some((p) => p.householdEmployee)) issues.push({ level: 'info', step: 'credits', message: 'A care provider who is your household employee may require Schedule H (household employment taxes), which this app does not prepare.' })
     }
   }
+  const careCredit = f2441.line9a
+  const careRate = f2441.rate
+  const careExpensesUsed = f2441.line6
 
   // Form 8863 — Education credits
+  input.students.filter((st) => st.qualifiedExpenses > 0).forEach((st, i) => {
+    const who = st.name.trim() || `Student ${i + 1}`
+    if (!ssnOk(st.ssn)) issues.push({ level: 'warning', step: 'credits', message: `${who}: enter the student’s Social Security number for Form 8863.` })
+    if (!st.institution.trim()) issues.push({ level: 'warning', step: 'credits', message: `${who}: enter the school’s name for Form 8863.` })
+    if (st.aotcEligible && !/^\d{9}$/.test(st.institutionEin.replace(/\D/g, ''))) issues.push({ level: 'warning', step: 'credits', message: `${who}: the American Opportunity Credit requires the school’s EIN from Form 1098-T.` })
+  })
   let aotcTentative = 0
   let llcExpenses = 0
   for (const st of input.students) {
@@ -418,12 +459,14 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   const llcTentative = Math.min(llcExpenses, R.LLC_EXPENSE_LIMIT) * R.LLC_RATE
   let aotc = 0
   let llc = 0
+  let eduFraction = 0
   if (aotcTentative + llcTentative > 0) {
     const range = R.EDUCATION_PHASEOUT[fs]
     if (!range) issues.push({ level: 'warning', step: 'credits', message: 'Education credits are not available when married filing separately.' })
     else if (input.canBeClaimedAsDependent) issues.push({ level: 'warning', step: 'credits', message: 'If someone can claim you as a dependent, they claim your education credits instead.' })
     else {
-      const fraction = Math.min(1, Math.max(0, (range[1] - magi) / (range[1] - range[0])))
+      const fraction = Math.min(1, Math.max(0, Math.round(((range[1] - magi) / (range[1] - range[0])) * 1000) / 1000))
+      eduFraction = fraction
       aotc = r(aotcTentative * fraction)
       llc = r(llcTentative * fraction)
     }
@@ -535,7 +578,7 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
 
   return {
     f1040: {
-      '1a': line1a, '1z': line1z, '2a': line2a, '2b': line2b, '3a': line3a, '3b': line3b,
+      '1a': line1a, '1e': line1e, '1z': line1z, '2a': line2a, '2b': line2b, '3a': line3a, '3b': line3b,
       '4a': line4a, '4b': line4b, '5a': line5a, '5b': line5b, '6a': line6a, '6b': line6b,
       '7a': line7, '8': line8, '9': line9, '10': line10, '11a': line11, '11b': line11, '12e': line12, '13a': line13a, '13b': line13b,
       '14': line14, '15': line15, '16': line16, '17': line17, '18': line18, '19': line19, '20': line20,
@@ -556,7 +599,12 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
     scheduleSE,
     schedule2: { selfEmploymentTax: seTax, additionalMedicareTax: addlMedicare, netInvestmentIncomeTax: niit, earlyDistributionTax, total: schedule2Total },
     schedule3: { dependentCare: careAllowed, education: educationAllowed, excessSocialSecurity: line31 },
-    form2441: { qualifyingPersons: carePersons, expensesUsed: careExpensesUsed, rate: careRate, credit: careCredit },
+    form2441: {
+      qualifyingPersons: carePersons, expensesUsed: careExpensesUsed, rate: careRate, credit: careCredit,
+      line3: f2441.line3, line4: f2441.line4, line5: f2441.line5,
+      partIII: care.employerBenefits > 0 ? { ...p3, line27: f2441.line27, line28: f2441.line28, line29: f2441.line29, line30: f2441.line30, line31: f2441.line31 } : null
+    },
+    form8863Detail: { phaseoutFraction: eduFraction, aotcTentative: r(aotcTentative), llcTentative: r(llcTentative), llcExpenses: r(Math.min(llcExpenses, R.LLC_EXPENSE_LIMIT)) },
     form8863: { aotc, aotcRefundable, llc, nonrefundableAllowed: educationAllowed },
     eic: { qualifyingChildren: eicChildren, earnedIncome, investmentIncome, credit: eic, notEligibleBecause: eic > 0 ? [] : eicReasons },
     schedule8812: { qualifyingChildren, otherDependents, creditBeforePhaseout, phaseoutReduction, nonrefundable, refundable },

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import * as lib from 'pdf-lib'
 import { computeReturn } from '../engine/compute.ts'
-import { emptyBusiness, emptyDependent, emptyReturn, empty1099Div, empty1099R, emptySocialSecurity, emptyW2 } from '../engine/model.ts'
+import { emptyBusiness, emptyDependent, emptyProvider, emptyReturn, emptyStudent, empty1099Div, empty1099R, emptySocialSecurity, emptyW2 } from '../engine/model.ts'
 import type { TaxReturnInput } from '../engine/model.ts'
 import { buildPacket2025 } from './irs2025.ts'
 import { buildPdf, fillForm, findField } from './fill.ts'
@@ -41,6 +41,38 @@ const busy = (): TaxReturnInput => ({
   deductionChoice: 'itemized',
   itemized: { ...emptyReturn().itemized, stateLocalIncomeOrSalesTax: 18000, realEstateTax: 9000, mortgageInterest: 14000, charityCash: 3000 },
   refundDeposit: { routingNumber: '021000021', accountNumber: '123456789', accountType: 'checking' }
+})
+
+/** Moderate-income family with care and education credits. */
+const family = (): TaxReturnInput => ({
+  ...emptyReturn(),
+  filingStatus: 'mfj',
+  taxpayer: { ...emptyReturn().taxpayer, firstName: 'Kim', lastName: 'Park', ssn: '222334444', age: 38 },
+  spouse: { ...emptyReturn().spouse, firstName: 'Jo', lastName: 'Park', ssn: '555667777', age: 37 },
+  contact: { ...emptyReturn().contact, street: '9 Pine Rd', city: 'Reston', state: 'VA', zip: '20190' },
+  digitalAssets: false,
+  dependents: [{ ...emptyDependent(), name: 'Ava Park', relationship: 'Daughter', age: 4, ssn: '111225555' }, { ...emptyDependent(), name: 'Ben Park', relationship: 'Son', age: 19, student: true, ssn: '111226666' }],
+  w2s: [w2('taxpayer', 70000, 6000), w2('spouse', 45000, 3500)],
+  dependentCare: { expenses: 7000, employerBenefits: 2000, providers: [{ ...emptyProvider(), name: 'Little Oaks Daycare', address: '1 School Ln, Reston, VA 20190', tin: '541234567', amountPaid: 7000 }] },
+  students: [
+    { ...emptyStudent(), name: 'Ben Park', ssn: '111226666', institution: 'George Mason University', institutionAddress: '4400 University Dr, Fairfax, VA 22030', institutionEin: '546001734', qualifiedExpenses: 6000 },
+    { ...emptyStudent(), name: 'Jo Park', ssn: '555667777', institution: 'NOVA Community College', institutionAddress: '8333 Little River Tpke, Annandale, VA 22003', qualifiedExpenses: 1500, aotcEligible: false }
+  ]
+})
+
+test('care and education credits print Form 2441 and Form 8863 with a page per extra student', async () => {
+  const ret = family()
+  const res = computeReturn(ret)
+  const packet = buildPacket2025(ret, res)
+  const ids = packet.forms.map((f) => f.id)
+  for (const expected of ['1040', 's3', '2441', 's8812', '8863', '8863-p3-2']) assert.ok(ids.includes(expected), `missing ${expected}: ${ids.join(', ')}`)
+  assert.deepEqual(packet.notIncluded, [])
+  const { bytes, problems } = await buildPdf(lib, packet.forms, load)
+  assert.deepEqual(problems, [])
+  if (process.env.PDF_OUT2) await writeFile(process.env.PDF_OUT2, bytes)
+  const f2441 = packet.forms.find((f) => f.id === '2441')!
+  assert.equal(f2441.values['f1_33[0]'], res.form2441.credit.toLocaleString('en-US'))
+  assert.equal(f2441.pages, undefined)
 })
 
 test('every mapped key matches exactly one field in the official PDFs', async () => {
@@ -94,7 +126,7 @@ test('simple W-2 return prints only Form 1040', async () => {
 })
 
 test('lists the forms that must still be attached by hand', () => {
-  const ret = { ...busy(), dependentCare: { expenses: 3000, employerBenefits: 0 } }
+  const ret = { ...busy(), dependentCare: { expenses: 3000, employerBenefits: 0, providers: [] } }
   const packet = buildPacket2025(ret, computeReturn(ret))
   assert.ok(packet.notIncluded.some((s) => s.startsWith('Schedule C')))
 })

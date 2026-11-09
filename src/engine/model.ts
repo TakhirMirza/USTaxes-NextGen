@@ -72,9 +72,27 @@ export interface SocialSecurityBenefits {
   /** SSA-1099 box 6 */ federalWithholding: number
 }
 
+export interface CareProvider {
+  id: string
+  name: string
+  /** Number, street, city, state and ZIP on one line. */
+  address: string
+  /** SSN or EIN, digits only. */
+  tin: string
+  householdEmployee: boolean
+  amountPaid: number
+}
+
 export interface Student {
   id: string
   name: string
+  /** 9 digits. */
+  ssn: string
+  institution: string
+  institutionAddress: string
+  /** 9 digits. */
+  institutionEin: string
+  received1098T: boolean
   /** Tuition and required fees paid in 2025, less tax-free scholarships (Form 1098-T). */
   qualifiedExpenses: number
   /** First four years of college, at least half-time, no prior AOTC for four years. */
@@ -203,7 +221,7 @@ export interface TaxReturnInput {
   schedule1A: Schedule1A
   itemized: ItemizedDeductions
   deductionChoice: DeductionChoice
-  dependentCare: { expenses: number; employerBenefits: number }
+  dependentCare: { expenses: number; employerBenefits: number; providers: CareProvider[] }
   students: Student[]
   payments: { estimatedTaxPayments: number; otherWithholding: number }
 }
@@ -256,7 +274,11 @@ export const empty1099R = (owner: Owner = 'taxpayer'): Form1099R => ({
   id: newId('ret'), owner, payer: '', grossDistribution: 0, taxableAmount: 0, federalWithholding: 0, code: '7', ira: false
 })
 export const emptySocialSecurity = (owner: Owner = 'taxpayer'): SocialSecurityBenefits => ({ id: newId('ssa'), owner, netBenefits: 0, federalWithholding: 0 })
-export const emptyStudent = (): Student => ({ id: newId('stu'), name: '', qualifiedExpenses: 0, aotcEligible: true })
+export const emptyStudent = (): Student => ({
+  id: newId('stu'), name: '', ssn: '', institution: '', institutionAddress: '', institutionEin: '', received1098T: true,
+  qualifiedExpenses: 0, aotcEligible: true
+})
+export const emptyProvider = (): CareProvider => ({ id: newId('care'), name: '', address: '', tin: '', householdEmployee: false, amountPaid: 0 })
 
 export const emptyReturn = (): TaxReturnInput => ({
   version: 1,
@@ -286,7 +308,7 @@ export const emptyReturn = (): TaxReturnInput => ({
     mortgageInterest: 0, charityCash: 0, charityNonCash: 0, other: 0
   },
   deductionChoice: 'auto',
-  dependentCare: { expenses: 0, employerBenefits: 0 },
+  dependentCare: { expenses: 0, employerBenefits: 0, providers: [] },
   students: [],
   payments: { estimatedTaxPayments: 0, otherWithholding: 0 }
 })
@@ -321,7 +343,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     retirement: arr(r.retirement, empty1099R),
     socialSecurity: arr(r.socialSecurity, emptySocialSecurity),
     students: arr(r.students, emptyStudent),
-    dependentCare: { ...base.dependentCare, ...(r.dependentCare ?? {}) },
+    dependentCare: { ...base.dependentCare, ...(r.dependentCare ?? {}), providers: arr(r.dependentCare?.providers, emptyProvider) },
     contact: { ...base.contact, ...(r.contact ?? {}) },
     refundDeposit: { ...base.refundDeposit, ...(r.refundDeposit ?? {}) },
     digitalAssets: typeof r.digitalAssets === 'boolean' ? r.digitalAssets : null,

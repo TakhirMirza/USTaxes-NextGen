@@ -7,7 +7,7 @@
  */
 import type { Owner, Person, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
-import { ctcChild, eicChild } from '../engine/compute.ts'
+import { careQualifyingPerson, ctcChild, eicChild } from '../engine/compute.ts'
 import * as R from '../engine/rules2025.ts'
 
 export type FieldValue = string | boolean
@@ -16,6 +16,8 @@ export interface FormFill {
   file: string
   title: string
   values: Record<string, FieldValue>
+  /** Zero-based pages to include; all pages when omitted. */
+  pages?: number[]
 }
 export interface FormPacket {
   forms: FormFill[]
@@ -88,6 +90,7 @@ function form1040(ret: TaxReturnInput, res: TaxReturnResult, attachScheduleD: bo
     'c1_10[1]': ret.digitalAssets === false,
     // Income
     'f1_47[0]': amt(f['1a']),
+    'f1_51[0]': amt(f['1e']),
     'f1_57[0]': amt(f['1z'], true),
     'f1_58[0]': amt(f['2a']),
     'f1_59[0]': amt(f['2b']),
@@ -538,6 +541,145 @@ function form8995(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
   return { id: '8995', file: 'f8995.pdf', title: 'Form 8995', values: v }
 }
 
+
+// ── Form 2441 ────────────────────────────────────────────────────────────────
+function form2441(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
+  const f = res.form2441
+  const care = ret.dependentCare
+  const v: Record<string, FieldValue> = { ...header(ret, 'f1_1[0]', 'f1_2[0]') }
+  const providerRows: [string, string, string, string, string, string][] = [
+    ['f1_3[0]', 'f1_4[0]', 'f1_5[0]', 'ColD[0].c1_4[1]', 'ColD[0].c1_4[0]', 'f1_6[0]'],
+    ['f1_7[0]', 'f1_8[0]', 'f1_9[0]', 'ColD[0].c1_5[1]', 'ColD[0].c1_5[0]', 'f1_10[0]'],
+    ['f1_11[0]', 'f1_12[0]', 'f1_13[0]', 'ColD[0].c1_6[1]', 'ColD[0].c1_6[0]', 'f1_14[0]']
+  ]
+  care.providers.slice(0, 3).forEach((p, i) => {
+    const [name, address, tin, yes, no, amount] = providerRows[i]
+    v[name] = p.name
+    v[address] = p.address
+    v[tin] = digits(p.tin).length === 9 ? (p.tin.includes('-') ? p.tin : digits(p.tin)) : p.tin
+    v[yes] = p.householdEmployee
+    v[no] = !p.householdEmployee
+    v[amount] = amt(p.amountPaid)
+  })
+  if (care.providers.length > 3) v['PartI[0].c1_3[0]'] = true
+  // Part II line 2: qualifying persons, expenses split evenly
+  const persons = ret.dependents.filter(careQualifyingPerson)
+  const personRows: [string, string, string, string, string][] = [
+    ['f1_15[0]', 'f1_16[0]', 'f1_17[0]', 'Row1[0].c1_8[0]', 'f1_18[0]'],
+    ['f1_19[0]', 'f1_20[0]', 'f1_21[0]', 'Row2[0].c1_9[0]', 'f1_22[0]'],
+    ['f1_23[0]', 'f1_24[0]', 'f1_25[0]', 'Row3[0].c1_10[0]', 'f1_26[0]']
+  ]
+  const shown = persons.slice(0, 3)
+  // Column (d) excludes expenses paid with benefits already counted on line 28.
+  const columnTotal = f.partIII ? f.partIII.line30 : Math.round(care.expenses)
+  const perPerson = shown.length ? Math.floor(columnTotal / shown.length) : 0
+  shown.forEach((d, i) => {
+    const [first, last, ssn, disabled, expenses] = personRows[i]
+    const [fn, ln] = splitName(d.name)
+    v[first] = fn
+    v[last] = ln
+    v[ssn] = ssnDashed(d.ssn)
+    v[disabled] = d.disabled && d.age > 12
+    v[expenses] = amt(i === 0 ? columnTotal - perPerson * (shown.length - 1) : perPerson)
+  })
+  if (persons.length > 3) v['Page1[0].c1_7[0]'] = true
+  Object.assign(v, {
+    'f1_27[0]': amt(f.line3, true), 'f1_28[0]': amt(f.line4, true), 'f1_29[0]': amt(f.line5, true),
+    'f1_30[0]': amt(f.expensesUsed, true), 'f1_31[0]': amt(res.f1040['11a'], true),
+    'f1_32[0]': f.rate ? String(Math.round(f.rate * 100)).padStart(2, '0') : '',
+    'f1_33[0]': amt(f.credit, true), 'f1_35[0]': amt(f.credit, true),
+    'f1_36[0]': amt(res.f1040['18'], true), 'f1_37[0]': amt(res.schedule3.dependentCare, true)
+  })
+  const p3 = f.partIII
+  if (p3) {
+    Object.assign(v, {
+      'f2_1[0]': amt(p3.line12, true), 'f2_4[0]': amt(p3.line12, true), 'f2_5[0]': amt(p3.line16, true),
+      'f2_6[0]': amt(p3.line17, true), 'f2_7[0]': amt(p3.line18, true), 'f2_8[0]': amt(p3.line19, true),
+      'f2_9[0]': amt(p3.line20, true), 'f2_10[0]': amt(p3.line21, true), 'Page2[0].c2_1[0]': true,
+      'f2_12[0]': amt(p3.line12, true), 'f2_14[0]': amt(p3.line25, true), 'f2_15[0]': amt(p3.line26, true),
+      'f2_16[0]': amt(p3.line27, true), 'f2_17[0]': amt(p3.line28, true), 'f2_18[0]': amt(p3.line29, true),
+      'f2_19[0]': amt(p3.line30, true), 'f2_20[0]': amt(p3.line31, true)
+    })
+  }
+  return { id: '2441', file: 'f2441.pdf', title: 'Form 2441', values: v, pages: p3 ? undefined : [0] }
+}
+
+// ── Form 8863 ────────────────────────────────────────────────────────────────
+const ssnParts = (v: string): [string, string, string] => {
+  const d = digits(v)
+  return [d.slice(0, 3), d.slice(3, 5), d.slice(5, 9)]
+}
+function form8863Student(ret: TaxReturnInput, st: TaxReturnInput['students'][number]): Record<string, FieldValue> {
+  const v: Record<string, FieldValue> = { 'f2_1[0]': namesOnReturn(ret) }
+  const [a, b, c] = ssnParts(ret.taxpayer.ssn)
+  Object.assign(v, { 'f2_2[0]': a, 'f2_3[0]': b, 'f2_4[0]': c })
+  const [s1, s2, s3] = ssnParts(st.ssn)
+  // The IRS form names this field with a hyphen.
+  Object.assign(v, { 'f2-5[0]': st.name, 'f2_6[0]': s1, 'f2_7[0]': s2, 'f2_8[0]': s3, 'f2_9[0]': st.institution, 'f2_10[0]': st.institutionAddress })
+  v['Line22a[0].c2_1[0]'] = st.received1098T
+  v['Line22a[0].c2_1[1]'] = !st.received1098T
+  const ein = digits(st.institutionEin)
+  if (st.aotcEligible && ein.length === 9) ein.split('').forEach((ch, i) => { v[`f2_${11 + i}[0]`] = ch })
+  const x = Math.max(0, st.qualifiedExpenses)
+  if (st.aotcEligible) {
+    const l27 = Math.min(x, 4000)
+    const l28 = Math.max(0, l27 - R.AOTC_FULL_EXPENSES)
+    const l29 = l28 * R.AOTC_PARTIAL_RATE
+    Object.assign(v, {
+      'Page2[0].c2_5[1]': true, 'Page2[0].c2_6[0]': true, 'Page2[0].c2_7[1]': true, 'Page2[0].c2_8[1]': true,
+      'f2_31[0]': amt(l27, true), 'f2_32[0]': amt(l28, true), 'f2_33[0]': amt(l29, true),
+      'f2_34[0]': amt(l28 === 0 ? l27 : R.AOTC_FULL_EXPENSES + l29, true)
+    })
+  } else {
+    v['f2_35[0]'] = amt(x, true)
+  }
+  return v
+}
+function form8863(ret: TaxReturnInput, res: TaxReturnResult): FormFill[] {
+  const f = res.form8863
+  const d = res.form8863Detail
+  const fs = ret.filingStatus
+  const joint = fs === 'mfj'
+  const top = joint ? 180000 : 90000
+  const span = joint ? 20000 : 10000
+  const agi = res.f1040['11b']
+  const room = Math.max(0, top - agi)
+  const [a, b, c] = ssnParts(ret.taxpayer.ssn)
+  const dec = (n: number): [string, string] => {
+    const fixed = n.toFixed(3)
+    const [whole, frac] = fixed.split('.')
+    return [whole, frac]
+  }
+  const [w6, f6] = dec(room >= span ? 1 : room / span)
+  const p1: Record<string, FieldValue> = { 'f1_1[0]': namesOnReturn(ret), 'f1_2[0]': a, 'f1_3[0]': b, 'f1_4[0]': c }
+  if (d.aotcTentative > 0) {
+    const line7 = Math.round(d.aotcTentative * d.phaseoutFraction)
+    Object.assign(p1, {
+      'f1_5[0]': amt(d.aotcTentative, true), 'f1_6[0]': amt(top, true), 'f1_7[0]': amt(agi, true), 'f1_8[0]': amt(room, true),
+      'f1_9[0]': amt(span, true), 'f1_10[0]': w6, 'f1_11[0]': f6, 'f1_12[0]': amt(line7, true),
+      'f1_13[0]': amt(f.aotcRefundable, true), 'f1_14[0]': amt(line7 - f.aotcRefundable, true)
+    })
+  }
+  if (d.llcTentative > 0) {
+    Object.assign(p1, {
+      'f1_15[0]': amt(d.llcExpenses, true), 'f1_16[0]': amt(d.llcExpenses, true), 'f1_17[0]': amt(d.llcTentative, true),
+      'f1_18[0]': amt(top, true), 'f1_19[0]': amt(agi, true), 'f1_20[0]': amt(room, true), 'f1_21[0]': amt(span, true),
+      'f1_22[0]': w6, 'f1_23[0]': f6, 'f1_24[0]': amt(f.llc, true)
+    })
+  }
+  p1['f1_25[0]'] = amt(f.nonrefundableAllowed, true)
+  const students = ret.students.filter((s) => s.qualifiedExpenses > 0)
+  const forms: FormFill[] = [{
+    id: '8863', file: 'f8863.pdf', title: 'Form 8863',
+    values: { ...p1, ...(students[0] ? form8863Student(ret, students[0]) : {}) }
+  }]
+  students.slice(1).forEach((st, i) => forms.push({
+    id: `8863-p3-${i + 2}`, file: 'f8863.pdf', title: `Form 8863, Part III (${st.name || `student ${i + 2}`})`,
+    values: form8863Student(ret, st), pages: [1]
+  }))
+  return forms
+}
+
 // ── Form 1040-V ──────────────────────────────────────────────────────────────
 function form1040V(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
   const c = ret.contact
@@ -572,8 +714,10 @@ export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult): Form
     const se = scheduleSE(ret, res, owner)
     if (se) forms.push(se)
   }
+  if (res.form2441.credit > 0 || res.form2441.partIII) forms.push(form2441(ret, res))
   if (res.eic.credit > 0 && res.eic.qualifyingChildren > 0) forms.push(scheduleEIC(ret))
   if (res.schedule8812.creditBeforePhaseout > 0) forms.push(schedule8812(ret, res))
+  if (res.form8863.aotc + res.form8863.llc > 0) forms.push(...form8863(ret, res))
   if (res.qbi.deduction > 0) forms.push(form8995(ret, res))
   if (res.schedule2.additionalMedicareTax > 0 || f['25c'] > 0) forms.push(form8959(ret, res))
   if (res.schedule2.netInvestmentIncomeTax > 0) forms.push(form8960(ret, res))
@@ -581,8 +725,6 @@ export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult): Form
 
   const notIncluded: string[] = []
   if (res.scheduleC.length) notIncluded.push('Schedule C (Profit or Loss From Business) for each business')
-  if (res.form2441.credit > 0) notIncluded.push('Form 2441 (Child and Dependent Care Expenses)')
-  if (res.form8863.aotc + res.form8863.llc > 0) notIncluded.push('Form 8863 (Education Credits)')
   if (ret.dependents.length > 4) notIncluded.push('A statement listing dependents after the fourth')
   return { forms, notIncluded }
 }

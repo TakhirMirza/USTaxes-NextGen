@@ -180,14 +180,14 @@ test('early IRA distribution adds the 10% additional tax', () => {
 })
 
 test('child care credit: $3,000 limit at the 20% rate', () => {
-  const res = computeReturn(base({ filingStatus: 'mfj', w2s: [w2(50000, 0), w2(50000, 0, 'spouse')], dependents: [kid(5)], dependentCare: { expenses: 5000, employerBenefits: 0 } }))
+  const res = computeReturn(base({ filingStatus: 'mfj', w2s: [w2(50000, 0), w2(50000, 0, 'spouse')], dependents: [kid(5)], dependentCare: { expenses: 5000, employerBenefits: 0, providers: [] } }))
   assert.equal(res.form2441.credit, 600)
   assert.equal(res.schedule3.dependentCare, 600)
   assert.equal(res.f1040['20'], 600)
 })
 
 test('child care credit rate is 35% at low income', () => {
-  const res = computeReturn(base({ filingStatus: 'hoh', w2s: [w2(14000, 0)], dependents: [kid(3)], dependentCare: { expenses: 2000, employerBenefits: 0 } }))
+  const res = computeReturn(base({ filingStatus: 'hoh', w2s: [w2(14000, 0)], dependents: [kid(3)], dependentCare: { expenses: 2000, employerBenefits: 0, providers: [] } }))
   assert.equal(res.form2441.rate, 0.35)
   assert.equal(res.form2441.credit, 700)
 })
@@ -228,4 +228,27 @@ test('Schedule 1-A seniors: each spouse is reduced by 6% of the excess', () => {
   const res = computeReturn(base({ filingStatus: 'mfj', taxpayer: { ...base().taxpayer, ...old }, spouse: { ...base().spouse, ...old }, w2s: [w2(160000, 0)] }))
   assert.equal(res.schedule1A.seniorEach, 5400)
   assert.equal(res.schedule1A.senior, 10800)
+})
+
+test('Form 2441 Part III: excluded benefits use up the expense limit', () => {
+  const res = computeReturn(base({ filingStatus: 'mfj', w2s: [w2(50000, 0), w2(50000, 0, 'spouse')], dependents: [kid(5)], dependentCare: { expenses: 7000, employerBenefits: 5000, providers: [] } }))
+  assert.equal(res.form2441.partIII?.line25, 5000)
+  assert.equal(res.form2441.partIII?.line26, 0)
+  assert.equal(res.form2441.partIII?.line29, 0)
+  assert.equal(res.form2441.credit, 0)
+  assert.equal(res.f1040['1e'], 0)
+})
+
+test('Form 2441 Part III: benefits over $5,000 are taxable on line 1e', () => {
+  const res = computeReturn(base({ filingStatus: 'mfj', w2s: [w2(50000, 0), w2(50000, 0, 'spouse')], dependents: [kid(5), kid(3)], dependentCare: { expenses: 9000, employerBenefits: 6000, providers: [] } }))
+  assert.equal(res.f1040['1e'], 1000)
+  assert.equal(res.f1040['1z'], 101000)
+  assert.equal(res.form2441.partIII?.line31, 1000)
+  assert.equal(res.form2441.credit, 200)
+})
+
+test('education phase-out fraction is rounded to three decimals', () => {
+  const res = computeReturn(base({ w2s: [w2(83333, 0)], students: [{ ...emptyStudent(), name: 'Me', qualifiedExpenses: 10000, aotcEligible: false }] }))
+  assert.equal(res.form8863Detail.phaseoutFraction, 0.667)
+  assert.equal(res.form8863.llc, 1334)
 })

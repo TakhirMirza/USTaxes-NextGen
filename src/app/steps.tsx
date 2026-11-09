@@ -1,6 +1,6 @@
 import { ReactElement } from 'react'
 import type { TaxReturnInput, Owner, BusinessExpenses, Person } from '../engine/model.ts'
-import { EXPENSE_LABELS, emptyBusiness, emptyDependent, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099Int, empty1099R, emptySocialSecurity } from '../engine/model.ts'
+import { EXPENSE_LABELS, emptyBusiness, emptyDependent, emptyProvider, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099Int, empty1099R, emptySocialSecurity } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import { careQualifyingPerson, ctcChild, eicChild } from '../engine/compute.ts'
 import { FILING_STATUS_LABELS } from '../engine/rules2025.ts'
@@ -377,7 +377,10 @@ export function PaymentsStep({ ret, set, result }: StepProps): ReactElement {
   const c = result.schedule8812
   const e = result.eic
   const stu = listOps(set, 'students')
-  const care = (k: keyof TaxReturnInput['dependentCare'], n: number): void => set((r) => ({ ...r, dependentCare: { ...r.dependentCare, [k]: n } }))
+  const care = (k: 'expenses' | 'employerBenefits', n: number): void => set((r) => ({ ...r, dependentCare: { ...r.dependentCare, [k]: n } }))
+  type Providers = TaxReturnInput['dependentCare']['providers']
+  const setProviders = (fn: (ps: Providers) => Providers): void => set((r) => ({ ...r, dependentCare: { ...r.dependentCare, providers: fn(r.dependentCare.providers) } }))
+  const patchProvider = (id: string, p: Partial<Providers[number]>): void => setProviders((ps) => ps.map((x) => (x.id === id ? { ...x, ...p } : x)))
   return (
     <>
       <Section title="Earned Income Credit" intro="A refundable credit for working people with low to moderate income."
@@ -407,12 +410,30 @@ export function PaymentsStep({ ret, set, result }: StepProps): ReactElement {
       <Section title="Child and dependent care" intro="Daycare, after-school care or a caregiver so you (and your spouse) could work. For children under 13 or a disabled dependent."
         aside={result.form2441.credit > 0 ? <span className="pill">{usd(result.schedule3.dependentCare)}</span> : undefined}>
         <div className="grid">
-          <MoneyField label="Care expenses you paid in 2025" value={ret.dependentCare.expenses} onChange={(n) => care('expenses', n)} />
+          <MoneyField label="Care expenses you paid in 2025" hint="For the children or dependents who qualify" value={ret.dependentCare.expenses} onChange={(n) => care('expenses', n)} />
           <MoneyField label="Dependent care benefits from your employer" box="W-2 box 10" value={ret.dependentCare.employerBenefits} onChange={(n) => care('employerBenefits', n)} />
         </div>
+        {(ret.dependentCare.expenses > 0 || ret.dependentCare.providers.length > 0) && (
+          <div style={{ marginTop: 18 }}>
+            <DocList items={ret.dependentCare.providers} addLabel="Add a care provider" emptyText="Form 2441 needs each provider’s name, address and SSN or EIN."
+              title={(x, i) => x.name.trim() || `Care provider ${i + 1}`}
+              onAdd={() => setProviders((ps) => [...ps, emptyProvider()])}
+              onRemove={(id) => setProviders((ps) => ps.filter((p) => p.id !== id))}
+              render={(x) => (
+                <>
+                  <TextField label="Provider name" placeholder="Daycare, school, or person" value={x.name} onChange={(v) => patchProvider(x.id, { name: v })} />
+                  <DigitsField label="SSN or EIN" length={9} value={x.tin} onChange={(v) => patchProvider(x.id, { tin: v })} hint="From the provider or your receipt" />
+                  <div className="span-2"><TextField label="Address" placeholder="Street, city, state, ZIP" value={x.address} onChange={(v) => patchProvider(x.id, { address: v })} /></div>
+                  <MoneyField label="Amount paid in 2025" value={x.amountPaid} onChange={(n) => patchProvider(x.id, { amountPaid: n })} />
+                  <div className="span-2"><Check label="This provider is my household employee (for example, a nanny)" checked={x.householdEmployee} onChange={(v) => patchProvider(x.id, { householdEmployee: v })} /></div>
+                </>
+              )} />
+          </div>
+        )}
         {result.form2441.credit > 0 && (
           <p className="note">
             {usd(result.form2441.expensesUsed)} of expenses at {Math.round(result.form2441.rate * 100)}% gives a {usd(result.form2441.credit)} credit (Form 2441).
+            {result.form2441.partIII && result.form2441.partIII.line28 > 0 && ` The ${usd(result.form2441.partIII.line28)} your employer paid tax-free reduces the expenses that count toward the credit.`}
             {result.schedule3.dependentCare < result.form2441.credit && ` This credit can only reduce your income tax, so ${usd(result.schedule3.dependentCare)} of it is used; the rest is not refundable.`}
           </p>
         )}
@@ -426,7 +447,12 @@ export function PaymentsStep({ ret, set, result }: StepProps): ReactElement {
           render={(x) => (
             <>
               <TextField label="Student name" value={x.name} onChange={(v) => stu.patch(x.id, { name: v })} />
+              <DigitsField label="Student’s SSN" length={9} groups={[3, 2, 4]} value={x.ssn} onChange={(v) => stu.patch(x.id, { ssn: v })} />
+              <TextField label="School" value={x.institution} onChange={(v) => stu.patch(x.id, { institution: v })} />
+              <DigitsField label="School’s EIN" length={9} groups={[2, 7]} hint="On Form 1098-T; required for the AOTC" value={x.institutionEin} onChange={(v) => stu.patch(x.id, { institutionEin: v })} />
+              <div className="span-2"><TextField label="School address" placeholder="Street, city, state, ZIP" value={x.institutionAddress} onChange={(v) => stu.patch(x.id, { institutionAddress: v })} /></div>
               <MoneyField label="Qualified expenses" value={x.qualifiedExpenses} onChange={(n) => stu.patch(x.id, { qualifiedExpenses: n })} />
+              <div><Check label="Received Form 1098-T from this school for 2025" checked={x.received1098T} onChange={(v) => stu.patch(x.id, { received1098T: v })} /></div>
               <div className="span-2">
                 <Check label="In the first four years of college, at least half-time"
                   hint="American Opportunity Credit, up to $2,500 (40% refundable). Otherwise the Lifetime Learning Credit applies, 20% of up to $10,000."

@@ -58,7 +58,7 @@ export async function buildPdf(lib: PdfLib, forms: FormFill[], load: Loader): Pr
   out.setCreator('USTaxes NextGen')
   for (const fill of forms) {
     const doc = await fillForm(lib, await load(fill.file), fill, problems)
-    const pages = await out.copyPages(doc, doc.getPageIndices())
+    const pages = await out.copyPages(doc, fill.pages ?? doc.getPageIndices())
     pages.forEach((p) => out.addPage(p))
   }
   return { bytes: await out.save(), problems }

@@ -8,6 +8,7 @@ import { Section, usd } from './fields'
 
 const LINES: [line: string, label: string][] = [
   ['1a', 'Wages from W-2s'],
+  ['1e', 'Taxable dependent care benefits (Form 2441)'],
   ['1z', 'Total wages'],
   ['2a', 'Tax-exempt interest'],
   ['2b', 'Taxable interest'],

@@ -25,12 +25,11 @@ the browser's local storage and can be downloaded as a JSON file.
 | Payments | Withholding, Additional Medicare withholding, excess Social Security, estimated payments |
 
 **IRS forms (PDF):** the Review step fills the official 2025 IRS PDFs in the browser and downloads one
-print-ready file: Form 1040, Schedules 1, 1-A, 2, 3, A, B, D, SE, EIC, 8812, Forms 8959, 8960, 8995, and the
+print-ready file: Form 1040, Schedules 1, 1-A, 2, 3, A, B, D, SE, EIC, 8812, Forms 2441, 8863, 8959, 8960, 8995, and the
 1040-V payment voucher when tax is owed. The blank forms live in `public/forms/2025` (official IRS PDFs).
 
 **Not yet supported:** AMT, saver's credit, Form 5329 exceptions, Form 8995-A, depreciation detail,
-state returns, e-file. Schedule C, Form 2441 and Form 8863 are calculated but not yet printed; the app lists
-them so they can be attached by hand. The app flags these when they may apply.
+state returns, e-file. Schedule C is calculated but not yet printed; the app lists it so it can be attached by hand. The app flags these when they may apply.
 
 ## Project layout
 
