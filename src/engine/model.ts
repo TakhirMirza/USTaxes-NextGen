@@ -153,11 +153,38 @@ export interface BusinessExpenses {
   other: number
 }
 
+export interface VehicleInfo {
+  /** MM/DD/YYYY */
+  placedInService: string
+  businessMiles: number
+  commutingMiles: number
+  otherMiles: number
+  availableOffDuty: boolean
+  anotherVehicle: boolean
+  hasEvidence: boolean
+  evidenceWritten: boolean
+}
+
 export interface ScheduleCBusiness {
   id: string
   owner: Owner
   name: string
   activity: string
+  /** 6-digit principal business code from the Schedule C instructions. */
+  businessCode: string
+  /** 9 digits; blank if none. */
+  ein: string
+  address: string
+  cityStateZip: string
+  accountingMethod: 'cash' | 'accrual'
+  materiallyParticipated: boolean
+  startedThisYear: boolean
+  /** Payments that would require filing Forms 1099 (question I). null = not answered. */
+  required1099s: boolean | null
+  filed1099s: boolean
+  /** Line 32: all investment at risk (used only when there is a loss). */
+  allAtRisk: boolean
+  vehicle: VehicleInfo
   grossReceipts: number
   returnsAndAllowances: number
   costOfGoodsSold: number
@@ -262,8 +289,14 @@ export const empty1099Div = (): Form1099Div => ({
   id: newId('div'), payer: '', ordinaryDividends: 0, qualifiedDividends: 0, capitalGainDistributions: 0, federalWithholding: 0
 })
 export const emptyTransaction = (): CapitalTransaction => ({ id: newId('cap'), description: '', term: 'long', proceeds: 0, costBasis: 0 })
+export const emptyVehicle = (): VehicleInfo => ({
+  placedInService: '', businessMiles: 0, commutingMiles: 0, otherMiles: 0,
+  availableOffDuty: true, anotherVehicle: false, hasEvidence: true, evidenceWritten: true
+})
 export const emptyBusiness = (owner: Owner = 'taxpayer'): ScheduleCBusiness => ({
-  id: newId('biz'), owner, name: '', activity: '', grossReceipts: 0, returnsAndAllowances: 0,
+  id: newId('biz'), owner, name: '', activity: '', businessCode: '', ein: '', address: '', cityStateZip: '',
+  accountingMethod: 'cash', materiallyParticipated: true, startedThisYear: false, required1099s: null, filed1099s: false,
+  allAtRisk: true, vehicle: emptyVehicle(), grossReceipts: 0, returnsAndAllowances: 0,
   costOfGoodsSold: 0, otherIncome: 0, expenses: emptyExpenses()
 })
 export const emptyDependent = (): Dependent => ({
@@ -353,7 +386,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     capitalTransactions: arr(r.capitalTransactions, emptyTransaction),
     capitalLossCarryover: { ...base.capitalLossCarryover, ...(r.capitalLossCarryover ?? {}) },
     businesses: Array.isArray(r.businesses)
-      ? r.businesses.map((b) => ({ ...emptyBusiness(), ...b, expenses: { ...emptyExpenses(), ...(b?.expenses ?? {}) } }))
+      ? r.businesses.map((b) => ({ ...emptyBusiness(), ...b, expenses: { ...emptyExpenses(), ...(b?.expenses ?? {}) }, vehicle: { ...emptyVehicle(), ...(b?.vehicle ?? {}) } }))
       : [],
     adjustments: { ...base.adjustments, ...(r.adjustments ?? {}) },
     schedule1A: { ...base.schedule1A, ...(r.schedule1A ?? {}) },

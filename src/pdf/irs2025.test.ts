@@ -34,7 +34,7 @@ const busy = (): TaxReturnInput => ({
   interest: [{ id: 'i1', payer: 'Harbor Bank', interest: 2500, taxExemptInterest: 0, federalWithholding: 0 }],
   dividends: [{ ...empty1099Div(), payer: 'Index Fund', ordinaryDividends: 6000, qualifiedDividends: 5000, capitalGainDistributions: 400 }],
   capitalTransactions: [{ id: 'c1', description: 'XYZ', term: 'long', proceeds: 20000, costBasis: 12000 }],
-  businesses: [{ ...emptyBusiness('spouse'), name: 'Rivera Studio', grossReceipts: 40000, expenses: { ...emptyBusiness().expenses, supplies: 5000 } }],
+  businesses: [{ ...emptyBusiness('spouse'), name: 'Rivera Studio', activity: 'Photography', businessCode: '541920', required1099s: false, grossReceipts: 40000, expenses: { ...emptyBusiness().expenses, supplies: 5000, carAndTruck: 1200, other: 300 }, vehicle: { ...emptyBusiness().vehicle, placedInService: '03/15/2022', businessMiles: 1700, commutingMiles: 0, otherMiles: 9000 } }],
   retirement: [{ ...empty1099R(), payer: 'IRA Co', grossDistribution: 5000, taxableAmount: 5000, code: '1', ira: true }],
   socialSecurity: [{ ...emptySocialSecurity(), netBenefits: 12000 }],
   schedule1A: { qualifiedTips: 0, qualifiedOvertime: 4000, carLoanInterest: 3000, vehicleVin: '1HGCM82633A004352' },
@@ -79,6 +79,7 @@ test('every mapped key matches exactly one field in the official PDFs', async ()
   const ret = busy()
   const packet = buildPacket2025(ret, computeReturn(ret))
   const ids = packet.forms.map((f) => f.id)
+    assert.ok(ids.some((x) => x.startsWith('sc-')), 'Schedule C should be printed')
   for (const expected of ['1040', 's1', 's1a', 's2', 'sa', 'sb', 'sd', 'sse-spouse', 's8812', '8995', '8959', '8960']) {
     assert.ok(ids.includes(expected), `packet should include ${expected}; got ${ids.join(', ')}`)
   }
@@ -125,8 +126,25 @@ test('simple W-2 return prints only Form 1040', async () => {
   assert.deepEqual(packet.notIncluded, [])
 })
 
-test('lists the forms that must still be attached by hand', () => {
-  const ret = { ...busy(), dependentCare: { expenses: 3000, employerBenefits: 0, providers: [] } }
-  const packet = buildPacket2025(ret, computeReturn(ret))
-  assert.ok(packet.notIncluded.some((s) => s.startsWith('Schedule C')))
+test('Schedule C prints net profit on line 31 and the home office note is listed', () => {
+  const ret = busy()
+  ret.businesses[0].expenses.homeOffice = 1500
+  const res = computeReturn(ret)
+  const packet = buildPacket2025(ret, res)
+  const sc = packet.forms.find((f) => f.id.startsWith('sc-'))!
+  assert.equal(sc.values['f1_46[0]'], res.scheduleC[0].netProfit.toLocaleString('en-US'))
+  assert.equal(sc.values['f1_1[0]'], 'Sam Rivera')
+  assert.ok(packet.notIncluded.some((s) => s.startsWith('Form 8829')))
+})
+
+test('every blank form in public/forms/2025 is the 2025 revision', async () => {
+  const { readdir } = await import('node:fs/promises')
+  const files = (await readdir(formsDir)).filter((f) => f.endsWith('.pdf'))
+  assert.ok(files.length >= 18)
+  for (const file of files) {
+    const doc = await lib.PDFDocument.load(await load(file))
+    const title = doc.getTitle() ?? ''
+    const subject = doc.getSubject() ?? ''
+    assert.ok(/2025/.test(`${title} ${subject}`), `${file} does not look like a 2025 form (title: "${title}")`)
+  }
 })

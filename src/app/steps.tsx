@@ -242,6 +242,29 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
                 <TextField label="Business name" value={b.name} onChange={(v) => biz.patch(b.id, { name: v })} />
                 <TextField label="What you do" placeholder="Web design, rideshare…" value={b.activity} onChange={(v) => biz.patch(b.id, { activity: v })} />
                 <div className="span-2"><OwnerPicker ret={ret} value={b.owner} onChange={(v) => biz.patch(b.id, { owner: v })} /></div>
+                <DigitsField label="Principal business code" length={6} hint="6 digits, from the list in the Schedule C instructions (irs.gov/ScheduleC)" value={b.businessCode} onChange={(v) => biz.patch(b.id, { businessCode: v })} />
+                <DigitsField label="Employer ID number (EIN)" length={9} groups={[2, 7]} hint="Leave blank if you don’t have one" value={b.ein} onChange={(v) => biz.patch(b.id, { ein: v })} />
+                <details className="more span-2" open={!!(b.address || b.cityStateZip)}>
+                  <summary>Business address (if different from your home)</summary>
+                  <div className="grid">
+                    <TextField label="Street address" value={b.address} onChange={(v) => biz.patch(b.id, { address: v })} />
+                    <TextField label="City, state, ZIP" value={b.cityStateZip} onChange={(v) => biz.patch(b.id, { cityStateZip: v })} />
+                  </div>
+                </details>
+                <div className="span-2">
+                  <Choice legend="Accounting method" value={b.accountingMethod} onChange={(v) => biz.patch(b.id, { accountingMethod: v })}
+                    options={[{ value: 'cash', label: 'Cash', hint: 'Income when received, expenses when paid' }, { value: 'accrual', label: 'Accrual' }]} />
+                </div>
+                <div className="span-2 checks">
+                  <Check label="I materially participated in this business in 2025" hint="You worked in it regularly, continuously and substantially" checked={b.materiallyParticipated} onChange={(v) => biz.patch(b.id, { materiallyParticipated: v })} />
+                  <Check label="I started or acquired this business in 2025" checked={b.startedThisYear} onChange={(v) => biz.patch(b.id, { startedThisYear: v })} />
+                </div>
+                <div className="span-2">
+                  <Choice legend="Did you pay anyone $600 or more (contractors, rent) that would require you to file a Form 1099?" value={b.required1099s === null ? '' : b.required1099s ? 'yes' : 'no'}
+                    onChange={(v) => biz.patch(b.id, { required1099s: v === 'yes' })}
+                    options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
+                  {b.required1099s && <div className="checks"><Check label="I filed (or will file) those Forms 1099" checked={b.filed1099s} onChange={(v) => biz.patch(b.id, { filed1099s: v })} /></div>}
+                </div>
                 <MoneyField label="Gross receipts or sales" hint="Include all 1099-NEC and 1099-K income" value={b.grossReceipts} onChange={(n) => biz.patch(b.id, { grossReceipts: n })} />
                 <MoneyField label="Returns and allowances" value={b.returnsAndAllowances} onChange={(n) => biz.patch(b.id, { returnsAndAllowances: n })} />
                 <MoneyField label="Cost of goods sold" value={b.costOfGoodsSold} onChange={(n) => biz.patch(b.id, { costOfGoodsSold: n })} />
@@ -254,10 +277,32 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
                     ))}
                   </div>
                 </details>
+                {b.expenses.carAndTruck > 0 && (
+                  <details className="more span-2" open>
+                    <summary>Vehicle details (Schedule C, Part IV)</summary>
+                    <div className="grid">
+                      <TextField label="Date placed in service for business" placeholder="MM/DD/YYYY" value={b.vehicle.placedInService} onChange={(v) => biz.patch(b.id, { vehicle: { ...b.vehicle, placedInService: v.replace(/[^0-9/]/g, '').slice(0, 10) } })} />
+                      <NumberField label="Business miles in 2025" max={999999} value={b.vehicle.businessMiles} onChange={(n) => biz.patch(b.id, { vehicle: { ...b.vehicle, businessMiles: n } })} />
+                      <NumberField label="Commuting miles" max={999999} value={b.vehicle.commutingMiles} onChange={(n) => biz.patch(b.id, { vehicle: { ...b.vehicle, commutingMiles: n } })} />
+                      <NumberField label="Other personal miles" max={999999} value={b.vehicle.otherMiles} onChange={(n) => biz.patch(b.id, { vehicle: { ...b.vehicle, otherMiles: n } })} />
+                    </div>
+                    <div className="checks">
+                      <Check label="The vehicle was available for personal use during off-duty hours" checked={b.vehicle.availableOffDuty} onChange={(v) => biz.patch(b.id, { vehicle: { ...b.vehicle, availableOffDuty: v } })} />
+                      <Check label="I (or my spouse) have another vehicle for personal use" checked={b.vehicle.anotherVehicle} onChange={(v) => biz.patch(b.id, { vehicle: { ...b.vehicle, anotherVehicle: v } })} />
+                      <Check label="I have evidence to support the deduction" checked={b.vehicle.hasEvidence} onChange={(v) => biz.patch(b.id, { vehicle: { ...b.vehicle, hasEvidence: v } })} />
+                      {b.vehicle.hasEvidence && <Check label="The evidence is written (a mileage log)" checked={b.vehicle.evidenceWritten} onChange={(v) => biz.patch(b.id, { vehicle: { ...b.vehicle, evidenceWritten: v } })} />}
+                    </div>
+                  </details>
+                )}
                 {res && (
                   <p className={`span-2 result-line ${res.netProfit < 0 ? 'is-loss' : ''}`}>
                     Net {res.netProfit < 0 ? 'loss' : 'profit'} <strong>{usd(res.netProfit)}</strong>
                   </p>
+                )}
+                {res && res.netProfit < 0 && (
+                  <div className="span-2 checks">
+                    <Check label="All my investment in this business is at risk" hint="Usually yes. If not, Form 6198 is required and the loss may be limited." checked={b.allAtRisk} onChange={(v) => biz.patch(b.id, { allAtRisk: v })} />
+                  </div>
                 )}
               </>
             )

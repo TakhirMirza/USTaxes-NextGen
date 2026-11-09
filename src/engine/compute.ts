@@ -170,6 +170,15 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   input.dividends.forEach((d, i) => {
     if (d.qualifiedDividends > d.ordinaryDividends) issues.push({ level: 'error', step: 'income', message: `1099-DIV #${i + 1}: qualified dividends (1b) cannot exceed ordinary dividends (1a). Qualified amount was capped.` })
   })
+  input.businesses.forEach((b, i) => {
+    const who = b.name.trim() || `Business ${i + 1}`
+    if (!/^\d{6}$/.test(b.businessCode)) issues.push({ level: 'warning', step: 'income', message: `${who}: enter the 6-digit principal business code from the Schedule C instructions (box B).` })
+    if (b.required1099s === null) issues.push({ level: 'warning', step: 'income', message: `${who}: answer whether you made payments that require Forms 1099 (Schedule C, line I).` })
+    if (b.expenses.carAndTruck > 0 && (!b.vehicle.placedInService.trim() || b.vehicle.businessMiles <= 0)) issues.push({ level: 'warning', step: 'income', message: `${who}: car and truck expenses need the vehicle details (Schedule C, Part IV).` })
+    if (b.costOfGoodsSold > 0) issues.push({ level: 'info', step: 'income', message: `${who}: cost of goods sold is printed on Schedule C line 4 and 42. Fill in the inventory lines 33–41 on the printed form by hand.` })
+    if (b.expenses.homeOffice > 0) issues.push({ level: 'info', step: 'income', message: `${who}: home office expenses (line 30) need Form 8829 or the simplified-method worksheet; attach it or enter the square footage on the printed form.` })
+    if (!b.materiallyParticipated) issues.push({ level: 'warning', step: 'income', message: `${who}: if you did not materially participate, passive activity loss limits (Form 8582) may apply. They are not figured here.` })
+  })
   input.businesses.forEach((b, i) => { if (!ownedBy(b.owner)) issues.push({ level: 'error', step: 'income', message: `Business #${i + 1} belongs to your spouse, but this is not a joint return. It is excluded.` }) })
 
   const w2s = input.w2s.filter((w) => ownedBy(w.owner))

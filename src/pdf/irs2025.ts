@@ -377,6 +377,54 @@ function scheduleD(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
   return { id: 'sd', file: 'f1040sd.pdf', title: 'Schedule D', values: v }
 }
 
+
+// ── Schedule C (one per business) ────────────────────────────────────────────
+function scheduleC(ret: TaxReturnInput, res: TaxReturnResult, b: TaxReturnInput['businesses'][number]): FormFill {
+  const person = b.owner === 'spouse' ? ret.spouse : ret.taxpayer
+  const c = res.scheduleC.find((x) => x.id === b.id)
+  const e = b.expenses
+  const line3 = b.grossReceipts - b.returnsAndAllowances
+  const line5 = line3 - b.costOfGoodsSold
+  const line7 = line5 + b.otherIncome
+  const line28 = Object.entries(e).filter(([k]) => k !== 'homeOffice').reduce((t, [, n]) => t + n, 0)
+  const line29 = line7 - line28
+  const line31 = c ? c.netProfit : line29 - e.homeOffice
+  const v: Record<string, FieldValue> = {
+    'f1_1[0]': fullName(person), 'f1_2[0]': ssnDashed(person.ssn),
+    'f1_3[0]': b.activity, 'f1_4[0]': digits(b.businessCode), 'f1_5[0]': b.name,
+    'f1_6[0]': digits(b.ein), 'f1_7[0]': b.address, 'f1_8[0]': b.cityStateZip,
+    'Page1[0].c1_1[0]': b.accountingMethod === 'cash', 'Page1[0].c1_1[1]': b.accountingMethod === 'accrual',
+    'Page1[0].c1_2[0]': b.materiallyParticipated, 'Page1[0].c1_2[1]': !b.materiallyParticipated,
+    'Page1[0].c1_3[0]': b.startedThisYear,
+    'Page1[0].c1_4[0]': b.required1099s === true, 'Page1[0].c1_4[1]': b.required1099s === false,
+    // Part I
+    'f1_10[0]': amt(b.grossReceipts, true), 'f1_11[0]': amt(b.returnsAndAllowances), 'f1_12[0]': amt(line3, true),
+    'f1_13[0]': amt(b.costOfGoodsSold), 'f1_14[0]': amt(line5, true), 'f1_15[0]': amt(b.otherIncome), 'f1_16[0]': amt(line7, true),
+    // Part II
+    'f1_17[0]': amt(e.advertising), 'f1_18[0]': amt(e.carAndTruck), 'f1_20[0]': amt(e.contractLabor),
+    'f1_24[0]': amt(e.insurance), 'f1_27[0]': amt(e.legalAndProfessional), 'f1_28[0]': amt(e.office),
+    'f1_31[0]': amt(e.rentOrLease), 'f1_33[0]': amt(e.supplies), 'f1_34[0]': amt(e.taxesAndLicenses),
+    'f1_35[0]': amt(e.travel), 'f1_36[0]': amt(e.meals), 'f1_37[0]': amt(e.utilities), 'f1_39[0]': amt(e.other),
+    'f1_41[0]': amt(line28, true), 'f1_42[0]': amt(line29, true), 'f1_45[0]': amt(e.homeOffice), 'f1_46[0]': amt(line31, true)
+  }
+  if (b.required1099s) { v['Page1[0].c1_5[0]'] = b.filed1099s; v['Page1[0].c1_5[1]'] = !b.filed1099s }
+  if (line31 < 0) { v['Page1[0].c1_7[0]'] = b.allAtRisk; v['Page1[0].c1_7[1]'] = !b.allAtRisk }
+  if (b.costOfGoodsSold > 0) v['f2_8[0]'] = amt(b.costOfGoodsSold)
+  if (e.carAndTruck > 0) {
+    const [mm, dd, yy] = b.vehicle.placedInService.split('/').map((x) => x.trim())
+    Object.assign(v, {
+      'f2_9[0]': mm ?? '', 'f2_10[0]': dd ?? '', 'f2_11[0]': yy ?? '',
+      'f2_12[0]': amt(b.vehicle.businessMiles, true), 'f2_13[0]': amt(b.vehicle.commutingMiles, true), 'f2_14[0]': amt(b.vehicle.otherMiles, true),
+      'Page2[0].c2_5[0]': b.vehicle.availableOffDuty, 'Page2[0].c2_5[1]': !b.vehicle.availableOffDuty,
+      'Page2[0].c2_6[0]': b.vehicle.anotherVehicle, 'Page2[0].c2_6[1]': !b.vehicle.anotherVehicle,
+      'Page2[0].c2_7[0]': b.vehicle.hasEvidence, 'Page2[0].c2_7[1]': !b.vehicle.hasEvidence
+    })
+    if (b.vehicle.hasEvidence) { v['Page2[0].c2_8[0]'] = b.vehicle.evidenceWritten; v['Page2[0].c2_8[1]'] = !b.vehicle.evidenceWritten }
+  }
+  if (e.other > 0) Object.assign(v, { 'f2_15[0]': 'Other business expenses', 'f2_16[0]': amt(e.other), 'f2_33[0]': amt(e.other) })
+  return { id: `sc-${b.id}`, file: 'f1040sc.pdf', title: `Schedule C (${b.name || 'business'})`, values: v }
+}
+
 // ── Schedule SE (one per person) ─────────────────────────────────────────────
 function scheduleSE(ret: TaxReturnInput, res: TaxReturnResult, owner: Owner): FormFill | null {
   const se = res.scheduleSE.find((x) => x.owner === owner)
@@ -709,6 +757,8 @@ export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult): Form
   if (res.schedule3.dependentCare + res.schedule3.education + res.schedule3.excessSocialSecurity > 0) forms.push(schedule3(ret, res))
   if (res.deduction.used === 'itemized') forms.push(scheduleA(ret, res))
   if (res.scheduleB.required) forms.push(scheduleB(ret, res))
+  const owners = ret.filingStatus === 'mfj' ? ['taxpayer', 'spouse'] : ['taxpayer']
+  ret.businesses.filter((b) => owners.includes(b.owner)).forEach((b) => forms.push(scheduleC(ret, res, b)))
   if (needD && (ret.capitalTransactions.length || f['7a'] !== 0)) forms.push(scheduleD(ret, res))
   for (const owner of ['taxpayer', 'spouse'] as Owner[]) {
     const se = scheduleSE(ret, res, owner)
@@ -724,7 +774,7 @@ export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult): Form
   if (f['37'] > 0) forms.push(form1040V(ret, res))
 
   const notIncluded: string[] = []
-  if (res.scheduleC.length) notIncluded.push('Schedule C (Profit or Loss From Business) for each business')
   if (ret.dependents.length > 4) notIncluded.push('A statement listing dependents after the fourth')
+  if (ret.businesses.some((b) => b.expenses.homeOffice > 0)) notIncluded.push('Form 8829 or the simplified-method worksheet for home office expenses')
   return { forms, notIncluded }
 }

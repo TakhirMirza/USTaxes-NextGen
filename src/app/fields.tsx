@@ -168,7 +168,7 @@ export function NumberField({ label, value, onChange, min = 0, max = 130, hint, 
         <input id={id} inputMode="numeric" autoComplete="off" value={text}
           onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
           onChange={(e) => {
-            const t = e.target.value.replace(/\D/g, '').slice(0, 3)
+            const t = e.target.value.replace(/\D/g, '').slice(0, String(max).length)
             setText(t)
             const n = t === '' ? 0 : Math.min(max, Math.max(min, Number(t)))
             onChange(n)
