@@ -8,6 +8,8 @@ import type { Dependent, HomeOffice, HsaAccount, Owner, Person, ScheduleCBusines
 import * as R from './rules2025.ts'
 import { qbiDeduction } from './qbi.ts'
 import { gainOf, holdingTermFromDates, isAggregated, parseDate, withDefaults } from './capital.ts'
+import { NONRES_FIRST_YEAR, assetDepreciation, form4562For, isPersonalProperty, midQuarterApplies, section179 } from './depreciation.ts'
+import type { AssetResult, Form4562Result, Section179Result } from './depreciation.ts'
 import type { QbiResult } from './qbi.ts'
 import type { FilingStatus } from './rules2025.ts'
 
@@ -20,11 +22,22 @@ export interface Issue {
 
 export interface HomeOfficeResult {
   method: HomeOffice['method']; businessPct: number
-  line8: number; line14: number; line15: number; operating: number; line25: number; line27: number
-  depreciationAllowed: number; carryover: number; deduction: number
+  /** Form 8829 lines by number; two-column lines use '10b', '16b' and so on (column (b), indirect). */
+  lines: Record<string, number>
+  /** Line 8 */ line8: number
+  /** Line 14: mortgage interest and taxes on lines 10–11 (only when itemizing). */ line14: number
+  /** Line 27: allowable operating expenses. */ line25: number
+  /** Line 33 */ depreciationAllowed: number
+  /** Lines 43 + 44 */ carryover: number
+  /** Line 36 / Schedule C line 30 */ deduction: number
+  /** Home first used for business in 2025: its depreciation goes on Form 4562 line 19j. */ firstUsedThisYear: boolean
+  firstUsedMonth: number
 }
 export interface ScheduleCResult {
   id: string; name: string; owner: Owner; grossIncome: number
+  /** Line 13: depreciation and section 179 (Form 4562 line 22, less any home depreciation on line 19j). */ depreciation: number
+  section179: number
+  assets: AssetResult[]
   /** Line 28, total expenses before business use of home. */ totalExpenses: number
   /** Line 29. */ tentativeProfit: number
   homeOffice: HomeOfficeResult
@@ -36,7 +49,7 @@ export interface Form5329Result {
   /** Part VII */ line42: number; line43: number; line44: number; line45: number; line46: number; line47: number; line48: number; line49: number
   /** False when only the full 10% tax is owed: it then goes straight on Schedule 2 line 8. */ required: boolean
 }
-export interface RentalResult { id: string; address: string; income: number; expenses: number; net: number; personalUseWarning: boolean }
+export interface RentalResult { id: string; address: string; income: number; expenses: number; net: number; personalUseWarning: boolean; assetDepreciation: number; assets: AssetResult[] }
 export interface ScheduleSEResult { owner: Owner; netEarnings: number; socialSecurityTax: number; medicareTax: number; total: number }
 
 export interface TaxReturnResult {
@@ -60,6 +73,8 @@ export interface TaxReturnResult {
   schedule2: { amt: number; selfEmploymentTax: number; additionalMedicareTax: number; netInvestmentIncomeTax: number; earlyDistributionTax: number; hsaExcessTax: number; hsaAdditionalTax: number; total: number }
   scheduleE: { properties: RentalResult[]; gross: number; priorCarryover: number; magi: number; allowance: number; allowedLoss: number; disallowed: number; net: number }
   form5329: Form5329Result[]
+  section179: Section179Result
+  form4562: Form4562Result[]
   form8889: { owner: Owner; coverage: string; months: number; line2: number; line3: number; line7: number; line8: number; line9: number; line12: number; line13: number; line14: number; line15: number; line16: number; line17b: number; excess: number }[]
   form6251: Form6251Result
   schedule3: { dependentCare: number; education: number; saversCredit: number; excessSocialSecurity: number }
@@ -157,8 +172,8 @@ export function qualifiedDividendsTax(taxableIncome: number, qualifiedDividends:
  * Regular method follows Form 8829 Part II: mortgage interest and real estate taxes (business share) are
  * always deductible; operating expenses, then depreciation, only up to the remaining profit; the rest carries over.
  */
-export function homeOfficeDeduction(h: HomeOffice, tentativeProfit: number): HomeOfficeResult {
-  const none: HomeOfficeResult = { method: h.method, businessPct: 0, line8: r(tentativeProfit), line14: 0, line15: 0, operating: 0, line25: 0, line27: 0, depreciationAllowed: 0, carryover: 0, deduction: 0 }
+export function homeOfficeDeduction(h: HomeOffice, tentativeProfit: number, itemizing = false): HomeOfficeResult {
+  const none: HomeOfficeResult = { method: h.method, businessPct: 0, lines: {}, line8: r(tentativeProfit), line14: 0, line25: 0, depreciationAllowed: 0, carryover: 0, deduction: 0, firstUsedThisYear: false, firstUsedMonth: 0 }
   if (h.method === 'simplified') {
     const sqft = Math.min(pos(h.officeSqFt), R.HOME_OFFICE_SIMPLIFIED_MAX_SQFT)
     return { ...none, deduction: r(Math.min(sqft * R.HOME_OFFICE_SIMPLIFIED_RATE, pos(tentativeProfit))) }
@@ -166,25 +181,61 @@ export function homeOfficeDeduction(h: HomeOffice, tentativeProfit: number): Hom
   if (h.method === 'amount') return { ...none, deduction: r(pos(h.amount)) }
   if (h.method !== 'regular' || h.homeSqFt <= 0 || h.officeSqFt <= 0) return none
   const pct = Math.min(1, h.officeSqFt / h.homeSqFt)
-  const line8 = pos(tentativeProfit)
-  const line14 = r((h.mortgageInterest + h.realEstateTaxes) * pct)
-  const line15 = pos(line8 - line14)
-  const operating = r((h.insurance + h.utilities + h.repairs + h.rent + h.other) * pct)
-  const line25 = Math.min(operating, line15)
-  const line27 = pos(line15 - line25)
-  const depreciationAllowed = Math.min(r(h.depreciation), line27)
-  const carryover = pos(operating - line25) + pos(r(h.depreciation) - depreciationAllowed)
-  return { method: h.method, businessPct: pct, line8: r(line8), line14, line15: r(line15), operating, line25, line27: r(line27), depreciationAllowed, carryover, deduction: line14 + line25 + depreciationAllowed }
+  const L: Record<string, number> = {}
+  L['1'] = r(h.officeSqFt); L['2'] = r(h.homeSqFt); L['3'] = pct; L['7'] = pct
+  L['8'] = r(tentativeProfit)
+  // Itemizers deduct the business part of mortgage interest and taxes on lines 10–11 (always allowed);
+  // with the standard deduction they move to lines 16–17 and are limited by the profit.
+  L['10b'] = itemizing ? r(pos(h.mortgageInterest)) : 0
+  L['11b'] = itemizing ? r(pos(h.realEstateTaxes)) : 0
+  L['12b'] = L['10b'] + L['11b']
+  L['13'] = r(L['12b'] * pct)
+  L['14'] = L['13']
+  L['15'] = pos(L['8'] - L['14'])
+  L['16b'] = itemizing ? 0 : r(pos(h.mortgageInterest))
+  L['17b'] = itemizing ? 0 : r(pos(h.realEstateTaxes))
+  L['18b'] = r(pos(h.insurance)); L['19b'] = r(pos(h.rent)); L['20b'] = r(pos(h.repairs)); L['21b'] = r(pos(h.utilities)); L['22b'] = r(pos(h.other))
+  L['23b'] = L['16b'] + L['17b'] + L['18b'] + L['19b'] + L['20b'] + L['21b'] + L['22b']
+  L['24'] = r(L['23b'] * pct)
+  L['25'] = r(pos(h.priorOperatingCarryover ?? 0))
+  L['26'] = L['24'] + L['25']
+  L['27'] = Math.min(L['15'], L['26'])
+  L['28'] = L['15'] - L['27']
+  // Part III — depreciation of the home (39-year, mid-month).
+  const first = parseDate(h.firstUsed ?? '')
+  const firstUsedThisYear = !!first && first.getUTCFullYear() === 2025
+  const firstUsedMonth = first ? first.getUTCMonth() + 1 : 0
+  if ((h.homeBasis ?? 0) > 0) {
+    L['37'] = r(h.homeBasis); L['38'] = r(pos(h.landValue ?? 0)); L['39'] = pos(L['37'] - L['38'])
+    L['40'] = r(L['39'] * pct)
+    L['41'] = first && first.getUTCFullYear() > 2025 ? 0 : firstUsedThisYear ? NONRES_FIRST_YEAR[firstUsedMonth - 1] : 2.564
+    L['42'] = r(L['40'] * L['41'] / 100)
+  } else {
+    L['42'] = r(pos(h.depreciation))
+  }
+  L['30'] = L['42']
+  L['31'] = r(pos(h.priorExcessCarryover ?? 0))
+  L['32'] = L['30'] + L['31']
+  L['33'] = Math.min(L['28'], L['32'])
+  L['34'] = L['14'] + L['27'] + L['33']
+  L['36'] = L['34']
+  L['43'] = pos(L['26'] - L['27'])
+  L['44'] = pos(L['32'] - L['33'])
+  return {
+    method: h.method, businessPct: pct, lines: L, line8: L['8'], line14: L['14'], line25: L['27'], depreciationAllowed: L['33'],
+    carryover: L['43'] + L['44'], deduction: L['36'], firstUsedThisYear, firstUsedMonth
+  }
 }
 
-function scheduleC(b: ScheduleCBusiness): ScheduleCResult {
+function scheduleC(b: ScheduleCBusiness, assets: AssetResult[], section179Allowed: number, itemizing: boolean): ScheduleCResult {
   const grossIncome = b.grossReceipts - b.returnsAndAllowances - b.costOfGoodsSold + b.otherIncome
-  const totalExpenses = sum(Object.entries(b.expenses).filter(([k]) => k !== 'homeOffice').map(([, v]) => v))
+  const depreciation = r(sum(assets.map((a) => a.depreciation)) + section179Allowed)
+  const totalExpenses = sum(Object.entries(b.expenses).filter(([k]) => k !== 'homeOffice').map(([, v]) => v)) + depreciation
   const tentativeProfit = r(grossIncome - totalExpenses)
-  const homeOffice = homeOfficeDeduction(b.homeOffice, tentativeProfit)
+  const homeOffice = homeOfficeDeduction(b.homeOffice, tentativeProfit, itemizing)
   return {
-    id: b.id, name: b.name || 'Business', owner: b.owner, grossIncome: r(grossIncome), totalExpenses: r(totalExpenses),
-    tentativeProfit, homeOffice, netProfit: tentativeProfit - homeOffice.deduction
+    id: b.id, name: b.name || 'Business', owner: b.owner, grossIncome: r(grossIncome), depreciation, section179: section179Allowed, assets,
+    totalExpenses: r(totalExpenses), tentativeProfit, homeOffice, netProfit: tentativeProfit - homeOffice.deduction
   }
 }
 
@@ -330,6 +381,17 @@ export function estimatedTaxPenalty(a: {
 }
 
 export function computeReturn(input: TaxReturnInput): TaxReturnResult {
+  // Form 8829 depends on whether you itemize: mortgage interest and real estate taxes go on lines 10–11
+  // only for itemizers. Figure it with the standard deduction first, then again if the return itemizes.
+  const first = computeCore(input, false)
+  const needsSecondPass = first.deduction.used === 'itemized' &&
+    input.businesses.some((b) => b.homeOffice.method === 'regular' && b.homeOffice.mortgageInterest + b.homeOffice.realEstateTaxes > 0)
+  if (!needsSecondPass) return first
+  const second = computeCore(input, true)
+  return second.deduction.used === 'itemized' ? second : first
+}
+
+function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnResult {
   const fs = input.filingStatus
   const joint = isJoint(fs)
   const issues: Issue[] = []
@@ -416,8 +478,29 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   }
   const preferentialGain = pos(Math.min(longTerm, netCapital))
 
+  // Depreciation (Form 4562) and the section 179 election
+  const rentalsOwned = input.rentals.filter((p) => ownedBy(p.owner))
+  const midQuarter = midQuarterApplies([...businesses.flatMap((b) => b.assets ?? []), ...rentalsOwned.flatMap((p) => p.assets ?? [])])
+  if (midQuarter) issues.push({ level: 'info', step: 'income', message: 'More than 40% of the equipment placed in service in 2025 was placed in service in October–December, so the mid-quarter convention applies to it (Form 4562, column (e) “MQ”).' })
+  const bizAssets = new Map(businesses.map((b) => [b.id, (b.assets ?? []).map((a) => assetDepreciation(a, { midQuarter, allow179: true }))]))
+  const rentAssets = new Map(rentalsOwned.map((p) => [p.id, (p.assets ?? []).map((a) => assetDepreciation(a, { midQuarter, allow179: false }))]))
+  ;[...bizAssets.values(), ...rentAssets.values()].flat().forEach((a) => a.issues.forEach((m) => issues.push({ level: 'warning', step: 'income', message: m })))
+  const profitBefore179 = (b: ScheduleCBusiness): number =>
+    b.grossReceipts - b.returnsAndAllowances - b.costOfGoodsSold + b.otherIncome -
+    sum(Object.entries(b.expenses).filter(([k]) => k !== 'homeOffice').map(([, v]) => v)) - sum((bizAssets.get(b.id) ?? []).map((a) => a.depreciation))
+  const electedBy = businesses.map((b) => sum((bizAssets.get(b.id) ?? []).map((a) => a.section179Elected)))
+  const s179 = section179({
+    costOfProperty: sum([...bizAssets.values()].flat().filter((a) => a.currentYear && isPersonalProperty(a.propertyClass)).map((a) => a.businessBasis)),
+    elected: sum(electedBy), carryover: input.section179Carryover ?? 0,
+    businessIncome: sum(w2s.map((w) => w.wages)) + sum(businesses.map(profitBefore179)), mfs: fs === 'mfs'
+  })
+  const electedTotal = sum(electedBy)
+  const s179Alloc = businesses.map((_, i) => electedTotal > 0 ? r(s179.line12 * electedBy[i] / electedTotal) : i === 0 ? s179.line12 : 0)
+  if (s179Alloc.length) s179Alloc[0] += s179.line12 - sum(s179Alloc)
+  if (s179.line13 > 0) issues.push({ level: 'info', step: 'income', message: `Section 179 deduction of $${s179.line13.toLocaleString()} is limited by business income and carries over to 2026 (Form 4562 line 13).` })
+
   // Schedule C
-  const scheduleCResults = businesses.map(scheduleC)
+  const scheduleCResults = businesses.map((b, i) => scheduleC(b, bizAssets.get(b.id) ?? [], s179Alloc[i] ?? 0, homeItemizing))
   const businessIncome = sum(scheduleCResults.map((b) => b.netProfit))
 
   // Schedule SE
@@ -555,9 +638,11 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   })
   const rentalResults: RentalResult[] = rentalsIn.map((p) => {
     const income = r(p.rents + p.royalties)
-    const expenses = r(sum(Object.values(p.expenses)))
+    const assets = rentAssets.get(p.id) ?? []
+    const assetDepreciation = r(sum(assets.map((a) => a.depreciation)))
+    const expenses = r(sum(Object.values(p.expenses))) + assetDepreciation
     const personalUseWarning = p.personalUseDays > Math.max(14, 0.1 * p.fairRentalDays)
-    return { id: p.id, address: p.address || 'Rental property', income, expenses, net: income - expenses, personalUseWarning }
+    return { id: p.id, address: p.address || 'Rental property', income, expenses, net: income - expenses, personalUseWarning, assetDepreciation, assets }
   })
   rentalResults.filter((x) => x.personalUseWarning).forEach((x) => issues.push({ level: 'warning', step: 'income', message: `${x.address}: personal use was more than 14 days or 10% of rental days, so it counts as a residence. Expenses must be split and limited (Pub. 527); this app does not do that split.` }))
   rentalsIn.filter((p) => p.fairRentalDays > 0 && p.fairRentalDays < 15).forEach((p) => issues.push({ level: 'info', step: 'income', message: `${p.address || 'A property'}: rented fewer than 15 days, so the rent is generally not taxable and expenses are not deductible. Check whether it belongs on Schedule E.` }))
@@ -936,7 +1021,7 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
 
   // ── Coverage notes ────────────────────────────────────────────────────────
   if (eic > 0) issues.push({ level: 'info', step: 'credits', message: 'Earned Income Credit is included. Attach Schedule EIC for each qualifying child, and confirm each child lived with you in the U.S. for more than half of 2025.' })
-  if (scheduleSE.length && businesses.length) issues.push({ level: 'info', step: 'income', message: 'Schedule C is figured on the cash method from the totals you enter. Depreciation (Form 4562) and inventory details are not itemized.' })
+  if (scheduleSE.length && businesses.length) issues.push({ level: 'info', step: 'income', message: 'Schedule C is figured from the totals you enter. Inventory (Part III) is not itemized; enter equipment under Depreciation so it goes through Form 4562.' })
   if (w2s.some((w) => w.wages > 0 && (w.medicareWages === 0 || w.socialSecurityWages === 0))) issues.push({ level: 'info', step: 'income', message: 'For W-2s where box 3 or box 5 is blank, box 1 wages were used instead.' })
   if (input.dependents.some((d) => !d.name.trim())) issues.push({ level: 'warning', step: 'about', message: 'Enter a name for each dependent.' })
 
@@ -978,6 +1063,15 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
     scheduleE: { properties: rentalResults, gross: r(sum(rentalResults.map((x) => x.net))), priorCarryover: r(pos(input.priorPassiveCarryover)), magi: r(magiPassive), allowance: r(passiveAllowance), allowedLoss: rentalAllowedLoss, disallowed: rentalDisallowed, net: rentalNet },
     form8889: hsaResults,
     form5329,
+    section179: s179,
+    form4562: [
+      ...scheduleCResults.map((c) => form4562For({
+        id: c.id, kind: 'business', name: c.name, assets: c.assets, section179Allowed: c.section179,
+        home: c.homeOffice.firstUsedThisYear && c.homeOffice.lines['42'] > 0 && (c.homeOffice.lines['37'] ?? 0) > 0
+          ? { month: c.homeOffice.firstUsedMonth, basis: c.homeOffice.lines['40'], deduction: c.homeOffice.lines['42'] } : null
+      })),
+      ...rentalResults.map((p) => form4562For({ id: p.id, kind: 'rental', name: p.address, assets: p.assets, section179Allowed: 0 }))
+    ].filter((f) => f.line22 > 0 || f.required),
     form6251: amtResult,
     form8880: { people: saverLines, line7: saverLine7, rate: saverRate, tentative: saverTentative, limit: saverLimit, credit: saverAllowed },
     form2210: penalty,

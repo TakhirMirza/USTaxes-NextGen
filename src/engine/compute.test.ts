@@ -6,10 +6,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { computeReturn, regularTax, taxFromSchedule } from './compute.ts'
-import { emptyBusiness, emptyDependent, emptyHomeOffice, emptyHsa, emptyRental, emptyReturn, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099R, emptySocialSecurity, normalizeReturn } from './model.ts'
-import type { CapitalTransaction, ScheduleCBusiness, TaxReturnInput } from './model.ts'
+import { emptyAsset, emptyBusiness, emptyDependent, emptyHomeOffice, emptyHsa, emptyRental, emptyReturn, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099R, emptySocialSecurity, normalizeReturn } from './model.ts'
+import type { CapitalTransaction, DepreciableAsset, ScheduleCBusiness, TaxReturnInput } from './model.ts'
 import { groups8949, holdingTermFromDates, lineFor, scheduleDLines } from './capital.ts'
 import { qbiDeduction } from './qbi.ts'
+import { assetDepreciation, macrsRate } from './depreciation.ts'
 import type { QbiBusinessInput } from './qbi.ts'
 
 const base = (patch: Partial<TaxReturnInput> = {}): TaxReturnInput => ({
@@ -343,12 +344,92 @@ test('home office, regular method: Form 8829 ordering and carryover', () => {
   const ho = { ...emptyHomeOffice(), method: 'regular' as const, homeSqFt: 2000, officeSqFt: 200, mortgageInterest: 10000, realEstateTaxes: 4000, insurance: 1000, utilities: 3000, repairs: 1000, depreciation: 2000 }
   const res = computeReturn(base({ businesses: [bizWith(8000, 5000, ho)] }))
   const h = res.scheduleC[0].homeOffice
-  assert.equal(h.line14, 1400)
-  assert.equal(h.line25, 500)
+  // Standard deduction: mortgage interest and taxes move to lines 16–17 and are limited by the profit.
+  assert.equal(h.line14, 0)
+  assert.equal(h.lines['16b'], 10000)
+  assert.equal(h.lines['24'], 1900)
+  assert.equal(h.line25, 1900)
   assert.equal(h.depreciationAllowed, 1100)
   assert.equal(h.carryover, 900)
   assert.equal(h.deduction, 3000)
   assert.equal(res.scheduleC[0].netProfit, 0)
+})
+
+test('home office, itemizing: mortgage interest and taxes on lines 10–11 are always allowed', () => {
+  const ho = { ...emptyHomeOffice(), method: 'regular' as const, homeSqFt: 2000, officeSqFt: 200, mortgageInterest: 10000, realEstateTaxes: 4000, insurance: 1000, utilities: 3000, repairs: 1000, depreciation: 2000 }
+  const res = computeReturn(base({
+    w2s: [w2(150000, 20000)], deductionChoice: 'itemized',
+    itemized: { ...emptyReturn().itemized, mortgageInterest: 18000, realEstateTax: 3600, stateLocalIncomeOrSalesTax: 6000 },
+    businesses: [bizWith(8000, 5000, ho)]
+  }))
+  const h = res.scheduleC[0].homeOffice
+  assert.equal(h.lines['10b'], 10000)
+  assert.equal(h.line14, 1400)
+  assert.equal(h.lines['15'], 1600)
+  assert.equal(h.line25, 500)
+  assert.equal(h.depreciationAllowed, 1100)
+  assert.equal(h.deduction, 3000)
+})
+
+test('home office depreciation from the home basis (Form 8829 Part III)', () => {
+  const ho = { ...emptyHomeOffice(), method: 'regular' as const, homeSqFt: 2000, officeSqFt: 300, homeBasis: 400000, landValue: 100000, firstUsed: '03/15/2025' }
+  const res = computeReturn(base({ businesses: [bizWith(50000, 0, ho)] }))
+  const L = res.scheduleC[0].homeOffice.lines
+  assert.deepEqual([L['39'], L['40'], L['41'], L['42']], [300000, 45000, 2.033, 915])
+  const f = res.form4562.find((x) => x.kind === 'business')!
+  assert.deepEqual(f.home, { placed: '03/2025', basis: 45000, deduction: 915 })
+  assert.equal(res.scheduleC[0].depreciation, 0, 'home depreciation is not on Schedule C line 13')
+  const older = computeReturn(base({ businesses: [bizWith(50000, 0, { ...ho, firstUsed: '06/01/2019' })] }))
+  assert.equal(older.scheduleC[0].homeOffice.lines['42'], 1154)
+})
+
+test('MACRS, bonus and section 179 on Form 4562', () => {
+  const eq = (p: Partial<DepreciableAsset>): DepreciableAsset => ({ ...emptyAsset('7'), description: 'Desk', placedInService: '03/01/2025', cost: 10000, ...p })
+  // Half-year 7-year property, bonus elected out: 14.29%.
+  assert.equal(assetDepreciation(eq({ bonus: 'none' }), { midQuarter: false, allow179: true }).macrs, 1429)
+  // Acquired after January 19, 2025: 100% bonus.
+  const full = assetDepreciation(eq({}), { midQuarter: false, allow179: true })
+  assert.deepEqual([full.bonusRate, full.bonus, full.macrs], [1, 10000, 0])
+  // Acquired before January 20, 2025: 40% bonus, then MACRS on the rest.
+  const phased = assetDepreciation(eq({ acquiredBeforeJan20: true }), { midQuarter: false, allow179: true })
+  assert.deepEqual([phased.bonus, phased.depreciableBasis, phased.macrs], [4000, 6000, 857])
+  // Section 179 first, then bonus on the remainder.
+  const mixed = assetDepreciation(eq({ section179: 3000, bonus: '40' }), { midQuarter: false, allow179: true })
+  assert.deepEqual([mixed.section179Elected, mixed.bonus, mixed.macrs], [3000, 2800, 600])
+  // Prior-year asset: 5-year placed in 2023 is in its third year (19.20%).
+  assert.equal(assetDepreciation({ ...emptyAsset('5'), cost: 5000, placedInService: '07/01/2023' }, { midQuarter: false, allow179: true }).macrs, 960)
+  // Mid-quarter, 5-year, 4th quarter: 5%.
+  assert.equal(macrsRate('5', 1, 11, 'MQ'), 5)
+  assert.equal(macrsRate('5', 2, 2, 'MQ'), 26)
+  // Residential rental, placed in service in May 2025: 2.273%.
+  assert.equal(assetDepreciation({ ...emptyAsset('27.5'), cost: 220000, placedInService: '05/10/2025' }, { midQuarter: false, allow179: false }).macrs, 5001)
+})
+
+test('section 179 is limited to business income and carries over', () => {
+  const biz = { ...emptyBusiness(), name: 'Shop', grossReceipts: 20000, assets: [{ ...emptyAsset('5'), description: 'Truck', placedInService: '04/01/2025', cost: 50000, section179: 50000 }] }
+  const res = computeReturn(base({ businesses: [biz] }))
+  assert.equal(res.section179.line9, 50000)
+  assert.equal(res.section179.line11, 20000)
+  assert.equal(res.section179.line12, 20000)
+  assert.equal(res.section179.line13, 30000)
+  assert.equal(res.scheduleC[0].depreciation, 20000)
+  assert.equal(res.scheduleC[0].netProfit, 0)
+  const withWages = computeReturn(base({ w2s: [w2(80000, 8000)], businesses: [biz] }))
+  assert.equal(withWages.section179.line12, 50000)
+  assert.equal(withWages.scheduleC[0].netProfit, -30000)
+  assert.equal(withWages.form4562[0].line22, 50000)
+})
+
+test('rental property depreciation from assets adds to Schedule E', () => {
+  const p = { ...emptyRental(), address: '1 Oak', rents: 30000, assets: [{ ...emptyAsset('27.5'), description: 'House', cost: 300000, placedInService: '01/15/2020' }, { ...emptyAsset('5'), description: 'Fridge', cost: 1200, placedInService: '08/01/2025' }] }
+  const res = computeReturn(base({ rentals: [p] }))
+  const rr = res.scheduleE.properties[0]
+  assert.equal(rr.assetDepreciation, 10908 + 1200)
+  assert.equal(rr.net, 30000 - 12108)
+  const f = res.form4562.find((x) => x.kind === 'rental')!
+  assert.equal(f.line14, 1200)
+  assert.equal(f.line17, 10908)
+  assert.ok(f.required)
 })
 
 test('older files: a home office amount among expenses becomes the "already figured" method', () => {

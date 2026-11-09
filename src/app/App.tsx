@@ -125,7 +125,7 @@ function Workspace({ ret, set, result, current, preparer, meta, onExample, onSta
         </footer>
         <p className="disclaimer">
           USTaxes NextGen is an open-source preparation aid, not tax advice. It prints IRS forms to sign and mail; it does not e-file.
-          Not yet covered: depreciation schedules (Form 4562), partnerships and S corporations (K-1), foreign income, and state returns.
+          Not yet covered: listed property and vehicle depreciation, partnerships and S corporations (K-1), foreign income, and state returns.
         </p>
       </main>
 

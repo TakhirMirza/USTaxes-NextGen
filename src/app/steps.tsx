@@ -1,7 +1,7 @@
 import { ReactElement, useState } from 'react'
 import type { TaxReturnInput, Owner, BusinessExpenses, Person } from '../engine/model.ts'
-import { EXPENSE_LABELS, RENTAL_EXPENSE_LABELS, RENTAL_TYPE_LABELS, emptyBusiness, emptyDependent, emptyProvider, emptyRental, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099Int, empty1099R, emptySocialSecurity } from '../engine/model.ts'
-import type { BasisReporting, CapitalTransaction, HomeOffice, HsaAccount, RentalExpenses, RentalType } from '../engine/model.ts'
+import { EXPENSE_LABELS, PROPERTY_CLASS_LABELS, RENTAL_EXPENSE_LABELS, emptyAsset, RENTAL_TYPE_LABELS, emptyBusiness, emptyDependent, emptyProvider, emptyRental, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099Int, empty1099R, emptySocialSecurity } from '../engine/model.ts'
+import type { BasisReporting, CapitalTransaction, DepreciableAsset, HomeOffice, PropertyClass, HsaAccount, RentalExpenses, RentalType } from '../engine/model.ts'
 import { boxFor, gainOf, holdingTermFromDates, isAggregated } from '../engine/capital.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import { careQualifyingPerson, ctcChild, eicChild } from '../engine/compute.ts'
@@ -317,6 +317,8 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
                     <div className="span-2"><Check label="Specified service business" hint="Health, law, accounting, consulting, financial services, performing arts, athletics, or one that relies on the owner’s reputation or skill" checked={b.qbi.sstb} onChange={(v) => biz.patch(b.id, { qbi: { ...b.qbi, sstb: v } })} /></div>
                   </div>
                 </details>
+                <div className="span-2"><AssetsEditor assets={b.assets} results={res?.assets ?? []} allow179 total={res?.depreciation ?? 0}
+                  onChange={(assets) => biz.patch(b.id, { assets })} /></div>
                 <div className="span-2"><HomeOfficeEditor ho={b.homeOffice} result={res?.homeOffice} onChange={(h) => biz.patch(b.id, { homeOffice: { ...b.homeOffice, ...h } })} /></div>
                 {b.expenses.carAndTruck > 0 && (
                   <details className="more span-2" open>
@@ -420,6 +422,8 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
                     ))}
                   </div>
                 </details>
+                <div className="span-2"><AssetsEditor assets={x.assets} results={rr?.assets ?? []} allow179={false} total={rr?.assetDepreciation ?? 0} defaultClass="27.5"
+                  onChange={(assets) => rent.patch(x.id, { assets })} /></div>
                 <div className="span-2 checks">
                   <Check label="I actively participate (I approve tenants, set rents, or approve repairs)" hint="Needed to deduct up to $25,000 of rental losses" checked={x.activeParticipation} onChange={(v) => rent.patch(x.id, { activeParticipation: v })} />
                 </div>
@@ -454,7 +458,13 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
       </Section>
 
       <Section title="Less common items" intro="Only if they apply to you.">
-        <details className="more" style={{ marginTop: 0 }} open={ret.qbiCarryforward.business + ret.qbiCarryforward.reitPtp > 0}>
+        <details className="more" style={{ marginTop: 0 }} open={ret.section179Carryover > 0}>
+          <summary>Section 179 deduction carried from 2024</summary>
+          <div className="grid">
+            <MoneyField label="Disallowed section 179 deduction" hint="2024 Form 4562 line 13" value={ret.section179Carryover} onChange={(n) => set((r) => ({ ...r, section179Carryover: n }))} />
+          </div>
+        </details>
+        <details className="more" open={ret.qbiCarryforward.business + ret.qbiCarryforward.reitPtp > 0}>
           <summary>Qualified business losses carried from 2024</summary>
           <div className="grid">
             <MoneyField label="Qualified business loss carryforward" hint="2024 Form 8995 line 16 or 8995-A line 16 (Schedule C)" value={ret.qbiCarryforward.business} onChange={(n) => set((r) => ({ ...r, qbiCarryforward: { ...r.qbiCarryforward, business: n } }))} />
@@ -769,8 +779,23 @@ function HomeOfficeEditor({ ho, result, onChange }: { ho: HomeOffice; result?: T
             <MoneyField label="Utilities" value={ho.utilities} onChange={(n) => onChange({ utilities: n })} />
             <MoneyField label="Repairs and maintenance" value={ho.repairs} onChange={(n) => onChange({ repairs: n })} />
             <MoneyField label="Other home expenses" value={ho.other} onChange={(n) => onChange({ other: n })} />
-            <MoneyField label="Depreciation of the office" hint="Business part, from Form 8829 Part III" value={ho.depreciation} onChange={(n) => onChange({ depreciation: n })} />
           </div>
+          <p className="why">Depreciation of the home (Form 8829 Part III). If you rent, leave these blank.</p>
+          <div className="grid">
+            <MoneyField label="Home’s cost or value" hint="Smaller of adjusted basis or fair market value when first used for business, including land" value={ho.homeBasis} onChange={(n) => onChange({ homeBasis: n })} />
+            <MoneyField label="Land value included" value={ho.landValue} onChange={(n) => onChange({ landValue: n })} />
+            <TextField label="First used for business" placeholder="MM/DD/YYYY" value={ho.firstUsed} onChange={(v) => onChange({ firstUsed: v.replace(/[^0-9/]/g, '').slice(0, 10) })} />
+            {ho.homeBasis > 0
+              ? <p className="why" style={{ alignSelf: 'end' }}>Depreciation {usd(result?.lines['42'] ?? 0)} ({(result?.lines['41'] ?? 0).toFixed(3)}%)</p>
+              : <MoneyField label="Or depreciation already figured" hint="Form 8829 line 42" value={ho.depreciation} onChange={(n) => onChange({ depreciation: n })} />}
+          </div>
+          <details className="more" open={ho.priorOperatingCarryover + ho.priorExcessCarryover > 0}>
+            <summary>Amounts carried over from 2024</summary>
+            <div className="grid">
+              <MoneyField label="Operating expenses" hint="2024 Form 8829 line 43" value={ho.priorOperatingCarryover} onChange={(n) => onChange({ priorOperatingCarryover: n })} />
+              <MoneyField label="Excess casualty losses and depreciation" hint="2024 Form 8829 line 44" value={ho.priorExcessCarryover} onChange={(n) => onChange({ priorExcessCarryover: n })} />
+            </div>
+          </details>
           {result && result.carryover > 0 && <p className="note">{usd(result.carryover)} can’t be deducted this year because it is more than the business profit. It carries over to 2026.</p>}
         </>
       )}
@@ -833,3 +858,63 @@ const EARLY_EXCEPTIONS = [
   { value: '11', label: '11 — Qualified reservist distribution' },
   { value: '12', label: '12 — Other (see the Form 5329 instructions)' }
 ]
+
+type AssetResultT = TaxReturnResult['scheduleC'][number]['assets'][number]
+
+/** Equipment, buildings and improvements (Form 4562). */
+function AssetsEditor({ assets, results, allow179, total, defaultClass = '5', onChange }: {
+  assets: DepreciableAsset[]; results: AssetResultT[]; allow179: boolean; total: number; defaultClass?: PropertyClass
+  onChange: (assets: DepreciableAsset[]) => void
+}): ReactElement {
+  const patch = (id: string, p: Partial<DepreciableAsset>): void => onChange(assets.map((a) => (a.id === id ? { ...a, ...p } : a)))
+  const classes = (Object.keys(PROPERTY_CLASS_LABELS) as PropertyClass[]).map((k) => ({ value: k, label: PROPERTY_CLASS_LABELS[k] }))
+  return (
+    <details className="more" open={assets.length > 0}>
+      <summary>Depreciation and equipment (Form 4562){total > 0 ? ` · ${usd(total)}` : ''}</summary>
+      {assets.map((a, i) => {
+        const res = results.find((x) => x.id === a.id)
+        const thisYear = /\/2025$/.test(a.placedInService.trim())
+        const personal = !['27.5', '39'].includes(a.propertyClass)
+        return (
+          <div className="asset" key={a.id}>
+            <header><h4>{a.description.trim() || `Asset ${i + 1}`}</h4><button type="button" className="link-button" onClick={() => onChange(assets.filter((x) => x.id !== a.id))}>Remove</button></header>
+            <div className="grid">
+              <TextField label="Description" placeholder="Laptop, furniture, building" value={a.description} onChange={(v) => patch(a.id, { description: v })} />
+              <TextField label="Date placed in service" placeholder="MM/DD/YYYY" value={a.placedInService} onChange={(v) => patch(a.id, { placedInService: v.replace(/[^0-9/]/g, '').slice(0, 10) })} />
+              <div className="span-2"><SelectField label="Kind of property" value={a.propertyClass} onChange={(v) => patch(a.id, { propertyClass: v as PropertyClass })} options={classes} /></div>
+              <MoneyField label="Cost or other basis" hint={a.propertyClass === '27.5' || a.propertyClass === '39' ? 'Buildings only; leave out the land' : undefined} value={a.cost} onChange={(n) => patch(a.id, { cost: n })} />
+              <NumberField label="Business use" max={100} suffix="%" value={a.businessPct} onChange={(n) => patch(a.id, { businessPct: n })} />
+              {thisYear && personal && allow179 && (
+                <MoneyField label="Section 179 deduction to elect" hint="Expense it now instead of depreciating" value={a.section179} onChange={(n) => patch(a.id, { section179: n })} />
+              )}
+              {thisYear && personal && (
+                <div className={allow179 ? '' : 'span-2'}>
+                  <SelectField label="Bonus depreciation" value={a.bonus} onChange={(v) => patch(a.id, { bonus: v as DepreciableAsset['bonus'] })} options={[
+                    { value: 'auto', label: 'Take it (100%, or 40% if acquired before Jan 20, 2025)' },
+                    { value: '40', label: 'Elect 40% instead of 100%' },
+                    { value: 'none', label: 'Elect out' }
+                  ]} />
+                </div>
+              )}
+              {thisYear && personal && a.bonus === 'auto' && (
+                <div className="span-2"><Check label="Acquired, or under a binding contract, before January 20, 2025" hint="Bonus is 40% for such property" checked={a.acquiredBeforeJan20} onChange={(v) => patch(a.id, { acquiredBeforeJan20: v })} /></div>
+              )}
+              {!thisYear && personal && a.placedInService.length === 10 && (
+                <MoneyField label="Bonus and section 179 taken in earlier years" hint="Reduces the basis left to depreciate" value={a.priorSpecial} onChange={(n) => patch(a.id, { priorSpecial: n })} />
+              )}
+              <div className="span-2"><Check label="Enter the 2025 depreciation myself" hint="For assets on another method or convention" checked={a.manual} onChange={(v) => patch(a.id, { manual: v })} /></div>
+              {a.manual && <MoneyField label="2025 depreciation" value={a.manualAmount} onChange={(n) => patch(a.id, { manualAmount: n })} />}
+            </div>
+            {res && !a.manual && (res.depreciation + res.section179Elected > 0) && (
+              <p className="why">
+                2025: {res.section179Elected > 0 ? `section 179 ${usd(res.section179Elected)} · ` : ''}{res.bonus > 0 ? `bonus ${usd(res.bonus)} · ` : ''}MACRS {usd(res.macrs)} ({res.convention})
+              </p>
+            )}
+          </div>
+        )
+      })}
+      <button type="button" className="add-button" onClick={() => onChange([...assets, emptyAsset(defaultClass)])}>+ Add an asset</button>
+      <p className="why">Vehicles: use car and truck expenses instead. Land is never depreciated.</p>
+    </details>
+  )
+}

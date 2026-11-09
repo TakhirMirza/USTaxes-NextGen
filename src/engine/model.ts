@@ -201,6 +201,37 @@ export interface VehicleInfo {
 
 export type HomeOfficeMethod = 'none' | 'simplified' | 'regular' | 'amount'
 
+/** MACRS recovery class (GDS). */
+export type PropertyClass = '3' | '5' | '7' | '10' | '15' | '20' | '27.5' | '39'
+
+export const PROPERTY_CLASS_LABELS: Record<PropertyClass, string> = {
+  '3': '3-year (tractor units, some tools)',
+  '5': '5-year (computers, office machines, cars, appliances in a rental)',
+  '7': '7-year (office furniture, fixtures, equipment)',
+  '10': '10-year (vessels, single-purpose farm structures)',
+  '15': '15-year (land improvements: fences, paving, landscaping)',
+  '20': '20-year (farm buildings, municipal sewers)',
+  '27.5': '27.5-year residential rental building',
+  '39': '39-year nonresidential building or improvement'
+}
+
+/** One depreciable asset (Form 4562). */
+export interface DepreciableAsset {
+  id: string
+  description: string
+  /** MM/DD/YYYY */ placedInService: string
+  cost: number
+  /** Percent of business or investment use (0–100). */ businessPct: number
+  propertyClass: PropertyClass
+  /** Section 179 expense elected for 2025 (business assets placed in service in 2025). */ section179: number
+  /** Special depreciation allowance: 'auto' = 100% (40% if acquired before January 20, 2025), '40' = elect 40%, 'none' = elect out. */
+  bonus: 'auto' | '40' | 'none'
+  /** Acquired (or under binding contract) before January 20, 2025: bonus is 40%. */ acquiredBeforeJan20: boolean
+  /** For assets placed in service before 2025: bonus and section 179 claimed in earlier years. */ priorSpecial: number
+  /** Use an amount you already figured instead of MACRS. */ manual: boolean
+  manualAmount: number
+}
+
 export interface HomeOffice {
   method: HomeOfficeMethod
   /** Square feet used regularly and exclusively for business. */
@@ -215,8 +246,18 @@ export interface HomeOffice {
   repairs: number
   rent: number
   other: number
-  /** Business-use depreciation of the home, already figured (Form 8829 line 42). */
+  /** Business-use depreciation of the home, already figured (Form 8829 line 42). Used when homeBasis is 0. */
   depreciation: number
+  /** Form 8829 line 37: smaller of the home's adjusted basis or its value when first used for business. */
+  homeBasis: number
+  /** Form 8829 line 38: land included in homeBasis. */
+  landValue: number
+  /** Date the home was first used for business (MM/DD/YYYY). */
+  firstUsed: string
+  /** 2024 Form 8829 line 43 (operating expenses carried over). */
+  priorOperatingCarryover: number
+  /** 2024 Form 8829 line 44 (excess casualty losses and depreciation carried over). */
+  priorExcessCarryover: number
   /** Already-figured deduction when method is 'amount'. */
   amount: number
 }
@@ -242,6 +283,8 @@ export interface ScheduleCBusiness {
   allAtRisk: boolean
   vehicle: VehicleInfo
   homeOffice: HomeOffice
+  /** Equipment and other property depreciated on Form 4562 (Schedule C line 13). */
+  assets: DepreciableAsset[]
   /** Form 8995-A inputs, used only above the QBI threshold. */
   qbi: BusinessQbi
   grossReceipts: number
@@ -290,6 +333,8 @@ export interface RentalProperty {
   rents: number
   royalties: number
   expenses: RentalExpenses
+  /** Buildings, improvements and appliances depreciated on Form 4562 (added to Schedule E line 18). */
+  assets: DepreciableAsset[]
 }
 
 export interface HsaAccount {
@@ -374,6 +419,8 @@ export interface TaxReturnInput {
   priorPassiveCarryover: number
   /** QBI and REIT/PTP losses carried from 2024 (Form 8995 lines 3 and 7, as positive numbers). */
   qbiCarryforward: { business: number; reitPtp: number }
+  /** Section 179 deduction disallowed in 2024 (2024 Form 4562 line 13). */
+  section179Carryover: number
   hsa: { taxpayer: HsaAccount; spouse: HsaAccount }
   /** Alternative minimum tax inputs (Form 6251) beyond what the return already knows. */
   amt: { isoBargainElement: number; privateActivityBondInterest: number; otherAdjustments: number }
@@ -438,7 +485,8 @@ export const emptyVehicle = (): VehicleInfo => ({
 })
 export const emptyHomeOffice = (): HomeOffice => ({
   method: 'none', officeSqFt: 0, homeSqFt: 0, mortgageInterest: 0, realEstateTaxes: 0, insurance: 0,
-  utilities: 0, repairs: 0, rent: 0, other: 0, depreciation: 0, amount: 0
+  utilities: 0, repairs: 0, rent: 0, other: 0, depreciation: 0, amount: 0,
+  homeBasis: 0, landValue: 0, firstUsed: '', priorOperatingCarryover: 0, priorExcessCarryover: 0
 })
 export const emptyRentalExpenses = (): RentalExpenses => ({
   advertising: 0, auto: 0, cleaning: 0, commissions: 0, insurance: 0, legal: 0, management: 0, mortgageInterest: 0,
@@ -456,7 +504,11 @@ export const RENTAL_TYPE_LABELS: Record<RentalType, string> = {
 }
 export const emptyRental = (owner: Owner = 'taxpayer'): RentalProperty => ({
   id: newId('rent'), owner, address: '', type: 'single', fairRentalDays: 365, personalUseDays: 0, activeParticipation: true,
-  rents: 0, royalties: 0, expenses: emptyRentalExpenses()
+  rents: 0, royalties: 0, expenses: emptyRentalExpenses(), assets: []
+})
+export const emptyAsset = (propertyClass: PropertyClass = '5'): DepreciableAsset => ({
+  id: newId('asset'), description: '', placedInService: '', cost: 0, businessPct: 100, propertyClass, section179: 0,
+  bonus: 'auto', acquiredBeforeJan20: false, priorSpecial: 0, manual: false, manualAmount: 0
 })
 export const emptyHsa = (): HsaAccount => ({
   coverage: 'none', monthsCovered: 12, personalContributions: 0, employerContributions: 0, distributions: 0, qualifiedExpenses: 0, exceptionApplies: false,
@@ -466,7 +518,7 @@ export const emptyHsa = (): HsaAccount => ({
 export const emptyBusiness = (owner: Owner = 'taxpayer'): ScheduleCBusiness => ({
   id: newId('biz'), owner, name: '', activity: '', businessCode: '', ein: '', address: '', cityStateZip: '',
   accountingMethod: 'cash', materiallyParticipated: true, startedThisYear: false, required1099s: null, filed1099s: false,
-  allAtRisk: true, vehicle: emptyVehicle(), homeOffice: emptyHomeOffice(), qbi: { w2Wages: 0, ubia: 0, sstb: false }, grossReceipts: 0, returnsAndAllowances: 0,
+  allAtRisk: true, vehicle: emptyVehicle(), homeOffice: emptyHomeOffice(), assets: [], qbi: { w2Wages: 0, ubia: 0, sstb: false }, grossReceipts: 0, returnsAndAllowances: 0,
   costOfGoodsSold: 0, otherIncome: 0, expenses: emptyExpenses()
 })
 export const emptyDependent = (): Dependent => ({
@@ -509,6 +561,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   rentalForms1099: { required: null, filed: false },
   priorPassiveCarryover: 0,
   qbiCarryforward: { business: 0, reitPtp: 0 },
+  section179Carryover: 0,
   hsa: { taxpayer: emptyHsa(), spouse: emptyHsa() },
   amt: { isoBargainElement: 0, privateActivityBondInterest: 0, otherAdjustments: 0 },
   retirement: [],
@@ -600,12 +653,12 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
         // Older files kept a home office amount among the expenses; move it to the "already figured" method.
         if (expenses.homeOffice > 0 && homeOffice.method === 'none') { homeOffice.method = 'amount'; homeOffice.amount = expenses.homeOffice }
         expenses.homeOffice = 0
-        return { ...emptyBusiness(), ...b, expenses, homeOffice, vehicle: { ...emptyVehicle(), ...(b?.vehicle ?? {}) }, qbi: { ...emptyBusiness().qbi, ...(b?.qbi ?? {}) } }
+        return { ...emptyBusiness(), ...b, expenses, homeOffice, vehicle: { ...emptyVehicle(), ...(b?.vehicle ?? {}) }, qbi: { ...emptyBusiness().qbi, ...(b?.qbi ?? {}) }, assets: arr(b?.assets, emptyAsset) }
       })
       : [],
     schedule1A: { ...base.schedule1A, ...(r.schedule1A ?? {}) },
     itemized: { ...base.itemized, ...(r.itemized ?? {}) },
-    rentals: Array.isArray(r.rentals) ? r.rentals.map((x) => ({ ...emptyRental(), ...x, expenses: { ...emptyRentalExpenses(), ...(x?.expenses ?? {}) } })) : [],
+    rentals: Array.isArray(r.rentals) ? r.rentals.map((x) => ({ ...emptyRental(), ...x, expenses: { ...emptyRentalExpenses(), ...(x?.expenses ?? {}) }, assets: arr(x?.assets, emptyAsset) })) : [],
     rentalForms1099: { ...base.rentalForms1099, ...(r.rentalForms1099 ?? {}) },
     hsa: normalizeHsa(r.hsa, r.adjustments?.hsaDeduction ?? 0),
     adjustments: { ...base.adjustments, ...(r.adjustments ?? {}), hsaDeduction: 0 },

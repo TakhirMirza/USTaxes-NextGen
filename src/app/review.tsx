@@ -315,18 +315,32 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
             </details>
           )}
           {result.scheduleC.filter((c) => c.homeOffice.method === 'regular' && c.homeOffice.deduction > 0).map((c) => (
-            <details key={`8829-${c.id}`}><summary>Form 8829 <span>{c.name} — copy these onto the form</span></summary>
+            <details key={`8829-${c.id}`}><summary>Form 8829 <span>{c.name}</span></summary>
               <dl className="facts">
                 <div><dt>Business percentage (line 7)</dt><dd>{(c.homeOffice.businessPct * 100).toFixed(2)}%</dd></div>
                 <div><dt>Tentative profit (line 8)</dt><dd>{usd(c.homeOffice.line8)}</dd></div>
-                <div><dt>Mortgage interest and taxes, business part (line 14)</dt><dd>{usd(c.homeOffice.line14)}</dd></div>
-                <div><dt>Operating expenses allowed (line 25)</dt><dd>{usd(c.homeOffice.line25)}</dd></div>
+                {c.homeOffice.line14 > 0 && <div><dt>Mortgage interest and taxes, business part (line 14)</dt><dd>{usd(c.homeOffice.line14)}</dd></div>}
+                <div><dt>Operating expenses allowed (line 27)</dt><dd>{usd(c.homeOffice.line25)}</dd></div>
                 <div><dt>Depreciation allowed (line 33)</dt><dd>{usd(c.homeOffice.depreciationAllowed)}</dd></div>
                 <div><dt>Deduction (line 36, Schedule C line 30)</dt><dd>{usd(c.homeOffice.deduction)}</dd></div>
                 {c.homeOffice.carryover > 0 && <div><dt>Carryover to 2026 (lines 43–44)</dt><dd>{usd(c.homeOffice.carryover)}</dd></div>}
               </dl>
             </details>
           ))}
+          {result.form4562.filter((f) => f.line22 > 0).map((f) => (
+            <details key={`4562-${f.id}`}><summary>Form 4562 <span>{f.name}{f.required ? '' : ' (not required; deducted directly)'}</span></summary>
+              <dl className="facts">
+                {f.section179 > 0 && <div><dt>Section 179 (line 12)</dt><dd>{usd(f.section179)}</dd></div>}
+                {f.line14 > 0 && <div><dt>Bonus depreciation (line 14)</dt><dd>{usd(f.line14)}</dd></div>}
+                {f.line17 > 0 && <div><dt>Assets from earlier years (line 17)</dt><dd>{usd(f.line17)}</dd></div>}
+                {f.rows.map((x, i) => <div key={i}><dt>{x.period} {x.convention} {x.method}{x.placed ? ` · ${x.placed}` : ''}</dt><dd>{usd(x.deduction)}</dd></div>)}
+                {f.line16 > 0 && <div><dt>Entered by you (line 16)</dt><dd>{usd(f.line16)}</dd></div>}
+                {f.home && <div><dt>Home office, first used {f.home.placed} (line 19j; on Form 8829)</dt><dd>{usd(f.home.deduction)}</dd></div>}
+                <div><dt>Total (line 22)</dt><dd>{usd(f.line22)}</dd></div>
+              </dl>
+            </details>
+          ))}
+          {result.section179.line13 > 0 && <p className="why">Section 179 carried to 2026: {usd(result.section179.line13)}.</p>}
           {result.form8889.map((h) => (
             <details key={`8889-${h.owner}`}><summary>Form 8889 <span>HSA — {h.owner === 'spouse' ? ret.spouse.firstName || 'Spouse' : ret.taxpayer.firstName || 'You'}</span></summary>
               <dl className="facts">

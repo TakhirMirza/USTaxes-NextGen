@@ -7,8 +7,8 @@ import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import * as lib from 'pdf-lib'
 import { computeReturn } from '../engine/compute.ts'
-import { emptyBusiness, emptyDependent, emptyHomeOffice, emptyHsa, emptyProvider, emptyRental, emptyReturn, emptyStudent, emptyTransaction, empty1099Div, empty1099R, emptySocialSecurity, emptyW2 } from '../engine/model.ts'
-import type { CapitalTransaction, TaxReturnInput } from '../engine/model.ts'
+import { emptyAsset, emptyBusiness, emptyDependent, emptyHomeOffice, emptyHsa, emptyProvider, emptyRental, emptyReturn, emptyStudent, emptyTransaction, empty1099Div, empty1099R, emptySocialSecurity, emptyW2 } from '../engine/model.ts'
+import type { CapitalTransaction, DepreciableAsset, TaxReturnInput } from '../engine/model.ts'
 import { buildPacket2025 } from './irs2025.ts'
 import { buildPdf, fillForm, findField } from './fill.ts'
 import type { FillProblem } from './fill.ts'
@@ -283,4 +283,43 @@ test('Form 5329 prints Part I with the exception and Part VII; Schedule 2 line 8
   const { bytes, problems } = await buildPdf(lib, packet.forms, load)
   assert.deepEqual(problems, [])
   if (process.env.PDF_OUT6) await writeFile(process.env.PDF_OUT6, bytes)
+})
+
+test('Form 8829 and Form 4562 print with equipment, a home first used in 2025, and a rental', async () => {
+  const asset = (p: Partial<DepreciableAsset>): DepreciableAsset => ({ ...emptyAsset('5'), placedInService: '04/10/2025', cost: 3000, ...p })
+  const ret: TaxReturnInput = {
+    ...busy(),
+    businesses: [{
+      ...busy().businesses[0],
+      homeOffice: { ...emptyHomeOffice(), method: 'regular', homeSqFt: 2400, officeSqFt: 240, mortgageInterest: 12000, realEstateTaxes: 5000, insurance: 1200, utilities: 3600, homeBasis: 500000, landValue: 120000, firstUsed: '02/01/2025' },
+      assets: [
+        asset({ description: 'Laptop', cost: 2400, section179: 2400 }),
+        asset({ description: 'Camera body', cost: 6000, bonus: 'none' }),
+        asset({ description: 'Desk', propertyClass: '7', cost: 1500, acquiredBeforeJan20: true }),
+        asset({ description: 'Lens (2023)', placedInService: '06/01/2023', cost: 4000, bonus: 'none' })
+      ]
+    }],
+    rentals: [{ ...emptyRental(), address: '9 Elm St, Reston, VA', rents: 26000, expenses: { ...emptyRental().expenses, taxes: 3000 }, assets: [
+      { ...emptyAsset('27.5'), description: 'Building', placedInService: '09/15/2025', cost: 280000 },
+      { ...emptyAsset('5'), description: 'Washer', placedInService: '09/20/2025', cost: 900 }
+    ] }]
+  }
+  const res = computeReturn(ret)
+  const packet = buildPacket2025(ret, res)
+  const ids = packet.forms.map((f) => f.id)
+  const biz = ret.businesses[0].id
+  for (const id of [`4562-${biz}`, `4562-${ret.rentals[0].id}`, `8829-${biz}`]) assert.ok(ids.includes(id), `${id} missing: ${ids.join(', ')}`)
+  const f4562 = packet.forms.find((f) => f.id === `4562-${biz}`)!
+  assert.equal(f4562.values['f1_20[0]'], '2,400')
+  assert.equal(f4562.values['f1_33[0]'], '6,000')
+  assert.equal(f4562.values['f1_37[0]'], '1,200')
+  assert.equal(f4562.values['f1_86[0]'], '02/2025')
+  const f8829 = packet.forms.find((f) => f.id === `8829-${biz}`)!
+  assert.equal(f8829.values['f1_55[0]'], '2.247')
+  const sc = packet.forms.find((f) => f.id.startsWith('sc-'))!
+  assert.equal(sc.values['f1_22[0]'], res.scheduleC[0].depreciation.toLocaleString('en-US'))
+  assert.equal(res.scheduleC[0].depreciation + res.form4562.find((f) => f.id === biz)!.home!.deduction, res.form4562.find((f) => f.id === biz)!.line22)
+  const { bytes, problems } = await buildPdf(lib, packet.forms, load)
+  assert.deepEqual(problems, [])
+  if (process.env.PDF_OUT7) await writeFile(process.env.PDF_OUT7, bytes)
 })

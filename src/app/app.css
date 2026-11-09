@@ -437,3 +437,8 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .select { width: 100%; padding: 9px 11px; border: 1.5px solid var(--rule-strong); border-radius: var(--radius-sm); background: var(--sheet); }
 .select:focus { border-color: var(--ink); }
 .doc > header .why { font-size: 0.85rem; }
+.asset { border: 1px solid var(--rule); border-radius: var(--radius-sm); padding: 14px 16px; margin: 12px 0; background: var(--sheet); }
+.asset > header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.asset > header h4 { margin: 0; font-size: 0.95rem; font-weight: 600; }
+.asset .why { margin: 10px 0 0; }
+.why + .grid { margin-top: 10px; }
