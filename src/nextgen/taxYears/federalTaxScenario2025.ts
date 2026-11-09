@@ -2,11 +2,11 @@
 export type Status2025 = 'single'|'joint'|'separate'|'head'|'survivor'
 export interface Bracket2025 { ceiling: number; rate: number }
 const ceilings: Record<Status2025, number[]> = {
-  single: [11925,48350,103350,197300,250525,626350],
-  joint: [23850,96700,206700,394600,501050,751600],
-  separate: [11925,48350,103350,197300,250525,375800],
+  single: [11925,48475,103350,197300,250525,626350],
+  joint: [23850,96950,206700,394600,501050,751600],
+  separate: [11925,48475,103350,197300,250525,375800],
   head: [17000,64850,103350,197300,250500,626350],
-  survivor: [23850,96700,206700,394600,501050,751600]
+  survivor: [23850,96950,206700,394600,501050,751600]
 }
 const rates = [10,12,22,24,32,35,37]
 export const baseStandardDeduction2025: Record<Status2025, number> = {single:15750,joint:31500,separate:15750,head:23625,survivor:31500}

@@ -9,11 +9,11 @@ export type TableFilingStatus2025 =
   'single'|'marriedJoint'|'marriedSeparate'|'headOfHousehold'|'qualifyingSurvivingSpouse'
 type Bracket = readonly [number, number]
 const brackets: Record<TableFilingStatus2025, readonly Bracket[]> = {
- single:[[11925,0.10],[48350,0.12],[103350,0.22],[197300,0.24],[250525,0.32],[626350,0.35],[Infinity,0.37]],
- marriedJoint:[[23850,0.10],[96700,0.12],[206700,0.22],[394600,0.24],[501050,0.32],[751600,0.35],[Infinity,0.37]],
- marriedSeparate:[[11925,0.10],[48350,0.12],[103350,0.22],[197300,0.24],[250525,0.32],[375800,0.35],[Infinity,0.37]],
+ single:[[11925,0.10],[48475,0.12],[103350,0.22],[197300,0.24],[250525,0.32],[626350,0.35],[Infinity,0.37]],
+ marriedJoint:[[23850,0.10],[96950,0.12],[206700,0.22],[394600,0.24],[501050,0.32],[751600,0.35],[Infinity,0.37]],
+ marriedSeparate:[[11925,0.10],[48475,0.12],[103350,0.22],[197300,0.24],[250525,0.32],[375800,0.35],[Infinity,0.37]],
  headOfHousehold:[[17000,0.10],[64850,0.12],[103350,0.22],[197300,0.24],[250500,0.32],[626350,0.35],[Infinity,0.37]],
- qualifyingSurvivingSpouse:[[23850,0.10],[96700,0.12],[206700,0.22],[394600,0.24],[501050,0.32],[751600,0.35],[Infinity,0.37]]
+ qualifyingSurvivingSpouse:[[23850,0.10],[96950,0.12],[206700,0.22],[394600,0.24],[501050,0.32],[751600,0.35],[Infinity,0.37]]
 }
 export type TableResult2025 =
  | {status:'blocked';blockers:string[];taxCents:null}

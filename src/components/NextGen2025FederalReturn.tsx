@@ -110,7 +110,7 @@ export default function NextGen2025FederalReturn({ income, schedules, w2Withhold
           <option value="single">Single</option><option value="marriedJoint">Married filing jointly</option>
           <option value="marriedSeparate">Married filing separately</option><option value="headOfHousehold">Head of household</option>
           <option value="qualifyingSurvivingSpouse">Qualifying surviving spouse</option></select></label>
-        <label>Form 1040 line 15 — verified taxable income ($)<input inputMode="decimal" value={worksheetTaxable} onChange={e=>setWorksheetTaxable(e.target.value)} placeholder="100000.00" /></label>
+        <label>Form 1040 line 15 — verified taxable income ($)<input inputMode="decimal" value={worksheetTaxable} onChange={e=>{setWorksheetTaxable(e.target.value);setChecks(p=>({...p,independentTaxReview:false}))}} placeholder="100000.00" /></label>
       </div>
       <label className="v2-check"><input type="checkbox" checked={worksheetLine15Reviewed} onChange={e=>setWorksheetLine15Reviewed(e.target.checked)}/>Line 15 reconciled to actual source documents and deductions</label>
       <label className="v2-check"><input type="checkbox" checked={worksheetOrdinaryOnly} onChange={e=>setWorksheetOrdinaryOnly(e.target.checked)}/>I confirmed no qualified dividends, capital gains, or other special tax methods apply</label>
@@ -125,7 +125,7 @@ export default function NextGen2025FederalReturn({ income, schedules, w2Withhold
         ? <p>Interval ${tablePreview.intervalStart.toLocaleString('en-US')}–${tablePreview.intervalEnd.toLocaleString('en-US')}: <strong>{dollars(tablePreview.taxCents)}</strong> (unverified preview; copying disabled)</p>
         : <ul className="v2-blockers">{tablePreview.blockers.map(b=><li key={b}>{b}</li>)}</ul>}
     </details>
-    <div className="v2-form-grid">{fields.map(([id, title]) => <label key={id}>{title}<input type="text" inputMode="decimal" placeholder="Required: 0.00 or amount" value={amounts[id]} onChange={e => setAmounts(p => ({ ...p, [id]: e.target.value }))} /></label>)}</div>
+    <div className="v2-form-grid">{fields.map(([id, title]) => <label key={id}>{title}<input type="text" inputMode="decimal" placeholder="Required: 0.00 or amount" value={amounts[id]} onChange={e => { setAmounts(p => ({ ...p, [id]: e.target.value })); setChecks({independentTaxReview:false, independentCreditReview:false, independentPaymentReview:false, scheduleLineRulesReviewed:false}); setWithholdingConfirmed(false) }} /></label>)}</div>
     <div className="v2-note">W-2 box 2 source withholding: {w2WithholdingCents === null ? 'Unavailable' : dollars(w2WithholdingCents)}. The entered line 25a must match the W-2 source total.</div>
     <label className="v2-check"><input type="checkbox" checked={withholdingConfirmed} onChange={e => setWithholdingConfirmed(e.target.checked)}/>I have reconciled line 25a to the entered W-2 withholding records.</label>
     {reviews.map(({ id, title }) => <label className="v2-check" key={id}><input type="checkbox" checked={checks[id]} onChange={e => setChecks(p => ({ ...p, [id]: e.target.checked }))}/>{title}</label>)}
