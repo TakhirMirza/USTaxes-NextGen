@@ -1,3 +1,4 @@
+import { calculateScheduleSECore2025 } from './scheduleSECore2025'
 import { ScheduleCDraft } from './scheduleCWorksheet2025'
 import { evaluateScheduleCBridge2025 } from './scheduleCBridge2025'
 
@@ -28,12 +29,18 @@ export function assessScheduleSEPreview2025(draft:ScheduleCDraft, options:{noW2W
  if(!allowed)return {status:'blocked',netProfitCents:net,netEarningsCents:null,illustrativeSSTaxCents:null,illustrativeMedicareTaxCents:null,illustrativeTotalCents:null,illustrativeHalfDeductionCents:null,findings}
  const earnings=roundRatio(net!,9235,10000)
  if(earnings<40000){add('minimum','Net earnings below $400: ordinary self-employment tax may not apply; check special rules.');return {status:'blocked',netProfitCents:net,netEarningsCents:earnings,illustrativeSSTaxCents:null,illustrativeMedicareTaxCents:null,illustrativeTotalCents:null,illustrativeHalfDeductionCents:null,findings}}
- // Display-only arithmetic. Rates are NOT a substitute for the official Schedule SE instructions.
- const ss=roundRatio(earnings,124,1000)
- const medicare=roundRatio(earnings,29,1000)
- const total=ss+medicare
- add('not-posted','Illustrative amounts only. Verify 2025 Schedule SE instructions, filing status, wage base, all other income, and rounding before use.','review')
- return {status:'illustrative',netProfitCents:net,netEarningsCents:earnings,illustrativeSSTaxCents:ss,illustrativeMedicareTaxCents:medicare,illustrativeTotalCents:total,illustrativeHalfDeductionCents:Math.round(total/2),findings}
+ // Reuse the independently tested 2025 ordinary-method core; no automatic posting.
+ // The scenario has confirmed no W-2 wages and is capped at $100,000 profit.
+ // Additional Medicare Tax for a joint return still requires separate review.
+ const core=calculateScheduleSECore2025({netProfitCents:net!,socialSecurityWagesCents:0,medicareWagesCents:0,
+   otherSEIncomeExcluded:true,optionalMethodsExcluded:true,churchIncomeExcluded:true,
+   specialAdjustmentsExcluded:true,additionalMedicareTaxHandledSeparately:true})
+ if(core.status==='blocked'){
+   core.reasons.forEach(message=>add('se-core',message))
+   return {status:'blocked',netProfitCents:net,netEarningsCents:earnings,illustrativeSSTaxCents:null,illustrativeMedicareTaxCents:null,illustrativeTotalCents:null,illustrativeHalfDeductionCents:null,findings}
+ }
+ add('not-posted','Tested 2025 SE arithmetic only. Additional Medicare Tax, filing status, other income, eligibility and official rounding require independent review before posting.','review')
+ return {status:'illustrative',netProfitCents:net,netEarningsCents:core.netEarningsCents,illustrativeSSTaxCents:core.socialSecurityTaxCents,illustrativeMedicareTaxCents:core.medicareTaxCents,illustrativeTotalCents:core.totalTaxCents,illustrativeHalfDeductionCents:core.halfDeductionCents,findings}
 }
 export function scheduleSEPreviewCsv2025(result:SEPreview):string {
  const lines=[['Item','Amount USD','Status'],['Schedule C candidate',result.netProfitCents,'source candidate'],['Net earnings illustration',result.netEarningsCents,'not posted'],['Social Security illustration',result.illustrativeSSTaxCents,'not posted'],['Medicare illustration',result.illustrativeMedicareTaxCents,'not posted'],['SE total illustration',result.illustrativeTotalCents,'not posted'],['Half deduction illustration',result.illustrativeHalfDeductionCents,'not posted']]
