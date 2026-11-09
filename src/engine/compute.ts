@@ -225,6 +225,11 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   if (!ssnOk(input.taxpayer.ssn)) issues.push({ level: 'warning', step: 'about', message: 'Enter your 9-digit Social Security number. The IRS forms need it.' })
   if (joint && !ssnOk(input.spouse.ssn)) issues.push({ level: 'warning', step: 'about', message: 'Enter your spouse’s Social Security number.' })
   if (input.dependents.some((d) => !ssnOk(d.ssn))) issues.push({ level: 'warning', step: 'about', message: 'Enter a Social Security number for each dependent.' })
+  for (const [who, p] of [['Your', input.taxpayer], ['Your spouse’s', input.spouse]] as const) {
+    const pin = p.ipPin.replace(/\D/g, '')
+    if (pin && pin.length !== 6 && (who === 'Your' || joint)) issues.push({ level: 'warning', step: 'about', message: `${who} Identity Protection PIN must be 6 digits.` })
+  }
+  if (input.designee.enabled && (!input.designee.name.trim() || input.designee.pin.replace(/\D/g, '').length !== 5)) issues.push({ level: 'warning', step: 'review', message: 'A third party designee needs a name and a 5-digit PIN of their choice.' })
   if (!input.contact.street.trim() || !input.contact.city.trim() || !input.contact.zip.trim()) issues.push({ level: 'warning', step: 'about', message: 'Enter your home address for the IRS forms.' })
   if (input.digitalAssets === null) issues.push({ level: 'warning', step: 'income', message: 'Answer the digital assets question. Form 1040 requires a Yes or No.' })
   if (fs === 'hoh' && input.dependents.length === 0) issues.push({ level: 'warning', step: 'about', message: 'Head of household usually requires a qualifying person. Add a dependent or check your filing status.' })

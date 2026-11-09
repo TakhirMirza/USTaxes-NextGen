@@ -1,12 +1,13 @@
 import type { TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import { buildPacket2025 } from './irs2025.ts'
+import type { PreparerInfo } from './irs2025.ts'
 import { buildPdf } from './fill.ts'
 
 /** Builds the filled IRS PDF in the browser. Nothing leaves the device: the blank forms are static files of this site. */
-export async function downloadIrsForms(ret: TaxReturnInput, res: TaxReturnResult): Promise<{ pages: number; problems: number }> {
+export async function downloadIrsForms(ret: TaxReturnInput, res: TaxReturnResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   const lib = await import('pdf-lib')
-  const packet = buildPacket2025(ret, res)
+  const packet = buildPacket2025(ret, res, preparer)
   const load = async (file: string): Promise<ArrayBuffer> => {
     const response = await fetch(new URL(`forms/2025/${file}`, document.baseURI).toString())
     if (!response.ok) throw new Error(`Could not load the blank form ${file} (HTTP ${response.status}).`)

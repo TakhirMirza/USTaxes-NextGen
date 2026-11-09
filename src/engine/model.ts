@@ -12,6 +12,8 @@ export interface Person {
   presidentialFund: boolean
   /** Full-time student during any part of 5 months of 2025 (blocks the Saver's Credit). */
   fullTimeStudent: boolean
+  /** 6-digit Identity Protection PIN from the IRS, if one was issued. */
+  ipPin: string
   /** Age on December 31, 2025. 0 = not entered. */
   age: number
   age65OrOlder: boolean
@@ -253,6 +255,10 @@ export interface TaxReturnInput {
   /** Schedule B Part III: foreign financial account or foreign trust. */
   foreignAccounts: boolean
   refundDeposit: RefundDeposit
+  /** Print the paid preparer block (from the app's preparer profile) on Form 1040. */
+  usePaidPreparer: boolean
+  /** Third party designee on Form 1040 page 2. */
+  designee: { enabled: boolean; name: string; phone: string; pin: string }
   dependents: Dependent[]
   w2s: W2[]
   interest: Form1099Int[]
@@ -279,7 +285,7 @@ export interface TaxReturnInput {
 let counter = 0
 export const newId = (prefix: string): string => `${prefix}-${Date.now().toString(36)}-${(counter++).toString(36)}`
 
-export const emptyPerson = (): Person => ({ firstName: '', lastName: '', ssn: '', occupation: '', presidentialFund: false, fullTimeStudent: false, age: 0, age65OrOlder: false, blind: false })
+export const emptyPerson = (): Person => ({ firstName: '', lastName: '', ssn: '', occupation: '', presidentialFund: false, fullTimeStudent: false, ipPin: '', age: 0, age65OrOlder: false, blind: false })
 
 export const emptyExpenses = (): BusinessExpenses => ({
   advertising: 0, carAndTruck: 0, contractLabor: 0, insurance: 0, legalAndProfessional: 0, office: 0,
@@ -348,6 +354,8 @@ export const emptyReturn = (): TaxReturnInput => ({
   digitalAssets: null,
   foreignAccounts: false,
   refundDeposit: { routingNumber: '', accountNumber: '', accountType: 'checking' },
+  usePaidPreparer: false,
+  designee: { enabled: false, name: '', phone: '', pin: '' },
   dependents: [],
   w2s: [],
   interest: [],
@@ -422,6 +430,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     dependentCare: { ...base.dependentCare, ...(r.dependentCare ?? {}), providers: arr(r.dependentCare?.providers, emptyProvider) },
     contact: { ...base.contact, ...(r.contact ?? {}) },
     refundDeposit: { ...base.refundDeposit, ...(r.refundDeposit ?? {}) },
+    designee: { ...base.designee, ...(r.designee ?? {}) },
     digitalAssets: typeof r.digitalAssets === 'boolean' ? r.digitalAssets : null,
     w2s: arr(r.w2s, emptyW2),
     interest: arr(r.interest, empty1099Int),

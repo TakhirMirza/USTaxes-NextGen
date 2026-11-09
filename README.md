@@ -26,8 +26,20 @@ the browser's local storage and can be downloaded as a JSON file.
 | Penalty | Estimated tax penalty (Form 2210 Part I and the 2025 Penalty Worksheet, 7%), with the 2024 safe harbor |
 
 **IRS forms (PDF):** the Review step fills the official 2025 IRS PDFs in the browser and downloads one
-print-ready file: Form 1040, Schedules 1, 1-A, 2, 3, A, B, C, D, SE, EIC, 8812, Forms 2441, 8863, 8959, 8960, 8995, and the
+print-ready file: Form 1040, Schedules 1, 1-A, 2, 3, A, B, C, D, SE, EIC, 8812, Forms 2441, 8863, 8880, 8959, 8960, 8995, and the
 1040-V payment voucher when tax is owed. The blank forms live in `public/forms/2025` (official IRS PDFs).
+
+## For preparers and families
+
+- **Many returns.** The *All returns* page lists every return in this browser with its refund or balance, status
+  (In progress, Needs review, Ready to file, Filed), notes, and items still to check. Create, duplicate or delete returns.
+- **Paid preparer.** Save your name, PTIN, firm, EIN and address once in *Settings*; turn it on per return to print the
+  *Paid Preparer Use Only* box. Third party designee and Identity Protection PINs print on Form 1040 too.
+- **Client letter.** A printable letter with the result, signing and mailing steps, payment instructions, and a suggested
+  2026 estimated-tax amount when withholding fell short.
+- **Backups.** One file holds every return and the preparer profile, optionally encrypted with a password
+  (PBKDF2-SHA256, 600,000 iterations → AES-256-GCM). Restoring adds returns and never overwrites.
+- **Privacy.** Nothing leaves the device. A first-run notice explains local storage and shared-computer risks.
 
 **Try it:** the “Try an example” link fills in a made-up household so you can see every step.
 
@@ -44,7 +56,10 @@ src/
     compute.ts     TaxReturnInput → every Form 1040 line and schedule
     compute.test.ts  Hand-worked regression cases
   app/             React interface
-    App.tsx        Steps, live summary, autosave
+    App.tsx        Routing, autosave, the step shell
+    store.ts       Many returns + preparer profile in local storage (tested)
+    backup.ts      Backup files and password encryption (tested)
+    pages.tsx      All returns, Settings, privacy notice, client letter
     steps.tsx      About you, Income, Deductions, Credits & payments
     review.tsx     Form 1040 lines, schedules, warnings, save/open/print
     fields.tsx     Form controls

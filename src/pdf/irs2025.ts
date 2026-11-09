@@ -19,6 +19,17 @@ export interface FormFill {
   /** Zero-based pages to include; all pages when omitted. */
   pages?: number[]
 }
+/** Paid preparer details printed on Form 1040 page 2. Matches the app's preparer profile. */
+export interface PreparerInfo {
+  name: string
+  ptin: string
+  selfEmployed: boolean
+  firmName: string
+  firmEin: string
+  firmAddress: string
+  phone: string
+}
+
 export interface FormPacket {
   forms: FormFill[]
   /** Forms the return needs that this app cannot print yet. */
@@ -65,7 +76,7 @@ const header = (ret: TaxReturnInput, nameKey: string, ssnKey: string): Record<st
 })
 
 // ── Form 1040 ────────────────────────────────────────────────────────────────
-function form1040(ret: TaxReturnInput, res: TaxReturnResult, attachScheduleD: boolean): FormFill {
+function form1040(ret: TaxReturnInput, res: TaxReturnResult, attachScheduleD: boolean, preparer?: PreparerInfo | null): FormFill {
   const f = res.f1040
   const fs = ret.filingStatus
   const joint = fs === 'mfj'
@@ -158,6 +169,28 @@ function form1040(ret: TaxReturnInput, res: TaxReturnResult, attachScheduleD: bo
     v['f2_42[0]'] = ret.spouse.occupation
   }
   if (fs === 'mfs') v['Checkbox_ReadOrder[0].f1_28[0]'] = fullName(ret.spouse)
+
+  // Identity Protection PINs
+  if (digits(ret.taxpayer.ipPin).length === 6) v['f2_41[0]'] = digits(ret.taxpayer.ipPin)
+  if (joint && digits(ret.spouse.ipPin).length === 6) v['f2_43[0]'] = digits(ret.spouse.ipPin)
+
+  // Third party designee
+  const d = ret.designee
+  if (d.enabled && d.name.trim()) {
+    Object.assign(v, { 'c2_17[0]': true, 'c2_17[1]': false, 'f2_37[0]': d.name, 'f2_38[0]': d.phone, 'f2_39[0]': digits(d.pin).slice(0, 5) })
+  } else {
+    Object.assign(v, { 'c2_17[0]': false, 'c2_17[1]': true })
+  }
+
+  // Paid preparer
+  if (ret.usePaidPreparer && preparer && preparer.name.trim()) {
+    const ein = digits(preparer.firmEin)
+    Object.assign(v, {
+      'f2_46[0]': preparer.name, 'f2_47[0]': preparer.ptin.toUpperCase(), 'c2_18[0]': preparer.selfEmployed,
+      'f2_48[0]': preparer.firmName || (preparer.selfEmployed ? 'Self-employed' : ''), 'f2_49[0]': preparer.phone,
+      'f2_50[0]': preparer.firmAddress, 'f2_51[0]': ein.length === 9 ? `${ein.slice(0, 2)}-${ein.slice(2)}` : ''
+    })
+  }
   if (fs === 'mfs' && ret.deductionChoice === 'itemized') v['c2_3[0]'] = true
 
   // Direct deposit (line 35)
@@ -730,6 +763,27 @@ function form8863(ret: TaxReturnInput, res: TaxReturnResult): FormFill[] {
   return forms
 }
 
+
+// ── Form 8880 ────────────────────────────────────────────────────────────────
+function form8880(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
+  const f = res.form8880
+  const v: Record<string, FieldValue> = { ...header(ret, 'f1_1[0]', 'f1_2[0]') }
+  const cols: Record<string, [string, string, string, string, string, string]> = {
+    taxpayer: ['f1_3[0]', 'f1_5[0]', 'f1_7[0]', 'f1_9[0]', 'f1_11[0]', 'f1_13[0]'],
+    spouse: ['f1_4[0]', 'f1_6[0]', 'f1_8[0]', 'f1_10[0]', 'f1_12[0]', 'f1_14[0]']
+  }
+  for (const p of f.people) {
+    const [l1, l2, l3, l4, l5, l6] = cols[p.owner]
+    Object.assign(v, { [l1]: amt(p.ira), [l2]: amt(p.deferrals), [l3]: amt(p.line3, true), [l4]: amt(p.distributions), [l5]: amt(p.line5, true), [l6]: amt(p.line6, true) })
+  }
+  Object.assign(v, {
+    'f1_15[0]': amt(f.line7, true), 'f1_16[0]': amt(res.f1040['11a'], true),
+    'f1_17[0]': String(Math.round(f.rate * 10)), 'f1_18[0]': amt(f.tentative, true),
+    'f1_19[0]': amt(f.limit, true), 'f1_20[0]': amt(f.credit, true)
+  })
+  return { id: '8880', file: 'f8880.pdf', title: 'Form 8880', values: v }
+}
+
 // ── Form 1040-V ──────────────────────────────────────────────────────────────
 function form1040V(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
   const c = ret.contact
@@ -747,12 +801,12 @@ function form1040V(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
 }
 
 /** Every form this return needs, in IRS attachment-sequence order. */
-export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult): FormPacket {
+export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult, preparer?: PreparerInfo | null): FormPacket {
   const f = res.f1040
   const onlyDistributions = ret.capitalTransactions.length === 0 &&
     ret.capitalLossCarryover.shortTerm === 0 && ret.capitalLossCarryover.longTerm === 0
   const needD = !onlyDistributions || f['7a'] < 0
-  const forms: FormFill[] = [form1040(ret, res, needD)]
+  const forms: FormFill[] = [form1040(ret, res, needD, preparer)]
   if (res.schedule1.additionalIncome !== 0 || res.schedule1.totalAdjustments > 0) forms.push(schedule1(ret, res))
   if (res.schedule1A.total > 0) forms.push(schedule1A(ret, res))
   if (res.schedule2.total > 0) forms.push(schedule2(ret, res))
@@ -770,6 +824,7 @@ export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult): Form
   if (res.eic.credit > 0 && res.eic.qualifyingChildren > 0) forms.push(scheduleEIC(ret))
   if (res.schedule8812.creditBeforePhaseout > 0) forms.push(schedule8812(ret, res))
   if (res.form8863.aotc + res.form8863.llc > 0) forms.push(...form8863(ret, res))
+  if (res.schedule3.saversCredit > 0) forms.push(form8880(ret, res))
   if (res.qbi.deduction > 0) forms.push(form8995(ret, res))
   if (res.schedule2.additionalMedicareTax > 0 || f['25c'] > 0) forms.push(form8959(ret, res))
   if (res.schedule2.netInvestmentIncomeTax > 0) forms.push(form8960(ret, res))
@@ -777,7 +832,6 @@ export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult): Form
 
   const notIncluded: string[] = []
   if (ret.dependents.length > 4) notIncluded.push('A statement listing dependents after the fourth')
-  if (res.schedule3.saversCredit > 0) notIncluded.push('Form 8880 (Credit for Qualified Retirement Savings Contributions)')
   if (ret.businesses.some((b) => b.expenses.homeOffice > 0)) notIncluded.push('Form 8829 or the simplified-method worksheet for home office expenses')
   return { forms, notIncluded }
 }

@@ -4,7 +4,9 @@ import type { Issue } from '../engine/compute.ts'
 import { normalizeReturn, emptyReturn } from '../engine/model.ts'
 import { buildPacket2025 } from '../pdf/irs2025.ts'
 import { FILING_STATUS_LABELS } from '../engine/rules2025.ts'
-import { Section, usd } from './fields'
+import { Check, DigitsField, Section, TextField, usd } from './fields'
+import { STATUS_LABELS, preparerReady } from './store.ts'
+import type { PreparerProfile, ReturnStatus } from './store.ts'
 
 const LINES: [line: string, label: string][] = [
   ['1a', 'Wages from W-2s'],
@@ -70,16 +72,19 @@ export function IssueList({ issues, onGo }: { issues: Issue[]; onGo?: (step: Iss
   )
 }
 
-export function ReviewStep({ ret, set, result, onGo }: StepProps & { onGo: (step: Issue['step']) => void }): ReactElement {
+export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus }: StepProps & {
+  onGo: (step: Issue['step']) => void; preparer: PreparerProfile; status: ReturnStatus; onStatus: (s: ReturnStatus) => void
+}): ReactElement {
   const fileInput = useRef<HTMLInputElement>(null)
   const [message, setMessage] = useState('')
   const [pdfState, setPdfState] = useState<{ busy: boolean; note: string }>({ busy: false, note: '' })
-  const packet = buildPacket2025(ret, result)
+  const usePrep = ret.usePaidPreparer && preparerReady(preparer)
+  const packet = buildPacket2025(ret, result, usePrep ? preparer : null)
   const blocking = result.issues.filter((i) => i.level === 'error' || (i.level === 'warning' && i.step === 'about'))
   const makePdf = (): void => {
     setPdfState({ busy: true, note: '' })
     import('../pdf/download.ts')
-      .then(({ downloadIrsForms }) => downloadIrsForms(ret, result))
+      .then(({ downloadIrsForms }) => downloadIrsForms(ret, result, usePrep ? preparer : null))
       .then(({ pages, problems }) => setPdfState({ busy: false, note: `Downloaded ${pages} pages.${problems ? ` ${problems} field(s) could not be filled; check the PDF before filing.` : ''}` }))
       .catch((e: unknown) => setPdfState({ busy: false, note: `The PDF could not be created: ${e instanceof Error ? e.message : String(e)}` }))
   }
@@ -105,7 +110,7 @@ export function ReviewStep({ ret, set, result, onGo }: StepProps & { onGo: (step
     e.target.value = ''
   }
   const reset = (): void => {
-    if (window.confirm('Clear every entry and start a new return? Download a copy first if you want to keep it.')) {
+    if (window.confirm('Clear every entry in this return? Download a copy first if you want to keep it.')) {
       set(() => emptyReturn())
       setMessage('Started a new return.')
     }
@@ -116,6 +121,28 @@ export function ReviewStep({ ret, set, result, onGo }: StepProps & { onGo: (step
     <>
       <Section title="Things to look at" intro={result.issues.length ? undefined : 'Nothing needs your attention.'}>
         <IssueList issues={result.issues} onGo={onGo} />
+      </Section>
+
+      <Section title="Signing and preparer" intro="Details printed on page 2 of Form 1040.">
+        <div className="checks" style={{ marginTop: 0 }}>
+          <Check label="Print the paid preparer section" checked={ret.usePaidPreparer}
+            hint={preparerReady(preparer) ? `${preparer.name}, PTIN ${preparer.ptin.toUpperCase()}${preparer.firmName ? `, ${preparer.firmName}` : ''}` : 'Set up your name and PTIN in Settings first.'}
+            onChange={(v) => set((r) => ({ ...r, usePaidPreparer: v }))} />
+          <Check label="Allow another person to discuss this return with the IRS (third party designee)" checked={ret.designee.enabled}
+            onChange={(v) => set((r) => ({ ...r, designee: { ...r.designee, enabled: v, name: v && !r.designee.name && preparerReady(preparer) ? preparer.name : r.designee.name, phone: v && !r.designee.phone ? preparer.phone : r.designee.phone } }))} />
+        </div>
+        {ret.usePaidPreparer && !preparerReady(preparer) && <p className="note is-warn">The preparer section will be left blank until your name and PTIN are saved in <a href="#/settings">Settings</a>.</p>}
+        {ret.designee.enabled && (
+          <div className="grid" style={{ marginTop: 14 }}>
+            <TextField label="Designee’s name" value={ret.designee.name} onChange={(v) => set((r) => ({ ...r, designee: { ...r.designee, name: v } }))} />
+            <TextField label="Designee’s phone" value={ret.designee.phone} onChange={(v) => set((r) => ({ ...r, designee: { ...r.designee, phone: v } }))} />
+            <DigitsField label="Designee’s PIN" length={5} hint="Any 5 digits the designee chooses" value={ret.designee.pin} onChange={(v) => set((r) => ({ ...r, designee: { ...r.designee, pin: v } }))} />
+          </div>
+        )}
+        <div className="grid" style={{ marginTop: 14 }}>
+          <DigitsField label="Your Identity Protection PIN" length={6} hint="Only if the IRS sent you one (CP01A letter or online account)" value={ret.taxpayer.ipPin} onChange={(v) => set((r) => ({ ...r, taxpayer: { ...r.taxpayer, ipPin: v } }))} />
+          {ret.filingStatus === 'mfj' && <DigitsField label="Spouse’s Identity Protection PIN" length={6} value={ret.spouse.ipPin} onChange={(v) => set((r) => ({ ...r, spouse: { ...r.spouse, ipPin: v } }))} />}
+        </div>
       </Section>
 
       <Section title="IRS forms" intro="Your return on the official 2025 IRS forms, filled in and ready to print, sign and mail. The PDF is made on this device.">
@@ -131,6 +158,7 @@ export function ReviewStep({ ret, set, result, onGo }: StepProps & { onGo: (step
         {blocking.length > 0 && <p className="note is-warn">Some details are missing ({blocking.length}). You can still download, but finish them under “Things to look at” before you file.</p>}
         <div className="actions">
           <button type="button" className="button" onClick={makePdf} disabled={pdfState.busy}>{pdfState.busy ? 'Preparing PDF…' : 'Download IRS forms (PDF)'}</button>
+          <a className="button is-quiet" href="#/letter">Letter with filing instructions</a>
         </div>
         {pdfState.note && <p className="note" role="status">{pdfState.note}</p>}
         <p className="why">Before mailing: sign and date page 2 of Form 1040, attach Copy B of your W-2s (and any 1099-R with tax withheld), and send to the IRS address for your state listed in the Form 1040 instructions.</p>
@@ -280,12 +308,20 @@ export function ReviewStep({ ret, set, result, onGo }: StepProps & { onGo: (step
         </div>
       </Section>
 
-      <Section title="Save your work" intro="Your return stays in this browser and is saved as you type. Nothing is sent anywhere. Download a copy to move it to another device.">
+      <Section title="Return status" intro="Track where this return stands. The list of all returns shows it too.">
+        <div className="status-choices" role="radiogroup" aria-label="Return status">
+          {(Object.keys(STATUS_LABELS) as ReturnStatus[]).map((st) => (
+            <button key={st} type="button" role="radio" aria-checked={status === st} className={`status-pill is-${st} ${status === st ? 'is-selected' : ''}`} onClick={() => onStatus(st)}>{STATUS_LABELS[st]}</button>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Save your work" intro="This return is saved in this browser as you type. Nothing is sent anywhere. Download it to move it to another device, or back up every return from Settings.">
         <div className="actions">
           <button type="button" className="button" onClick={download}>Download return file</button>
           <button type="button" className="button is-quiet" onClick={() => fileInput.current?.click()}>Open a return file</button>
           <button type="button" className="button is-quiet" onClick={() => window.print()}>Print summary</button>
-          <button type="button" className="button is-danger" onClick={reset}>Start over</button>
+          <button type="button" className="button is-danger" onClick={reset}>Clear this return</button>
           <input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={importFile} />
         </div>
         {message && <p className="note" role="status">{message}</p>}

@@ -148,3 +148,37 @@ test('every blank form in public/forms/2025 is the 2025 revision', async () => {
     assert.ok(/2025/.test(`${title} ${subject}`), `${file} does not look like a 2025 form (title: "${title}")`)
   }
 })
+
+test('Saver’s Credit prints Form 8880 with the rate as a single digit', async () => {
+  const { exampleReturn } = await import('../app/example.ts')
+  const ret = exampleReturn()
+  const res = computeReturn(ret)
+  const packet = buildPacket2025(ret, res)
+  const f = packet.forms.find((x) => x.id === '8880')
+  assert.ok(f, 'Form 8880 should be in the packet')
+  assert.equal(f!.values['f1_17[0]'], '5')
+  assert.equal(f!.values['f1_20[0]'], res.schedule3.saversCredit.toLocaleString('en-US'))
+  const problems: FillProblem[] = []
+  await fillForm(lib, await load(f!.file), f!, problems)
+  assert.deepEqual(problems, [])
+  assert.deepEqual(packet.notIncluded, [])
+})
+
+test('paid preparer, designee and IP PIN print on Form 1040 page 2', async () => {
+  const ret: TaxReturnInput = {
+    ...busy(), usePaidPreparer: true,
+    taxpayer: { ...busy().taxpayer, ipPin: '123456' },
+    designee: { enabled: true, name: 'Pat Preparer', phone: '555-0101', pin: '24680' }
+  }
+  const preparer = { name: 'Pat Preparer', ptin: 'p01234567', selfEmployed: false, firmName: 'Lee Tax Services LLC', firmEin: '123456789', firmAddress: '1 Main St, Fairfax, VA 22030', phone: '555-0101' }
+  const f = buildPacket2025(ret, computeReturn(ret), preparer).forms[0]
+  assert.equal(f.values['f2_47[0]'], 'P01234567')
+  assert.equal(f.values['f2_51[0]'], '12-3456789')
+  assert.equal(f.values['c2_17[0]'], true)
+  assert.equal(f.values['f2_41[0]'], '123456')
+  const problems: FillProblem[] = []
+  await fillForm(lib, await load(f.file), f, problems)
+  assert.deepEqual(problems, [])
+  const noPrep = buildPacket2025({ ...ret, usePaidPreparer: false }, computeReturn(ret), preparer).forms[0]
+  assert.equal(noPrep.values['f2_46[0]'], undefined)
+})

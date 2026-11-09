@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test \"src/engine/*.test.ts\" \"src/pdf/*.test.ts\""
+    "test": "node --experimental-strip-types --test \"src/engine/*.test.ts\" \"src/pdf/*.test.ts\" \"src/app/*.test.ts\""
   },
   "dependencies": {
     "react": "17.0.2",
