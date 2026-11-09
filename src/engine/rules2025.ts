@@ -130,3 +130,49 @@ export const STUDENT_LOAN_INTEREST_MAX = 2500
 export const STUDENT_LOAN_PHASEOUT: Record<FilingStatus, readonly [number, number] | null> = {
   single: [85000, 100000], mfj: [170000, 200000], mfs: null, hoh: [85000, 100000], qss: [85000, 100000]
 }
+
+/** Taxable Social Security benefits (Social Security Benefits Worksheet, Form 1040 line 6b). */
+export const SS_BASE_AMOUNT: Record<FilingStatus, number> = {
+  single: 25000, mfj: 32000, mfs: 0, hoh: 25000, qss: 25000
+}
+export const SS_ADJUSTED_BASE: Record<FilingStatus, number> = {
+  single: 34000, mfj: 44000, mfs: 0, hoh: 34000, qss: 34000
+}
+
+/** Additional tax on early retirement distributions (Form 5329 / Schedule 2 line 8). */
+export const EARLY_DISTRIBUTION_RATE = 0.10
+
+/** Earned Income Credit, 2025 (Rev. Proc. 2024-40). Index = number of qualifying children (0..3). */
+export const EIC_CREDIT_RATE = [0.0765, 0.34, 0.40, 0.45] as const
+export const EIC_EARNED_INCOME_AMOUNT = [8490, 12730, 17880, 17880] as const
+export const EIC_MAX_CREDIT = [649, 4328, 7152, 8046] as const
+export const EIC_PHASEOUT_RATE = [0.0765, 0.1598, 0.2106, 0.2106] as const
+export const EIC_PHASEOUT_START_OTHER = [10620, 23350, 23350, 23350] as const
+export const EIC_PHASEOUT_START_JOINT = [17730, 30470, 30470, 30470] as const
+export const EIC_INVESTMENT_INCOME_LIMIT = 11950
+export const EIC_NO_CHILD_MIN_AGE = 25
+export const EIC_NO_CHILD_MAX_AGE = 64
+
+/** Child and Dependent Care Credit, 2025 (Form 2441). The P.L. 119-21 increase starts in 2026. */
+export const CARE_EXPENSE_LIMIT_ONE = 3000
+export const CARE_EXPENSE_LIMIT_TWO_PLUS = 6000
+export const CARE_MAX_RATE = 0.35
+export const CARE_MIN_RATE = 0.20
+export const CARE_RATE_STEP_START = 15000
+/** Rate drops one point for each $2,000 (or fraction) of AGI above $15,000. */
+export const CARE_RATE_STEP = 2000
+export const CARE_BENEFIT_EXCLUSION_LIMIT: Record<FilingStatus, number> = {
+  single: 5000, mfj: 5000, mfs: 2500, hoh: 5000, qss: 5000
+}
+export const CARE_QUALIFYING_CHILD_MAX_AGE = 12
+
+/** Education credits (Form 8863). */
+export const AOTC_FULL_EXPENSES = 2000
+export const AOTC_PARTIAL_EXPENSES = 2000
+export const AOTC_PARTIAL_RATE = 0.25
+export const AOTC_REFUNDABLE_SHARE = 0.40
+export const LLC_EXPENSE_LIMIT = 10000
+export const LLC_RATE = 0.20
+export const EDUCATION_PHASEOUT: Record<FilingStatus, readonly [number, number] | null> = {
+  single: [80000, 90000], mfj: [160000, 180000], mfs: null, hoh: [80000, 90000], qss: [80000, 90000]
+}

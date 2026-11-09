@@ -5,6 +5,8 @@ export type Owner = 'taxpayer' | 'spouse'
 export interface Person {
   firstName: string
   lastName: string
+  /** Age on December 31, 2025. 0 = not entered. */
+  age: number
   age65OrOlder: boolean
   blind: boolean
 }
@@ -13,8 +15,45 @@ export interface Dependent {
   id: string
   name: string
   relationship: string
-  /** Under 17 at the end of 2025 and has an SSN valid for employment → Child Tax Credit. */
-  qualifyingChild: boolean
+  /** Age on December 31, 2025. */
+  age: number
+  /** Has an SSN valid for employment (required for the Child Tax Credit and EIC). */
+  hasSsn: boolean
+  /** Months the dependent lived with you in the U.S. during 2025. */
+  monthsLivedWithYou: number
+  /** Full-time student for at least five months of 2025. */
+  student: boolean
+  /** Permanently and totally disabled. */
+  disabled: boolean
+  /** Your child, stepchild, foster child, sibling, step-sibling, or a descendant of one. */
+  childRelationship: boolean
+}
+
+export interface Form1099R {
+  id: string
+  owner: Owner
+  payer: string
+  /** Box 1 */ grossDistribution: number
+  /** Box 2a */ taxableAmount: number
+  /** Box 4 */ federalWithholding: number
+  /** Box 7 distribution code */ code: string
+  /** IRA/SEP/SIMPLE box checked */ ira: boolean
+}
+
+export interface SocialSecurityBenefits {
+  id: string
+  owner: Owner
+  /** SSA-1099 box 5 */ netBenefits: number
+  /** SSA-1099 box 6 */ federalWithholding: number
+}
+
+export interface Student {
+  id: string
+  name: string
+  /** Tuition and required fees paid in 2025, less tax-free scholarships (Form 1098-T). */
+  qualifiedExpenses: number
+  /** First four years of college, at least half-time, no prior AOTC for four years. */
+  aotcEligible: boolean
 }
 
 export interface W2 {
@@ -123,19 +162,23 @@ export interface TaxReturnInput {
   capitalTransactions: CapitalTransaction[]
   capitalLossCarryover: { shortTerm: number; longTerm: number }
   businesses: ScheduleCBusiness[]
+  retirement: Form1099R[]
+  socialSecurity: SocialSecurityBenefits[]
   unemployment: number
   otherIncome: number
   adjustments: Adjustments
   schedule1A: Schedule1A
   itemized: ItemizedDeductions
   deductionChoice: DeductionChoice
+  dependentCare: { expenses: number; employerBenefits: number }
+  students: Student[]
   payments: { estimatedTaxPayments: number; otherWithholding: number }
 }
 
 let counter = 0
 export const newId = (prefix: string): string => `${prefix}-${Date.now().toString(36)}-${(counter++).toString(36)}`
 
-export const emptyPerson = (): Person => ({ firstName: '', lastName: '', age65OrOlder: false, blind: false })
+export const emptyPerson = (): Person => ({ firstName: '', lastName: '', age: 0, age65OrOlder: false, blind: false })
 
 export const emptyExpenses = (): BusinessExpenses => ({
   advertising: 0, carAndTruck: 0, contractLabor: 0, insurance: 0, legalAndProfessional: 0, office: 0,
@@ -172,7 +215,15 @@ export const emptyBusiness = (owner: Owner = 'taxpayer'): ScheduleCBusiness => (
   id: newId('biz'), owner, name: '', activity: '', grossReceipts: 0, returnsAndAllowances: 0,
   costOfGoodsSold: 0, otherIncome: 0, expenses: emptyExpenses()
 })
-export const emptyDependent = (): Dependent => ({ id: newId('dep'), name: '', relationship: '', qualifyingChild: true })
+export const emptyDependent = (): Dependent => ({
+  id: newId('dep'), name: '', relationship: '', age: 0, hasSsn: true, monthsLivedWithYou: 12,
+  student: false, disabled: false, childRelationship: true
+})
+export const empty1099R = (owner: Owner = 'taxpayer'): Form1099R => ({
+  id: newId('ret'), owner, payer: '', grossDistribution: 0, taxableAmount: 0, federalWithholding: 0, code: '7', ira: false
+})
+export const emptySocialSecurity = (owner: Owner = 'taxpayer'): SocialSecurityBenefits => ({ id: newId('ssa'), owner, netBenefits: 0, federalWithholding: 0 })
+export const emptyStudent = (): Student => ({ id: newId('stu'), name: '', qualifiedExpenses: 0, aotcEligible: true })
 
 export const emptyReturn = (): TaxReturnInput => ({
   version: 1,
@@ -187,6 +238,8 @@ export const emptyReturn = (): TaxReturnInput => ({
   capitalTransactions: [],
   capitalLossCarryover: { shortTerm: 0, longTerm: 0 },
   businesses: [],
+  retirement: [],
+  socialSecurity: [],
   unemployment: 0,
   otherIncome: 0,
   adjustments: { educatorExpenses: 0, hsaDeduction: 0, selfEmployedHealthInsurance: 0, iraDeduction: 0, studentLoanInterest: 0 },
@@ -196,10 +249,25 @@ export const emptyReturn = (): TaxReturnInput => ({
     mortgageInterest: 0, charityCash: 0, charityNonCash: 0, other: 0
   },
   deductionChoice: 'auto',
+  dependentCare: { expenses: 0, employerBenefits: 0 },
+  students: [],
   payments: { estimatedTaxPayments: 0, otherWithholding: 0 }
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
+const person = (p: Partial<Person> | undefined): Person => {
+  const merged = { ...emptyPerson(), ...(p ?? {}) }
+  if (!merged.age && merged.age65OrOlder) merged.age = 65
+  return merged
+}
+/** Version 1 files stored only a "qualifying child" checkbox; map it to an age. */
+const dependent = (d: Partial<Dependent> & { qualifyingChild?: boolean }): Dependent => {
+  const { qualifyingChild, ...rest } = d
+  const merged = { ...emptyDependent(), ...rest }
+  if (!rest.age && qualifyingChild !== undefined) merged.age = qualifyingChild ? 10 : 17
+  return merged
+}
+
 export function normalizeReturn(raw: unknown): TaxReturnInput {
   const base = emptyReturn()
   if (!raw || typeof raw !== 'object') return base
@@ -210,9 +278,13 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     ...base,
     ...r,
     version: 1,
-    taxpayer: { ...base.taxpayer, ...(r.taxpayer ?? {}) },
-    spouse: { ...base.spouse, ...(r.spouse ?? {}) },
-    dependents: arr(r.dependents, emptyDependent),
+    taxpayer: person(r.taxpayer),
+    spouse: person(r.spouse),
+    dependents: Array.isArray(r.dependents) ? r.dependents.map(dependent) : [],
+    retirement: arr(r.retirement, empty1099R),
+    socialSecurity: arr(r.socialSecurity, emptySocialSecurity),
+    students: arr(r.students, emptyStudent),
+    dependentCare: { ...base.dependentCare, ...(r.dependentCare ?? {}) },
     w2s: arr(r.w2s, emptyW2),
     interest: arr(r.interest, empty1099Int),
     dividends: arr(r.dividends, empty1099Div),

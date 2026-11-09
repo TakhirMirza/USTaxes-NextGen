@@ -153,3 +153,37 @@ export function DocList<T extends { id: string }>({ items, title, render, onAdd,
     </div>
   )
 }
+
+export function NumberField({ label, value, onChange, min = 0, max = 130, hint, suffix }: {
+  label: string; value: number; onChange: (n: number) => void; min?: number; max?: number; hint?: string; suffix?: string
+}): ReactElement {
+  const id = useFieldId('n')
+  const [text, setText] = useState(value ? String(value) : '')
+  const [focused, setFocused] = useState(false)
+  useEffect(() => { if (!focused) setText(value ? String(value) : '') }, [value, focused])
+  return (
+    <div className="field">
+      <label htmlFor={id}><span>{label}</span></label>
+      <div className="number-input">
+        <input id={id} inputMode="numeric" autoComplete="off" value={text}
+          onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+          onChange={(e) => {
+            const t = e.target.value.replace(/\D/g, '').slice(0, 3)
+            setText(t)
+            const n = t === '' ? 0 : Math.min(max, Math.max(min, Number(t)))
+            onChange(n)
+          }} />
+        {suffix && <span aria-hidden="true">{suffix}</span>}
+      </div>
+      {hint && <small>{hint}</small>}
+    </div>
+  )
+}
+
+export function Tags({ items }: { items: { label: string; on: boolean }[] }): ReactElement {
+  return (
+    <ul className="tags" aria-label="Credits this dependent qualifies for">
+      {items.map((t) => <li key={t.label} className={t.on ? 'is-on' : ''}>{t.on ? '✓' : '–'} {t.label}</li>)}
+    </ul>
+  )
+}

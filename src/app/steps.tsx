@@ -1,15 +1,16 @@
 import { ReactElement } from 'react'
 import type { TaxReturnInput, Owner, BusinessExpenses, Person } from '../engine/model.ts'
-import { EXPENSE_LABELS, emptyBusiness, emptyDependent, emptyTransaction, emptyW2, empty1099Div, empty1099Int } from '../engine/model.ts'
+import { EXPENSE_LABELS, emptyBusiness, emptyDependent, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099Int, empty1099R, emptySocialSecurity } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
+import { careQualifyingPerson, ctcChild, eicChild } from '../engine/compute.ts'
 import { FILING_STATUS_LABELS } from '../engine/rules2025.ts'
 import type { FilingStatus } from '../engine/rules2025.ts'
-import { Check, Choice, DocList, MoneyField, Section, TextField, usd } from './fields'
+import { Check, Choice, DocList, MoneyField, NumberField, Section, Tags, TextField, usd } from './fields'
 
 export type Setter = (fn: (r: TaxReturnInput) => TaxReturnInput) => void
 export interface StepProps { ret: TaxReturnInput; set: Setter; result: TaxReturnResult }
 
-type ListKey = 'w2s' | 'interest' | 'dividends' | 'capitalTransactions' | 'businesses' | 'dependents'
+type ListKey = 'w2s' | 'interest' | 'dividends' | 'capitalTransactions' | 'businesses' | 'dependents' | 'retirement' | 'socialSecurity' | 'students'
 function listOps<K extends ListKey>(set: Setter, key: K) {
   type Item = TaxReturnInput[K][number]
   return {
@@ -48,12 +49,12 @@ export function AboutStep({ ret, set }: StepProps): ReactElement {
       </Section>
 
       <Section title="You">
-        <div className="grid">
+        <div className="grid-3">
           <TextField label="First name" value={ret.taxpayer.firstName} onChange={(v) => person('taxpayer', { firstName: v })} />
           <TextField label="Last name" value={ret.taxpayer.lastName} onChange={(v) => person('taxpayer', { lastName: v })} />
+          <NumberField label="Age" hint="On Dec 31, 2025" value={ret.taxpayer.age} onChange={(n) => person('taxpayer', { age: n, age65OrOlder: n >= 65 })} />
         </div>
         <div className="checks">
-          <Check label="I was born before January 2, 1961 (65 or older)" checked={ret.taxpayer.age65OrOlder} onChange={(v) => person('taxpayer', { age65OrOlder: v })} />
           <Check label="I am blind" checked={ret.taxpayer.blind} onChange={(v) => person('taxpayer', { blind: v })} />
           <Check label="Someone can claim me as a dependent" checked={ret.canBeClaimedAsDependent} onChange={(v) => set((r) => ({ ...r, canBeClaimedAsDependent: v }))} />
         </div>
@@ -61,19 +62,19 @@ export function AboutStep({ ret, set }: StepProps): ReactElement {
 
       {ret.filingStatus === 'mfj' && (
         <Section title="Your spouse">
-          <div className="grid">
+          <div className="grid-3">
             <TextField label="First name" value={ret.spouse.firstName} onChange={(v) => person('spouse', { firstName: v })} />
             <TextField label="Last name" value={ret.spouse.lastName} onChange={(v) => person('spouse', { lastName: v })} />
+            <NumberField label="Age" hint="On Dec 31, 2025" value={ret.spouse.age} onChange={(n) => person('spouse', { age: n, age65OrOlder: n >= 65 })} />
           </div>
           <div className="checks">
-            <Check label="My spouse was born before January 2, 1961" checked={ret.spouse.age65OrOlder} onChange={(v) => person('spouse', { age65OrOlder: v })} />
             <Check label="My spouse is blind" checked={ret.spouse.blind} onChange={(v) => person('spouse', { blind: v })} />
           </div>
         </Section>
       )}
       {married && ret.filingStatus === 'mfs' && <p className="note">On a separate return, enter only your own income and deductions.</p>}
 
-      <Section title="Dependents" intro="Children and relatives you support. Each qualifying child under 17 is worth up to $2,200; other dependents up to $500.">
+      <Section title="Dependents" intro="Children and relatives you support. Credits are checked for each one: Child Tax Credit up to $2,200, Earned Income Credit, and child care.">
         <DocList items={ret.dependents} addLabel="Add a dependent" emptyText="No dependents added."
           title={(d, i) => d.name.trim() || `Dependent ${i + 1}`}
           onAdd={() => deps.add(emptyDependent())} onRemove={deps.remove}
@@ -81,9 +82,20 @@ export function AboutStep({ ret, set }: StepProps): ReactElement {
             <>
               <TextField label="Full name" value={d.name} onChange={(v) => deps.patch(d.id, { name: v })} />
               <TextField label="Relationship" placeholder="Son, daughter, parent…" value={d.relationship} onChange={(v) => deps.patch(d.id, { relationship: v })} />
+              <NumberField label="Age on Dec 31, 2025" hint="Enter 0 for a baby born in 2025" value={d.age} onChange={(n) => deps.patch(d.id, { age: n })} />
+              <NumberField label="Months lived with you in 2025" max={12} suffix="of 12" value={d.monthsLivedWithYou} onChange={(n) => deps.patch(d.id, { monthsLivedWithYou: n })} />
+              <div className="span-2 checks">
+                <Check label="Child, stepchild, foster child, brother or sister, or a descendant of one" checked={d.childRelationship} onChange={(v) => deps.patch(d.id, { childRelationship: v })} />
+                <Check label="Has a Social Security number valid for work" checked={d.hasSsn} onChange={(v) => deps.patch(d.id, { hasSsn: v })} />
+                <Check label="Full-time student for at least 5 months of 2025" checked={d.student} onChange={(v) => deps.patch(d.id, { student: v })} />
+                <Check label="Permanently and totally disabled" checked={d.disabled} onChange={(v) => deps.patch(d.id, { disabled: v })} />
+              </div>
               <div className="span-2">
-                <Check label="Under 17 at the end of 2025 and has a Social Security number" hint="Qualifies for the Child Tax Credit. Otherwise the $500 credit for other dependents applies."
-                  checked={d.qualifyingChild} onChange={(v) => deps.patch(d.id, { qualifyingChild: v })} />
+                <Tags items={[
+                  { label: ctcChild(d) ? 'Child Tax Credit' : 'Other dependent credit', on: true },
+                  { label: 'Earned Income Credit', on: eicChild(d) },
+                  { label: 'Child care credit', on: careQualifyingPerson(d) }
+                ]} />
               </div>
             </>
           )} />
@@ -99,6 +111,8 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
   const div = listOps(set, 'dividends')
   const cap = listOps(set, 'capitalTransactions')
   const biz = listOps(set, 'businesses')
+  const ret1099r = listOps(set, 'retirement')
+  const ssa = listOps(set, 'socialSecurity')
   const bizResult = (id: string) => result.scheduleC.find((b) => b.id === id)
   return (
     <>
@@ -208,6 +222,38 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
           }} />
       </Section>
 
+      <Section title="Retirement distributions" intro="Form 1099-R: pensions, annuities, IRA and 401(k) withdrawals."
+        aside={result.f1040['4b'] + result.f1040['5b'] > 0 ? <span className="pill">Taxable {usd(result.f1040['4b'] + result.f1040['5b'])}</span> : undefined}>
+        <DocList items={ret.retirement} addLabel="Add a 1099-R" emptyText="No retirement distributions."
+          title={(x, i) => x.payer.trim() || `1099-R ${i + 1}`}
+          onAdd={() => ret1099r.add(empty1099R())} onRemove={ret1099r.remove}
+          render={(x) => (
+            <>
+              <div className="span-2"><TextField label="Payer" value={x.payer} onChange={(v) => ret1099r.patch(x.id, { payer: v })} /></div>
+              <div className="span-2"><OwnerPicker ret={ret} value={x.owner} onChange={(v) => ret1099r.patch(x.id, { owner: v })} /></div>
+              <MoneyField label="Gross distribution" box="Box 1" value={x.grossDistribution} onChange={(n) => ret1099r.patch(x.id, { grossDistribution: n })} />
+              <MoneyField label="Taxable amount" box="Box 2a" hint="If blank on your form, usually the same as box 1" value={x.taxableAmount} onChange={(n) => ret1099r.patch(x.id, { taxableAmount: n })} />
+              <MoneyField label="Federal tax withheld" box="Box 4" value={x.federalWithholding} onChange={(n) => ret1099r.patch(x.id, { federalWithholding: n })} />
+              <TextField label="Distribution code (box 7)" placeholder="7" hint="7 = normal, 1 = early, G = rollover" value={x.code} onChange={(v) => ret1099r.patch(x.id, { code: v.toUpperCase().slice(0, 2) })} />
+              <div className="span-2"><Check label="The IRA/SEP/SIMPLE box is checked" checked={x.ira} onChange={(v) => ret1099r.patch(x.id, { ira: v })} /></div>
+            </>
+          )} />
+      </Section>
+
+      <Section title="Social Security" intro="Form SSA-1099. Up to 85% of benefits can be taxable, depending on your other income."
+        aside={result.f1040['6a'] > 0 ? <span className="pill">Taxable {usd(result.f1040['6b'])}</span> : undefined}>
+        <DocList items={ret.socialSecurity} addLabel="Add an SSA-1099" emptyText="No Social Security benefits."
+          title={(x, i) => `SSA-1099 ${i + 1}${ret.filingStatus === 'mfj' ? ` · ${x.owner === 'spouse' ? ret.spouse.firstName || 'Spouse' : ret.taxpayer.firstName || 'You'}` : ''}`}
+          onAdd={() => ssa.add(emptySocialSecurity())} onRemove={ssa.remove}
+          render={(x) => (
+            <>
+              <div className="span-2"><OwnerPicker ret={ret} value={x.owner} onChange={(v) => ssa.patch(x.id, { owner: v })} /></div>
+              <MoneyField label="Net benefits" box="Box 5" value={x.netBenefits} onChange={(n) => ssa.patch(x.id, { netBenefits: n })} />
+              <MoneyField label="Federal tax withheld" box="Box 6" value={x.federalWithholding} onChange={(n) => ssa.patch(x.id, { federalWithholding: n })} />
+            </>
+          )} />
+      </Section>
+
       <Section title="Other income">
         <div className="grid">
           <MoneyField label="Unemployment compensation" box="1099-G" value={ret.unemployment} onChange={(n) => set((r) => ({ ...r, unemployment: n }))} />
@@ -283,11 +329,27 @@ export function DeductionsStep({ ret, set, result }: StepProps): ReactElement {
 // ── Credits & payments ──────────────────────────────────────────────────────
 export function PaymentsStep({ ret, set, result }: StepProps): ReactElement {
   const c = result.schedule8812
+  const e = result.eic
+  const stu = listOps(set, 'students')
+  const care = (k: keyof TaxReturnInput['dependentCare'], n: number): void => set((r) => ({ ...r, dependentCare: { ...r.dependentCare, [k]: n } }))
   return (
     <>
-      <Section title="Child Tax Credit" intro={ret.dependents.length ? 'Figured from the dependents you entered.' : 'Add dependents in “About you” to claim this credit.'}>
+      <Section title="Earned Income Credit" intro="A refundable credit for working people with low to moderate income."
+        aside={<span className="pill">{usd(e.credit)}</span>}>
         <dl className="facts">
-          <div><dt>Qualifying children</dt><dd>{c.qualifyingChildren}</dd></div>
+          <div><dt>Earned income</dt><dd>{usd(e.earnedIncome)}</dd></div>
+          <div><dt>Qualifying children</dt><dd>{e.qualifyingChildren}</dd></div>
+          <div><dt>Investment income</dt><dd>{usd(e.investmentIncome)}</dd></div>
+          <div><dt>Credit</dt><dd>{usd(e.credit)}</dd></div>
+        </dl>
+        {e.credit === 0 && e.notEligibleBecause.length > 0 && <p className="why">Not available: {e.notEligibleBecause.join('; ')}.</p>}
+        {e.credit === 0 && e.notEligibleBecause.length === 0 && e.earnedIncome > 0 && <p className="why">Your income is above the limit for this credit.</p>}
+      </Section>
+
+      <Section title="Child Tax Credit" intro={ret.dependents.length ? 'Figured from the dependents you entered.' : 'Add dependents in “About you” to claim this credit.'}
+        aside={c.nonrefundable + c.refundable > 0 ? <span className="pill">{usd(c.nonrefundable + c.refundable)}</span> : undefined}>
+        <dl className="facts">
+          <div><dt>Children under 17</dt><dd>{c.qualifyingChildren}</dd></div>
           <div><dt>Other dependents</dt><dd>{c.otherDependents}</dd></div>
           <div><dt>Credit before income limit</dt><dd>{usd(c.creditBeforePhaseout)}</dd></div>
           {c.phaseoutReduction > 0 && <div><dt>Reduced for income</dt><dd>−{usd(c.phaseoutReduction)}</dd></div>}
@@ -296,16 +358,59 @@ export function PaymentsStep({ ret, set, result }: StepProps): ReactElement {
         </dl>
       </Section>
 
+      <Section title="Child and dependent care" intro="Daycare, after-school care or a caregiver so you (and your spouse) could work. For children under 13 or a disabled dependent."
+        aside={result.form2441.credit > 0 ? <span className="pill">{usd(result.schedule3.dependentCare)}</span> : undefined}>
+        <div className="grid">
+          <MoneyField label="Care expenses you paid in 2025" value={ret.dependentCare.expenses} onChange={(n) => care('expenses', n)} />
+          <MoneyField label="Dependent care benefits from your employer" box="W-2 box 10" value={ret.dependentCare.employerBenefits} onChange={(n) => care('employerBenefits', n)} />
+        </div>
+        {result.form2441.credit > 0 && (
+          <p className="note">
+            {usd(result.form2441.expensesUsed)} of expenses at {Math.round(result.form2441.rate * 100)}% gives a {usd(result.form2441.credit)} credit (Form 2441).
+            {result.schedule3.dependentCare < result.form2441.credit && ` This credit can only reduce your income tax, so ${usd(result.schedule3.dependentCare)} of it is used; the rest is not refundable.`}
+          </p>
+        )}
+      </Section>
+
+      <Section title="Education" intro="Form 1098-T. Enter tuition and required fees you paid, minus tax-free scholarships."
+        aside={result.form8863.aotc + result.form8863.llc > 0 ? <span className="pill">{usd(result.form8863.aotcRefundable + result.form8863.nonrefundableAllowed)}</span> : undefined}>
+        <DocList items={ret.students} addLabel="Add a student" emptyText="No education expenses."
+          title={(x, i) => x.name.trim() || `Student ${i + 1}`}
+          onAdd={() => stu.add(emptyStudent())} onRemove={stu.remove}
+          render={(x) => (
+            <>
+              <TextField label="Student name" value={x.name} onChange={(v) => stu.patch(x.id, { name: v })} />
+              <MoneyField label="Qualified expenses" value={x.qualifiedExpenses} onChange={(n) => stu.patch(x.id, { qualifiedExpenses: n })} />
+              <div className="span-2">
+                <Check label="In the first four years of college, at least half-time"
+                  hint="American Opportunity Credit, up to $2,500 (40% refundable). Otherwise the Lifetime Learning Credit applies, 20% of up to $10,000."
+                  checked={x.aotcEligible} onChange={(v) => stu.patch(x.id, { aotcEligible: v })} />
+              </div>
+            </>
+          )} />
+        {result.form8863.aotc + result.form8863.llc > 0 && (() => {
+          const f = result.form8863
+          const tentativeNonref = f.aotc - f.aotcRefundable + f.llc
+          return (
+            <p className="note">
+              {f.aotc > 0 && `American Opportunity Credit ${usd(f.aotc)}, of which ${usd(f.aotcRefundable)} is refundable. `}
+              {f.llc > 0 && `Lifetime Learning Credit ${usd(f.llc)}. `}
+              {f.nonrefundableAllowed < tentativeNonref && `The nonrefundable part is limited by your income tax: ${usd(f.nonrefundableAllowed)} of ${usd(tentativeNonref)} is used.`}
+            </p>
+          )
+        })()}
+      </Section>
+
       <Section title="Tax you already paid">
         <dl className="facts">
           <div><dt>Withheld on W-2s</dt><dd>{usd(result.f1040['25a'])}</dd></div>
-          <div><dt>Withheld on 1099s</dt><dd>{usd(result.f1040['25b'] - ret.payments.otherWithholding)}</dd></div>
+          <div><dt>Withheld on 1099s and SSA-1099</dt><dd>{usd(result.f1040['25b'] - ret.payments.otherWithholding)}</dd></div>
           {result.f1040['25c'] > 0 && <div><dt>Additional Medicare tax withheld</dt><dd>{usd(result.f1040['25c'])}</dd></div>}
           {result.f1040['31'] > 0 && <div><dt>Excess Social Security withheld</dt><dd>{usd(result.f1040['31'])}</dd></div>}
         </dl>
         <div className="grid">
           <MoneyField label="2025 estimated tax payments" hint="Include any 2024 overpayment applied to 2025" value={ret.payments.estimatedTaxPayments} onChange={(n) => set((r) => ({ ...r, payments: { ...r.payments, estimatedTaxPayments: n } }))} />
-          <MoneyField label="Other federal withholding" hint="1099-R, 1099-G, SSA-1099, etc." value={ret.payments.otherWithholding} onChange={(n) => set((r) => ({ ...r, payments: { ...r.payments, otherWithholding: n } }))} />
+          <MoneyField label="Other federal withholding" hint="1099-G, 1099-NEC, 1099-MISC and similar" value={ret.payments.otherWithholding} onChange={(n) => set((r) => ({ ...r, payments: { ...r.payments, otherWithholding: n } }))} />
         </div>
       </Section>
     </>

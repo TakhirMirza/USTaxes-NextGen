@@ -12,6 +12,12 @@ const LINES: [line: string, label: string][] = [
   ['2b', 'Taxable interest'],
   ['3a', 'Qualified dividends'],
   ['3b', 'Ordinary dividends'],
+  ['4a', 'IRA distributions'],
+  ['4b', 'IRA distributions, taxable'],
+  ['5a', 'Pensions and annuities'],
+  ['5b', 'Pensions and annuities, taxable'],
+  ['6a', 'Social Security benefits'],
+  ['6b', 'Social Security benefits, taxable'],
   ['7', 'Capital gain or (loss)'],
   ['8', 'Additional income (Schedule 1)'],
   ['9', 'Total income'],
@@ -25,12 +31,15 @@ const LINES: [line: string, label: string][] = [
   ['16', 'Tax'],
   ['18', 'Tax before credits'],
   ['19', 'Child tax credit / credit for other dependents'],
+  ['20', 'Other credits (Schedule 3)'],
   ['22', 'Tax after credits'],
   ['23', 'Other taxes (Schedule 2)'],
   ['24', 'Total tax'],
   ['25d', 'Federal income tax withheld'],
   ['26', 'Estimated tax payments'],
+  ['27', 'Earned income credit'],
   ['28', 'Additional child tax credit'],
+  ['29', 'American opportunity credit, refundable'],
   ['31', 'Excess Social Security withheld (Schedule 3)'],
   ['33', 'Total payments'],
   ['34', 'Overpaid'],
@@ -187,6 +196,44 @@ export function ReviewStep({ ret, set, result, onGo }: StepProps & { onGo: (step
                 {s2.selfEmploymentTax > 0 && <div><dt>Self-employment tax</dt><dd>{usd(s2.selfEmploymentTax)}</dd></div>}
                 {s2.additionalMedicareTax > 0 && <div><dt>Additional Medicare tax (Form 8959)</dt><dd>{usd(s2.additionalMedicareTax)}</dd></div>}
                 {s2.netInvestmentIncomeTax > 0 && <div><dt>Net investment income tax (Form 8960)</dt><dd>{usd(s2.netInvestmentIncomeTax)}</dd></div>}
+                {s2.earlyDistributionTax > 0 && <div><dt>Additional tax on early distributions (Form 5329)</dt><dd>{usd(s2.earlyDistributionTax)}</dd></div>}
+              </dl>
+            </details>
+          )}
+          {result.schedule3.dependentCare + result.schedule3.education + result.schedule3.excessSocialSecurity > 0 && (
+            <details><summary>Schedule 3 <span>Additional credits and payments</span></summary>
+              <dl className="facts">
+                {result.schedule3.dependentCare > 0 && <div><dt>Child and dependent care credit</dt><dd>{usd(result.schedule3.dependentCare)}</dd></div>}
+                {result.schedule3.education > 0 && <div><dt>Education credits (nonrefundable)</dt><dd>{usd(result.schedule3.education)}</dd></div>}
+                {result.schedule3.excessSocialSecurity > 0 && <div><dt>Excess Social Security withheld</dt><dd>{usd(result.schedule3.excessSocialSecurity)}</dd></div>}
+              </dl>
+            </details>
+          )}
+          {result.form2441.credit > 0 && (
+            <details><summary>Form 2441 <span>Child and dependent care</span></summary>
+              <dl className="facts">
+                <div><dt>Qualifying persons</dt><dd>{result.form2441.qualifyingPersons}</dd></div>
+                <div><dt>Expenses used</dt><dd>{usd(result.form2441.expensesUsed)}</dd></div>
+                <div><dt>Credit rate</dt><dd>{Math.round(result.form2441.rate * 100)}%</dd></div>
+                <div><dt>Credit</dt><dd>{usd(result.form2441.credit)}</dd></div>
+              </dl>
+            </details>
+          )}
+          {result.form8863.aotc + result.form8863.llc > 0 && (
+            <details><summary>Form 8863 <span>Education credits</span></summary>
+              <dl className="facts">
+                {result.form8863.aotc > 0 && <div><dt>American opportunity credit</dt><dd>{usd(result.form8863.aotc)}</dd></div>}
+                {result.form8863.aotcRefundable > 0 && <div><dt>Refundable part (line 29)</dt><dd>{usd(result.form8863.aotcRefundable)}</dd></div>}
+                {result.form8863.llc > 0 && <div><dt>Lifetime learning credit</dt><dd>{usd(result.form8863.llc)}</dd></div>}
+              </dl>
+            </details>
+          )}
+          {result.eic.credit > 0 && (
+            <details><summary>Schedule EIC <span>Earned income credit</span></summary>
+              <dl className="facts">
+                <div><dt>Qualifying children</dt><dd>{result.eic.qualifyingChildren}</dd></div>
+                <div><dt>Earned income</dt><dd>{usd(result.eic.earnedIncome)}</dd></div>
+                <div><dt>Credit</dt><dd>{usd(result.eic.credit)}</dd></div>
               </dl>
             </details>
           )}

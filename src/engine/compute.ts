@@ -4,7 +4,7 @@
  * One pure function: TaxReturnInput → TaxReturnResult. Every Form 1040 line and supporting
  * schedule is derived here, in IRS order, with whole-dollar rounding at each line.
  */
-import type { Owner, ScheduleCBusiness, TaxReturnInput } from './model.ts'
+import type { Dependent, Owner, Person, ScheduleCBusiness, TaxReturnInput } from './model.ts'
 import * as R from './rules2025.ts'
 import type { FilingStatus } from './rules2025.ts'
 
@@ -28,7 +28,11 @@ export interface TaxReturnResult {
   scheduleC: ScheduleCResult[]
   scheduleD: { shortTerm: number; longTerm: number; net: number; allowedLoss: number; carryoverShort: number; carryoverLong: number; preferentialGain: number }
   scheduleSE: ScheduleSEResult[]
-  schedule2: { selfEmploymentTax: number; additionalMedicareTax: number; netInvestmentIncomeTax: number; total: number }
+  schedule2: { selfEmploymentTax: number; additionalMedicareTax: number; netInvestmentIncomeTax: number; earlyDistributionTax: number; total: number }
+  schedule3: { dependentCare: number; education: number; excessSocialSecurity: number }
+  form2441: { qualifyingPersons: number; expensesUsed: number; rate: number; credit: number }
+  form8863: { aotc: number; aotcRefundable: number; llc: number; nonrefundableAllowed: number }
+  eic: { qualifyingChildren: number; earnedIncome: number; investmentIncome: number; credit: number; notEligibleBecause: string[] }
   schedule8812: { qualifyingChildren: number; otherDependents: number; creditBeforePhaseout: number; phaseoutReduction: number; nonrefundable: number; refundable: number }
   qbi: { qualifiedBusinessIncome: number; deduction: number }
   deduction: { standard: number; itemized: number; used: 'standard' | 'itemized' }
@@ -47,6 +51,7 @@ export interface TaxReturnResult {
 }
 
 const r = (n: number): number => Math.round(n)
+const is65 = (p: Person): boolean => p.age >= 65 || p.age65OrOlder
 const pos = (n: number): number => Math.max(0, n)
 const sum = (values: readonly number[]): number => values.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0)
 const isJoint = (fs: FilingStatus): boolean => fs === 'mfj'
@@ -108,6 +113,23 @@ function scheduleC(b: ScheduleCBusiness): ScheduleCResult {
   const grossIncome = b.grossReceipts - b.returnsAndAllowances - b.costOfGoodsSold + b.otherIncome
   const totalExpenses = sum(Object.values(b.expenses))
   return { id: b.id, name: b.name || 'Business', owner: b.owner, grossIncome: r(grossIncome), totalExpenses: r(totalExpenses), netProfit: r(grossIncome - totalExpenses) }
+}
+
+/** Child Tax Credit child: under 17, SSN, lived with you more than half the year, child-type relationship. */
+export const ctcChild = (d: Dependent): boolean => d.age < 17 && d.hasSsn && d.childRelationship && d.monthsLivedWithYou > 6
+/** EIC qualifying child: relationship, residency, and under 19 / under 24 student / any age disabled. */
+export const eicChild = (d: Dependent): boolean =>
+  d.childRelationship && d.hasSsn && d.monthsLivedWithYou > 6 && (d.age < 19 || (d.student && d.age < 24) || d.disabled)
+/** Form 2441 qualifying person: dependent under 13, or disabled, who lived with you more than half the year. */
+export const careQualifyingPerson = (d: Dependent): boolean => d.monthsLivedWithYou > 6 && (d.age <= R.CARE_QUALIFYING_CHILD_MAX_AGE || d.disabled)
+
+/** EIC from the IRS table: credit on the midpoint of the $50 row containing `amount`. */
+export function eicFromTable(amount: number, children: number, phaseoutStart: number): number {
+  if (amount <= 0) return 0
+  const mid = Math.floor(amount / 50) * 50 + 25
+  const k = Math.min(3, Math.max(0, children))
+  const credit = Math.min(mid * R.EIC_CREDIT_RATE[k], R.EIC_MAX_CREDIT[k]) - pos(mid - phaseoutStart) * R.EIC_PHASEOUT_RATE[k]
+  return r(pos(credit))
 }
 
 export function computeReturn(input: TaxReturnInput): TaxReturnResult {
@@ -185,14 +207,32 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   const seTax = sum(scheduleSE.map((s) => s.total))
   const halfSeTax = r(seTax / 2)
 
+  // Retirement distributions (1099-R → lines 4a/4b, 5a/5b)
+  input.retirement.forEach((d, i) => {
+    if (!ownedBy(d.owner)) issues.push({ level: 'error', step: 'income', message: `1099-R #${i + 1} belongs to your spouse, but this is not a joint return. It is excluded.` })
+    if (d.taxableAmount > d.grossDistribution && d.grossDistribution > 0) issues.push({ level: 'warning', step: 'income', message: `1099-R #${i + 1}: the taxable amount (box 2a) is larger than the gross distribution (box 1).` })
+    const code = d.code.trim().toUpperCase()
+    if (code.includes('G')) issues.push({ level: 'info', step: 'income', message: `1099-R #${i + 1} is a direct rollover (code G). It is usually not taxable; box 2a should be $0.` })
+    if (code === '') issues.push({ level: 'warning', step: 'income', message: `1099-R #${i + 1}: enter the distribution code from box 7.` })
+  })
+  const retirement = input.retirement.filter((d) => ownedBy(d.owner))
+  const iraForms = retirement.filter((d) => d.ira)
+  const pensionForms = retirement.filter((d) => !d.ira)
+  const line4a = r(sum(iraForms.map((d) => d.grossDistribution)))
+  const line4b = r(sum(iraForms.map((d) => d.taxableAmount)))
+  const line5a = r(sum(pensionForms.map((d) => d.grossDistribution)))
+  const line5b = r(sum(pensionForms.map((d) => d.taxableAmount)))
+  const earlyDistributionBase = sum(retirement.filter((d) => d.code.trim().toUpperCase().includes('1')).map((d) => d.taxableAmount))
+  const earlyDistributionTax = r(earlyDistributionBase * R.EARLY_DISTRIBUTION_RATE)
+  if (earlyDistributionTax > 0) issues.push({ level: 'warning', step: 'income', message: `A 10% additional tax of $${earlyDistributionTax.toLocaleString()} applies to early distributions (code 1). If an exception applies (disability, first home, medical costs and others), Form 5329 can reduce it; that is not figured here.` })
+
   // Schedule 1, Part I
   const unemployment = r(input.unemployment)
   const otherIncome = r(input.otherIncome)
   const additionalIncome = r(businessIncome + unemployment + otherIncome)
   const line8 = additionalIncome
-  const line9 = r(line1z + line2b + line3b + line7 + line8)
 
-  // Schedule 1, Part II (adjustments)
+  // Schedule 1, Part II (adjustments other than student loan interest)
   const a = input.adjustments
   const educatorCap = joint ? 600 : 300
   const educator = Math.min(pos(a.educatorExpenses), educatorCap)
@@ -203,8 +243,36 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   if (a.selfEmployedHealthInsurance > 0 && businesses.length === 0) issues.push({ level: 'warning', step: 'deductions', message: 'Self-employed health insurance requires self-employment income.' })
   const hsa = pos(a.hsaDeduction)
   const ira = pos(a.iraDeduction)
+  const adjustmentsBeforeSli = educator + hsa + halfSeTax + seHealth + ira
+
+  // Social Security Benefits Worksheet (lines 6a/6b)
+  const ssForms = input.socialSecurity.filter((x) => ownedBy(x.owner))
+  const line6a = r(sum(ssForms.map((x) => x.netBenefits)))
+  let line6b = 0
+  if (line6a > 0) {
+    const half = line6a / 2
+    const otherIncomeForSs = line1z + line2b + line3b + line4b + line5b + line7 + line8
+    const combined = half + otherIncomeForSs + line2a - adjustmentsBeforeSli
+    if (fs === 'mfs') {
+      line6b = r(Math.min(pos(combined) * 0.85, line6a * 0.85))
+      issues.push({ level: 'info', step: 'income', message: 'Married filing separately: Social Security was figured as if you lived with your spouse in 2025. If you lived apart all year, the $25,000 base applies instead.' })
+    } else {
+      const overBase = pos(combined - R.SS_BASE_AMOUNT[fs])
+      if (overBase > 0) {
+        const tier = R.SS_ADJUSTED_BASE[fs] - R.SS_BASE_AMOUNT[fs]
+        const l11 = pos(overBase - tier)
+        const l13 = Math.min(overBase, tier) / 2
+        const l16 = Math.min(half, l13) + l11 * 0.85
+        line6b = r(Math.min(l16, line6a * 0.85))
+      }
+    }
+    if (a.iraDeduction > 0) issues.push({ level: 'info', step: 'deductions', message: 'With Social Security benefits and an IRA deduction, check the IRA limit with the Pub. 590-A worksheets.' })
+  }
+
+  const line9 = r(line1z + line2b + line3b + line4b + line5b + line6b + line7 + line8)
+
   // Student loan interest phases out on MAGI (AGI figured without this deduction)
-  const magiBeforeSli = line9 - (educator + hsa + halfSeTax + seHealth + ira)
+  const magiBeforeSli = line9 - adjustmentsBeforeSli
   let studentLoan = 0
   const sliRange = R.STUDENT_LOAN_PHASEOUT[fs]
   if (a.studentLoanInterest > 0) {
@@ -223,7 +291,7 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
 
   // ── Deductions ────────────────────────────────────────────────────────────
   const people = joint ? [input.taxpayer, input.spouse] : [input.taxpayer]
-  const boxes = sum(people.map((p) => (p.age65OrOlder ? 1 : 0) + (p.blind ? 1 : 0)))
+  const boxes = sum(people.map((p) => (is65(p) ? 1 : 0) + (p.blind ? 1 : 0)))
   const addlEach = fs === 'single' || fs === 'hoh' ? R.ADDITIONAL_STD_UNMARRIED : R.ADDITIONAL_STD_MARRIED
   let basicStd = R.STANDARD_DEDUCTION[fs]
   if (input.canBeClaimedAsDependent) {
@@ -258,9 +326,9 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   const tips = marriedNotJoint ? 0 : r(pos(Math.min(s.qualifiedTips, R.TIPS_MAX) - tipOtReduction))
   const overtime = marriedNotJoint ? 0 : r(pos(Math.min(s.qualifiedOvertime, R.OVERTIME_MAX[fs]) - tipOtReduction))
   const carLoan = r(pos(Math.min(s.carLoanInterest, R.CAR_LOAN_INTEREST_MAX) - stepPhaseout(magi - R.CAR_LOAN_PHASEOUT_START[fs], R.CAR_LOAN_PHASEOUT_PER_1000)))
-  const seniors = marriedNotJoint ? 0 : sum((joint ? [input.taxpayer, input.spouse] : [input.taxpayer]).map((p) => (p.age65OrOlder ? 1 : 0)))
+  const seniors = marriedNotJoint ? 0 : sum((joint ? [input.taxpayer, input.spouse] : [input.taxpayer]).map((p) => (is65(p) ? 1 : 0)))
   const senior = r(pos(seniors * R.SENIOR_DEDUCTION - (seniors > 0 ? pos(magi - R.SENIOR_PHASEOUT_START[fs]) * R.SENIOR_PHASEOUT_RATE : 0)))
-  if (marriedNotJoint && input.taxpayer.age65OrOlder) issues.push({ level: 'info', step: 'deductions', message: 'The $6,000 senior deduction is not available when married filing separately.' })
+  if (marriedNotJoint && is65(input.taxpayer)) issues.push({ level: 'info', step: 'deductions', message: 'The $6,000 senior deduction is not available when married filing separately.' })
   if (s.carLoanInterest > 0) issues.push({ level: 'info', step: 'deductions', message: 'Car loan interest qualifies only for a new personal-use vehicle assembled in the U.S., bought after 2024. Keep the VIN for Schedule 1-A.' })
   const line13b = tips + overtime + carLoan + senior
 
@@ -285,22 +353,84 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   const line17 = 0
   const line18 = line16 + line17
 
+  // Earned income (wages + net self-employment earnings less the deductible part of SE tax)
+  const earnedOf = (o: Owner): number => {
+    const wages = sum(w2s.filter((w) => w.owner === o).map((w) => w.wages))
+    const se = scheduleSE.find((x) => x.owner === o)
+    return wages + (se ? se.netEarnings - se.total / 2 : 0)
+  }
+  const earnedIncome = r(sum(owners.map(earnedOf)))
+
+  // Form 2441 — Child and Dependent Care Credit (nonrefundable, Schedule 3 line 2)
+  const carePersons = input.dependents.filter(careQualifyingPerson).length
+  let careCredit = 0
+  let careRate = 0
+  let careExpensesUsed = 0
+  const care = input.dependentCare
+  if (care.expenses > 0 || care.employerBenefits > 0) {
+    if (carePersons === 0) issues.push({ level: 'warning', step: 'credits', message: 'Child care expenses need a qualifying person: a dependent under 13, or a dependent who is disabled.' })
+    else if (fs === 'mfs') issues.push({ level: 'warning', step: 'credits', message: 'The child care credit is generally not available when married filing separately.' })
+    else {
+      const excludedBenefits = Math.min(care.employerBenefits, R.CARE_BENEFIT_EXCLUSION_LIMIT[fs])
+      if (care.employerBenefits > excludedBenefits) issues.push({ level: 'warning', step: 'credits', message: 'Employer dependent care benefits above the exclusion limit are taxable wages (Form 2441, Part III). Add the excess to your wages.' })
+      const limit = pos((carePersons >= 2 ? R.CARE_EXPENSE_LIMIT_TWO_PLUS : R.CARE_EXPENSE_LIMIT_ONE) - excludedBenefits)
+      const earnedLimit = joint ? Math.min(earnedOf('taxpayer'), earnedOf('spouse')) : earnedOf('taxpayer')
+      careExpensesUsed = r(Math.max(0, Math.min(care.expenses, limit, earnedLimit)))
+      careRate = Math.max(R.CARE_MIN_RATE, R.CARE_MAX_RATE - 0.01 * Math.ceil(pos(agi - R.CARE_RATE_STEP_START) / R.CARE_RATE_STEP))
+      careCredit = r(careExpensesUsed * careRate)
+      if (joint && earnedLimit <= 0) issues.push({ level: 'info', step: 'credits', message: 'Both spouses need earned income for the child care credit, unless one was a full-time student or disabled (not figured here).' })
+    }
+  }
+
+  // Form 8863 — Education credits
+  let aotcTentative = 0
+  let llcExpenses = 0
+  for (const st of input.students) {
+    const x = pos(st.qualifiedExpenses)
+    if (st.aotcEligible) aotcTentative += Math.min(x, R.AOTC_FULL_EXPENSES) + R.AOTC_PARTIAL_RATE * Math.min(pos(x - R.AOTC_FULL_EXPENSES), R.AOTC_PARTIAL_EXPENSES)
+    else llcExpenses += x
+  }
+  const llcTentative = Math.min(llcExpenses, R.LLC_EXPENSE_LIMIT) * R.LLC_RATE
+  let aotc = 0
+  let llc = 0
+  if (aotcTentative + llcTentative > 0) {
+    const range = R.EDUCATION_PHASEOUT[fs]
+    if (!range) issues.push({ level: 'warning', step: 'credits', message: 'Education credits are not available when married filing separately.' })
+    else if (input.canBeClaimedAsDependent) issues.push({ level: 'warning', step: 'credits', message: 'If someone can claim you as a dependent, they claim your education credits instead.' })
+    else {
+      const fraction = Math.min(1, Math.max(0, (range[1] - magi) / (range[1] - range[0])))
+      aotc = r(aotcTentative * fraction)
+      llc = r(llcTentative * fraction)
+    }
+  }
+  const aotcRefundable = r(aotc * R.AOTC_REFUNDABLE_SHARE)
+  if (aotcRefundable > 0 && input.taxpayer.age > 0 && input.taxpayer.age < 24) issues.push({ level: 'info', step: 'credits', message: 'Students under 24 may not get the refundable part of the AOTC (Form 8863 line 7). Check that rule if it applies to you.' })
+
+  // Nonrefundable credits in IRS order: Schedule 3 (care, education), then Schedule 8812
+  let remaining = line18
+  const take = (amount: number): number => { const used = Math.min(amount, remaining); remaining -= used; return used }
+  const careAllowed = take(careCredit)
+  const educationAllowed = take(aotc - aotcRefundable + llc)
+  const schedule3Part1 = careAllowed + educationAllowed
+
   // Schedule 8812
-  const qualifyingChildren = input.dependents.filter((d) => d.qualifyingChild).length
+  const qualifyingChildren = input.dependents.filter(ctcChild).length
   const otherDependents = input.dependents.length - qualifyingChildren
   const creditBeforePhaseout = qualifyingChildren * R.CTC_PER_CHILD + otherDependents * R.ODC_PER_DEPENDENT
   const phaseoutReduction = Math.min(creditBeforePhaseout, stepPhaseout(magi - R.CTC_PHASEOUT_START[fs], R.CTC_PHASEOUT_PER_1000))
   const creditAfterPhaseout = creditBeforePhaseout - phaseoutReduction
-  const nonrefundable = Math.min(creditAfterPhaseout, line18)
+  const nonrefundable = take(creditAfterPhaseout)
   const unused = creditAfterPhaseout - nonrefundable
-  const earnedIncome = line1a + pos(sum(scheduleSE.map((x) => x.netEarnings)) - halfSeTax)
   let refundable = 0
   if (qualifyingChildren > 0 && unused > 0) {
     refundable = r(Math.min(unused, qualifyingChildren * R.ACTC_REFUNDABLE_MAX_PER_CHILD, pos(earnedIncome - R.ACTC_EARNED_INCOME_FLOOR) * R.ACTC_EARNED_INCOME_RATE))
     if (qualifyingChildren >= 3) issues.push({ level: 'info', step: 'credits', message: 'With 3 or more children, the refundable child credit may be larger under the Social Security tax method (Schedule 8812, Part II-B), which is not calculated here.' })
   }
+  input.dependents.forEach((d) => {
+    if (d.age > 0 && d.age < 17 && !d.hasSsn) issues.push({ level: 'info', step: 'about', message: `${d.name || 'A dependent'} has no SSN valid for employment, so the $500 credit for other dependents applies instead of the Child Tax Credit.` })
+  })
   const line19 = nonrefundable
-  const line20 = 0
+  const line20 = schedule3Part1
   const line21 = line19 + line20
   const line22 = pos(line18 - line21)
 
@@ -311,18 +441,44 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   const addlMedicare = r(pos(totalMedicareWages - threshold) * R.ADDITIONAL_MEDICARE_RATE + pos(seEarnings - pos(threshold - totalMedicareWages)) * R.ADDITIONAL_MEDICARE_RATE)
   const netInvestmentIncome = pos(line2b + line3b + line7)
   const niit = r(Math.min(netInvestmentIncome, pos(magi - threshold)) * R.NIIT_RATE)
-  const schedule2Total = seTax + addlMedicare + niit
+  const schedule2Total = seTax + addlMedicare + niit + earlyDistributionTax
   const line23 = schedule2Total
   const line24 = line22 + line23
 
+  // Earned Income Credit
+  const eicChildren = Math.min(3, input.dependents.filter(eicChild).length)
+  const investmentIncome = line2a + line2b + line3b + pos(line7)
+  let eic = 0
+  const eicReasons: string[] = []
+  if (earnedIncome <= 0) eicReasons.push('no earned income')
+  if (fs === 'mfs') eicReasons.push('married filing separately (allowed only if you lived apart from your spouse for the last 6 months of 2025)')
+  if (input.canBeClaimedAsDependent) eicReasons.push('someone can claim you as a dependent')
+  if (investmentIncome > R.EIC_INVESTMENT_INCOME_LIMIT) eicReasons.push(`investment income is over $${R.EIC_INVESTMENT_INCOME_LIMIT.toLocaleString()}`)
+  if (eicChildren === 0) {
+    const ages = (joint ? [input.taxpayer, input.spouse] : [input.taxpayer]).map((p) => p.age)
+    const inRange = ages.some((age) => age >= R.EIC_NO_CHILD_MIN_AGE && age <= R.EIC_NO_CHILD_MAX_AGE)
+    if (ages.every((age) => age === 0)) eicReasons.push('age not entered')
+    else if (!inRange) eicReasons.push('without a qualifying child, you (or your spouse) must be 25 to 64')
+  }
+  if (eicReasons.length === 0) {
+    const start = (joint ? R.EIC_PHASEOUT_START_JOINT : R.EIC_PHASEOUT_START_OTHER)[eicChildren]
+    const byEarned = eicFromTable(earnedIncome, eicChildren, start)
+    eic = agi < start ? byEarned : Math.min(byEarned, eicFromTable(agi, eicChildren, start))
+  } else if (earnedIncome > 0 && agi < 68675 && eicReasons.includes('age not entered')) {
+    issues.push({ level: 'warning', step: 'about', message: 'Enter your age so the Earned Income Credit can be checked.' })
+  }
+
   // ── Payments ──────────────────────────────────────────────────────────────
   const line25a = r(sum(w2s.map((w) => w.federalWithholding)))
-  const line25b = r(sum(input.interest.map((i) => i.federalWithholding)) + sum(input.dividends.map((d) => d.federalWithholding)) + input.payments.otherWithholding)
+  const line25b = r(sum(input.interest.map((i) => i.federalWithholding)) + sum(input.dividends.map((d) => d.federalWithholding)) +
+    sum(retirement.map((d) => d.federalWithholding)) + sum(ssForms.map((x) => x.federalWithholding)) + input.payments.otherWithholding)
   const addlMedicareWithheld = r(pos(sum(w2s.map((w) => w.medicareWithheld)) - totalMedicareWages * R.MEDICARE_EMPLOYEE_RATE))
   const line25c = addlMedicareWithheld
   const line25d = line25a + line25b + line25c
   const line26 = r(input.payments.estimatedTaxPayments)
+  const line27 = eic
   const line28 = refundable
+  const line29 = aotcRefundable
   // Excess Social Security withheld (Schedule 3 line 11), per person with 2+ employers
   const maxSsTax = r(R.SOCIAL_SECURITY_WAGE_BASE * 0.062 * 100) / 100
   const excessSs = r(sum(owners.map((o) => {
@@ -331,15 +487,14 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
     return pos(sum(forms.map((w) => w.socialSecurityWithheld)) - maxSsTax)
   })))
   const line31 = excessSs
-  const line32 = line28 + line31
+  const line32 = line27 + line28 + line29 + line31
   const line33 = line25d + line26 + line32
 
   const line34 = pos(line33 - line24)
   const line37 = pos(line24 - line33)
 
   // ── Coverage notes ────────────────────────────────────────────────────────
-  const looksEicEligible = earnedIncome > 0 && agi < (qualifyingChildren > 0 ? 68675 : 19104) && line2b + line3b + pos(line7) <= 11950 && fs !== 'mfs'
-  if (looksEicEligible) issues.push({ level: 'warning', step: 'credits', message: 'You may qualify for the Earned Income Credit. This app does not calculate it yet, so your refund may be understated.' })
+  if (eic > 0) issues.push({ level: 'info', step: 'credits', message: 'Earned Income Credit is included. Attach Schedule EIC for each qualifying child, and confirm each child lived with you in the U.S. for more than half of 2025.' })
   if (agi > 200000 && line15 > 0) issues.push({ level: 'info', step: 'review', message: 'Alternative Minimum Tax (Form 6251) is not calculated. Most filers at this income still owe none, but check if you have ISOs or large deductions.' })
   if (line37 > 1000 && line25d + line26 < Math.min(line24 * 0.9, line24)) issues.push({ level: 'info', step: 'review', message: 'You owe more than $1,000. An underpayment penalty (Form 2210) may apply; it is not calculated here.' })
   if (scheduleSE.length && businesses.length) issues.push({ level: 'info', step: 'income', message: 'Schedule C is figured on the cash method from the totals you enter. Depreciation (Form 4562) and inventory details are not itemized.' })
@@ -356,10 +511,11 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   return {
     f1040: {
       '1a': line1a, '1z': line1z, '2a': line2a, '2b': line2b, '3a': line3a, '3b': line3b,
+      '4a': line4a, '4b': line4b, '5a': line5a, '5b': line5b, '6a': line6a, '6b': line6b,
       '7': line7, '8': line8, '9': line9, '10': line10, '11': line11, '12': line12, '13a': line13a, '13b': line13b,
       '14': line14, '15': line15, '16': line16, '17': line17, '18': line18, '19': line19, '20': line20,
       '21': line21, '22': line22, '23': line23, '24': line24, '25a': line25a, '25b': line25b, '25c': line25c,
-      '25d': line25d, '26': line26, '27': 0, '28': line28, '29': 0, '31': line31, '32': line32, '33': line33,
+      '25d': line25d, '26': line26, '27': line27, '28': line28, '29': line29, '31': line31, '32': line32, '33': line33,
       '34': line34, '37': line37
     },
     schedule1: { businessIncome: r(businessIncome), unemployment, otherIncome, additionalIncome, adjustments, totalAdjustments: line10 },
@@ -369,7 +525,11 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
     scheduleC: scheduleCResults,
     scheduleD: { shortTerm, longTerm, net: netCapital, allowedLoss: line7 < 0 ? -line7 : 0, carryoverShort, carryoverLong, preferentialGain },
     scheduleSE,
-    schedule2: { selfEmploymentTax: seTax, additionalMedicareTax: addlMedicare, netInvestmentIncomeTax: niit, total: schedule2Total },
+    schedule2: { selfEmploymentTax: seTax, additionalMedicareTax: addlMedicare, netInvestmentIncomeTax: niit, earlyDistributionTax, total: schedule2Total },
+    schedule3: { dependentCare: careAllowed, education: educationAllowed, excessSocialSecurity: line31 },
+    form2441: { qualifyingPersons: carePersons, expensesUsed: careExpensesUsed, rate: careRate, credit: careCredit },
+    form8863: { aotc, aotcRefundable, llc, nonrefundableAllowed: educationAllowed },
+    eic: { qualifyingChildren: eicChildren, earnedIncome, investmentIncome, credit: eic, notEligibleBecause: eic > 0 ? [] : eicReasons },
     schedule8812: { qualifyingChildren, otherDependents, creditBeforePhaseout, phaseoutReduction, nonrefundable, refundable },
     qbi: { qualifiedBusinessIncome: r(qbiAmount), deduction: line13a },
     deduction: { standard, itemized: itemizedTotal, used },

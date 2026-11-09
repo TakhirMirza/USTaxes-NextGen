@@ -6,13 +6,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { computeReturn, regularTax, taxFromSchedule } from './compute.ts'
-import { emptyBusiness, emptyDependent, emptyReturn, emptyTransaction, emptyW2, empty1099Div, normalizeReturn } from './model.ts'
+import { emptyBusiness, emptyDependent, emptyReturn, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099R, emptySocialSecurity, normalizeReturn } from './model.ts'
 import type { TaxReturnInput } from './model.ts'
 
 const base = (patch: Partial<TaxReturnInput> = {}): TaxReturnInput => ({
   ...emptyReturn(),
-  taxpayer: { firstName: 'Test', lastName: 'Payer', age65OrOlder: false, blind: false },
-  spouse: { firstName: 'Test', lastName: 'Spouse', age65OrOlder: false, blind: false },
+  taxpayer: { firstName: 'Test', lastName: 'Payer', age: 40, age65OrOlder: false, blind: false },
+  spouse: { firstName: 'Test', lastName: 'Spouse', age: 40, age65OrOlder: false, blind: false },
   ...patch
 })
 const w2 = (wages: number, withholding: number, owner: 'taxpayer' | 'spouse' = 'taxpayer') =>
@@ -58,7 +58,8 @@ test('refundable Additional Child Tax Credit is limited to $1,700 per child', ()
   }))
   assert.equal(res.f1040['15'], 0)
   assert.equal(res.f1040['28'], 3400)
-  assert.equal(res.f1040['34'], 4400)
+  assert.equal(res.f1040['27'], 7152)
+  assert.equal(res.f1040['34'], 11552)
 })
 
 test('Schedule C → SE tax, half-SE adjustment and QBI deduction', () => {
@@ -88,7 +89,7 @@ test('capital loss is limited to $3,000 with a carryover', () => {
 })
 
 test('senior gets additional standard deduction and $6,000 Schedule 1-A deduction', () => {
-  const res = computeReturn(base({ taxpayer: { firstName: 'S', lastName: 'R', age65OrOlder: true, blind: false }, w2s: [w2(50000, 0)] }))
+  const res = computeReturn(base({ taxpayer: { firstName: 'S', lastName: 'R', age: 66, age65OrOlder: false, blind: false }, w2s: [w2(50000, 0)] }))
   assert.equal(res.f1040['12'], 17750)
   assert.equal(res.f1040['13b'], 6000)
   assert.equal(res.f1040['16'], 2915)
@@ -125,4 +126,87 @@ test('normalizeReturn tolerates partial saved data', () => {
   assert.equal(n.w2s[0].wages, 1)
   assert.equal(n.w2s[0].federalWithholding, 0)
   assert.equal(n.itemized.medical, 0)
+})
+
+const kid = (age: number, patch = {}) => ({ ...emptyDependent(), name: `Kid ${age}`, age, ...patch })
+
+test('EIC without children for a 30-year-old', () => {
+  const res = computeReturn(base({ taxpayer: { ...base().taxpayer, age: 30 }, w2s: [w2(10000, 300)] }))
+  assert.equal(res.f1040['27'], 649)
+  assert.equal(res.f1040['34'], 949)
+})
+
+test('EIC phases out with one child', () => {
+  const res = computeReturn(base({ filingStatus: 'hoh', w2s: [w2(30000, 0)], dependents: [kid(8)] }))
+  assert.equal(res.eic.credit, 3261)
+})
+
+test('no EIC without children outside ages 25–64, or with high investment income', () => {
+  assert.equal(computeReturn(base({ taxpayer: { ...base().taxpayer, age: 22 }, w2s: [w2(10000, 0)] })).eic.credit, 0)
+  const rich = computeReturn(base({ filingStatus: 'hoh', w2s: [w2(20000, 0)], dependents: [kid(8)], interest: [{ id: 'i', payer: 'B', interest: 12000, taxExemptInterest: 0, federalWithholding: 0 }] }))
+  assert.equal(rich.eic.credit, 0)
+})
+
+test('dependent age and SSN decide Child Tax Credit vs other-dependent credit', () => {
+  const res = computeReturn(base({ filingStatus: 'mfj', w2s: [w2(120000, 0)], dependents: [kid(5), kid(17), kid(10, { hasSsn: false })] }))
+  assert.equal(res.schedule8812.qualifyingChildren, 1)
+  assert.equal(res.schedule8812.creditBeforePhaseout, 2200 + 500 + 500)
+})
+
+test('Social Security benefits: worksheet taxes part of the benefits', () => {
+  const pension = { ...empty1099R(), payer: 'Plan', grossDistribution: 20000, taxableAmount: 20000, code: '7' }
+  const ss = { ...emptySocialSecurity(), netBenefits: 24000 }
+  const res = computeReturn(base({ taxpayer: { ...base().taxpayer, age: 67 }, retirement: [pension], socialSecurity: [ss] }))
+  assert.equal(res.f1040['5b'], 20000)
+  assert.equal(res.f1040['6a'], 24000)
+  assert.equal(res.f1040['6b'], 3500)
+  assert.equal(res.f1040['11'], 23500)
+  assert.equal(res.f1040['12'], 17750)
+  assert.equal(res.f1040['13b'], 6000)
+  assert.equal(res.f1040['15'], 0)
+})
+
+test('Social Security is untaxed when other income is low', () => {
+  const res = computeReturn(base({ socialSecurity: [{ ...emptySocialSecurity(), netBenefits: 20000 }] }))
+  assert.equal(res.f1040['6b'], 0)
+})
+
+test('early IRA distribution adds the 10% additional tax', () => {
+  const ira = { ...empty1099R(), payer: 'Broker', grossDistribution: 10000, taxableAmount: 10000, federalWithholding: 2000, code: '1', ira: true }
+  const res = computeReturn(base({ w2s: [w2(40000, 0)], retirement: [ira] }))
+  assert.equal(res.f1040['4b'], 10000)
+  assert.equal(res.schedule2.earlyDistributionTax, 1000)
+  assert.equal(res.f1040['25b'], 2000)
+})
+
+test('child care credit: $3,000 limit at the 20% rate', () => {
+  const res = computeReturn(base({ filingStatus: 'mfj', w2s: [w2(50000, 0), w2(50000, 0, 'spouse')], dependents: [kid(5)], dependentCare: { expenses: 5000, employerBenefits: 0 } }))
+  assert.equal(res.form2441.credit, 600)
+  assert.equal(res.schedule3.dependentCare, 600)
+  assert.equal(res.f1040['20'], 600)
+})
+
+test('child care credit rate is 35% at low income', () => {
+  const res = computeReturn(base({ filingStatus: 'hoh', w2s: [w2(14000, 0)], dependents: [kid(3)], dependentCare: { expenses: 2000, employerBenefits: 0 } }))
+  assert.equal(res.form2441.rate, 0.35)
+  assert.equal(res.form2441.credit, 700)
+})
+
+test('American Opportunity Credit: $2,500 with 40% refundable', () => {
+  const res = computeReturn(base({ w2s: [w2(50000, 0)], students: [{ ...emptyStudent(), name: 'Me', qualifiedExpenses: 4000 }] }))
+  assert.equal(res.form8863.aotc, 2500)
+  assert.equal(res.f1040['29'], 1000)
+  assert.equal(res.schedule3.education, 1500)
+})
+
+test('Lifetime Learning Credit phases out between $80,000 and $90,000', () => {
+  const res = computeReturn(base({ w2s: [w2(85000, 0)], students: [{ ...emptyStudent(), name: 'Me', qualifiedExpenses: 10000, aotcEligible: false }] }))
+  assert.equal(res.form8863.llc, 1000)
+})
+
+test('version-1 saved files map the old qualifying-child checkbox to an age', () => {
+  const n = normalizeReturn({ dependents: [{ id: 'a', name: 'A', qualifyingChild: true }, { id: 'b', name: 'B', qualifyingChild: false }], taxpayer: { age65OrOlder: true } })
+  assert.equal(n.dependents[0].age, 10)
+  assert.equal(n.dependents[1].age, 17)
+  assert.equal(n.taxpayer.age, 65)
 })

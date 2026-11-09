@@ -14,18 +14,18 @@ the browser's local storage and can be downloaded as a JSON file.
 | Area | Supported |
 | --- | --- |
 | Filing status | Single, MFJ, MFS, head of household, qualifying surviving spouse |
-| Income | W-2 (boxes 1–6), 1099-INT, 1099-DIV, stock sales (Schedule D), self-employment (Schedule C), unemployment, other income |
+| Income | W-2 (boxes 1–6), 1099-INT, 1099-DIV, 1099-R (IRA, pensions), SSA-1099 with the taxable-benefits worksheet, stock sales (Schedule D), self-employment (Schedule C), unemployment, other income |
 | Adjustments (Schedule 1) | Half of SE tax, SE health insurance, HSA, IRA, student loan interest (with phase-out), educator expenses |
 | New 2025 deductions (Schedule 1-A) | Tips, overtime, car loan interest, $6,000 senior deduction, with phase-outs |
 | Deductions | Standard (incl. 65+/blind and dependent rules) or itemized (Schedule A, $40,000 SALT cap with phase-down) |
 | QBI | Form 8995 deduction below the income threshold |
 | Tax | IRS Tax Table (< $100,000), Tax Computation Worksheet, Qualified Dividends & Capital Gain worksheet |
-| Other taxes (Schedule 2) | Self-employment tax (Schedule SE), Additional Medicare Tax (8959), Net Investment Income Tax (8960) |
-| Credits | Child Tax Credit $2,200, credit for other dependents, refundable ACTC (Schedule 8812) |
+| Other taxes (Schedule 2) | Self-employment tax (Schedule SE), Additional Medicare Tax (8959), Net Investment Income Tax (8960), 10% tax on early retirement distributions |
+| Credits | Earned Income Credit (Schedule EIC), Child Tax Credit $2,200 / credit for other dependents / refundable ACTC (Schedule 8812), child and dependent care (Form 2441), American Opportunity and Lifetime Learning (Form 8863) |
 | Payments | Withholding, Additional Medicare withholding, excess Social Security, estimated payments |
 
-**Not yet supported:** Earned Income Credit, education and child-care credits, AMT, Form 8995-A,
-depreciation detail, state returns, PDF form filling, e-file. The app flags these when they may apply.
+**Not yet supported:** AMT, saver's credit, Form 5329 exceptions, Form 8995-A, depreciation detail,
+state returns, PDF form filling, e-file. The app flags these when they may apply.
 
 ## Project layout
 

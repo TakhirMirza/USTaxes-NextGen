@@ -328,3 +328,15 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
   details { break-inside: avoid; }
   details:not([open]) > *:not(summary) { display: block; }
 }
+
+/* ── Additions: number inputs, credit tags ──────────────── */
+.number-input { display: flex; align-items: center; border: 1.5px solid var(--rule-strong); border-radius: var(--radius-sm); background: var(--sheet); }
+.number-input:focus-within { border-color: var(--ink); outline: 3px solid var(--focus); outline-offset: 2px; }
+.number-input input { flex: 1; min-width: 0; padding: 9px 11px; border: 0; background: none; outline: none; }
+.number-input span { padding-right: 11px; color: var(--ink-soft); font-size: 0.9rem; }
+.grid-3 { display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 16px 20px; }
+.tags { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.tags li { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--rule); color: var(--ink-soft); font-size: 0.8rem; background: var(--paper); }
+.tags li.is-on { border-color: var(--form-green); color: var(--form-green); background: var(--form-green-tint); font-weight: 600; }
+.why { margin: 10px 0 0; color: var(--ink-soft); font-size: 0.88rem; }
+@media (max-width: 760px) { .grid-3 { grid-template-columns: minmax(0, 1fr); } }

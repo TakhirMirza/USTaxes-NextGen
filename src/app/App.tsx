@@ -14,9 +14,9 @@ const STORAGE_KEY = 'ustaxes-nextgen:return-2025'
 
 const STEPS = [
   { path: 'about', title: 'About you', blurb: 'Filing status and household' },
-  { path: 'income', title: 'Income', blurb: 'W-2, 1099, business, investments' },
+  { path: 'income', title: 'Income', blurb: 'W-2, 1099, retirement, business' },
   { path: 'deductions', title: 'Deductions', blurb: 'Adjustments, new 2025 deductions, Schedule A' },
-  { path: 'payments', title: 'Credits & payments', blurb: 'Child credits, withholding, estimates' },
+  { path: 'payments', title: 'Credits & payments', blurb: 'EIC, child, care, education credits' },
   { path: 'review', title: 'Review', blurb: 'Form 1040, schedules, save' }
 ] as const
 type StepPath = (typeof STEPS)[number]['path']
@@ -133,7 +133,7 @@ function Workspace(): ReactElement {
         </footer>
         <p className="disclaimer">
           USTaxes NextGen is an open-source preparation aid, not tax advice. It does not file returns, and it does not yet
-          cover the Earned Income Credit, education and child-care credits, AMT, or state returns.
+          cover AMT, the saver’s credit, depreciation detail, or state returns.
         </p>
       </main>
 
