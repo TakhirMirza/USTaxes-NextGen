@@ -33,6 +33,7 @@ const LINES: [line: string, label: string][] = [
   ['14', 'Total deductions'],
   ['15', 'Taxable income'],
   ['16', 'Tax'],
+  ['17', 'Alternative minimum tax (Schedule 2)'],
   ['18', 'Tax before credits'],
   ['19', 'Child tax credit / credit for other dependents'],
   ['20', 'Other credits (Schedule 3)'],
@@ -183,7 +184,9 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
             <details><summary>Schedule 1 <span>Additional income and adjustments</span></summary>
               <dl className="facts">
                 {result.schedule1.businessIncome !== 0 && <div><dt>Business income</dt><dd>{usd(result.schedule1.businessIncome)}</dd></div>}
+                {result.schedule1.rentalIncome !== 0 && <div><dt>Rental real estate (Schedule E)</dt><dd>{usd(result.schedule1.rentalIncome)}</dd></div>}
                 {result.schedule1.unemployment > 0 && <div><dt>Unemployment</dt><dd>{usd(result.schedule1.unemployment)}</dd></div>}
+                {result.schedule1.hsaTaxable > 0 && <div><dt>Taxable HSA distributions</dt><dd>{usd(result.schedule1.hsaTaxable)}</dd></div>}
                 {result.schedule1.otherIncome > 0 && <div><dt>Other income</dt><dd>{usd(result.schedule1.otherIncome)}</dd></div>}
                 {Object.entries(result.schedule1.adjustments).filter(([, v]) => v > 0).map(([k, v]) => (
                   <div key={k}><dt>{k.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase())}</dt><dd>−{usd(v)}</dd></div>
@@ -249,13 +252,15 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
               </dl>
             </details>
           ))}
-          {s2.total > 0 && (
+          {s2.total + s2.amt > 0 && (
             <details><summary>Schedule 2 <span>Other taxes</span></summary>
               <dl className="facts">
                 {s2.selfEmploymentTax > 0 && <div><dt>Self-employment tax</dt><dd>{usd(s2.selfEmploymentTax)}</dd></div>}
                 {s2.additionalMedicareTax > 0 && <div><dt>Additional Medicare tax (Form 8959)</dt><dd>{usd(s2.additionalMedicareTax)}</dd></div>}
                 {s2.netInvestmentIncomeTax > 0 && <div><dt>Net investment income tax (Form 8960)</dt><dd>{usd(s2.netInvestmentIncomeTax)}</dd></div>}
                 {s2.earlyDistributionTax > 0 && <div><dt>Additional tax on early distributions (Form 5329)</dt><dd>{usd(s2.earlyDistributionTax)}</dd></div>}
+                {s2.hsaAdditionalTax > 0 && <div><dt>Additional tax on HSA distributions (Form 8889)</dt><dd>{usd(s2.hsaAdditionalTax)}</dd></div>}
+                {s2.amt > 0 && <div><dt>Alternative minimum tax (Part I, Form 6251)</dt><dd>{usd(s2.amt)}</dd></div>}
               </dl>
             </details>
           )}
@@ -294,6 +299,51 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
                 <div><dt>Qualifying children</dt><dd>{result.eic.qualifyingChildren}</dd></div>
                 <div><dt>Earned income</dt><dd>{usd(result.eic.earnedIncome)}</dd></div>
                 <div><dt>Credit</dt><dd>{usd(result.eic.credit)}</dd></div>
+              </dl>
+            </details>
+          )}
+          {result.scheduleE.properties.length > 0 && (
+            <details><summary>Schedule E <span>Rental real estate and royalties</span></summary>
+              <dl className="facts">
+                {result.scheduleE.properties.map((p) => <div key={p.id}><dt>{p.address}</dt><dd>{usd(p.net)}</dd></div>)}
+                {result.scheduleE.priorCarryover > 0 && <div><dt>Loss carried over from 2024</dt><dd>−{usd(result.scheduleE.priorCarryover)}</dd></div>}
+                {result.scheduleE.disallowed > 0 && <div><dt>Not allowed this year (carries to 2026)</dt><dd>{usd(result.scheduleE.disallowed)}</dd></div>}
+                <div><dt>On Schedule 1 line 5</dt><dd>{usd(result.scheduleE.net)}</dd></div>
+              </dl>
+            </details>
+          )}
+          {result.scheduleC.filter((c) => c.homeOffice.method === 'regular' && c.homeOffice.deduction > 0).map((c) => (
+            <details key={`8829-${c.id}`}><summary>Form 8829 <span>{c.name} — copy these onto the form</span></summary>
+              <dl className="facts">
+                <div><dt>Business percentage (line 7)</dt><dd>{(c.homeOffice.businessPct * 100).toFixed(2)}%</dd></div>
+                <div><dt>Tentative profit (line 8)</dt><dd>{usd(c.homeOffice.line8)}</dd></div>
+                <div><dt>Mortgage interest and taxes, business part (line 14)</dt><dd>{usd(c.homeOffice.line14)}</dd></div>
+                <div><dt>Operating expenses allowed (line 25)</dt><dd>{usd(c.homeOffice.line25)}</dd></div>
+                <div><dt>Depreciation allowed (line 33)</dt><dd>{usd(c.homeOffice.depreciationAllowed)}</dd></div>
+                <div><dt>Deduction (line 36, Schedule C line 30)</dt><dd>{usd(c.homeOffice.deduction)}</dd></div>
+                {c.homeOffice.carryover > 0 && <div><dt>Carryover to 2026 (lines 43–44)</dt><dd>{usd(c.homeOffice.carryover)}</dd></div>}
+              </dl>
+            </details>
+          ))}
+          {result.form8889.map((h) => (
+            <details key={`8889-${h.owner}`}><summary>Form 8889 <span>HSA — {h.owner === 'spouse' ? ret.spouse.firstName || 'Spouse' : ret.taxpayer.firstName || 'You'}</span></summary>
+              <dl className="facts">
+                <div><dt>Contribution limit (line 8)</dt><dd>{usd(h.line8)}</dd></div>
+                <div><dt>Employer contributions (line 9)</dt><dd>{usd(h.line9)}</dd></div>
+                <div><dt>HSA deduction (line 13)</dt><dd>{usd(h.line13)}</dd></div>
+                {h.line14 > 0 && <div><dt>Taxable distributions (line 16)</dt><dd>{usd(h.line16)}</dd></div>}
+                {h.line17b > 0 && <div><dt>Additional 20% tax (line 17b)</dt><dd>{usd(h.line17b)}</dd></div>}
+              </dl>
+            </details>
+          ))}
+          {result.form6251.amt > 0 && (
+            <details><summary>Form 6251 <span>Alternative minimum tax</span></summary>
+              <dl className="facts">
+                <div><dt>Alternative minimum taxable income (line 4)</dt><dd>{usd(result.form6251.line4)}</dd></div>
+                <div><dt>Exemption (line 5)</dt><dd>{usd(result.form6251.line5)}</dd></div>
+                <div><dt>Tentative minimum tax (line 9)</dt><dd>{usd(result.form6251.line9)}</dd></div>
+                <div><dt>Regular tax (line 10)</dt><dd>{usd(result.form6251.line10)}</dd></div>
+                <div><dt>AMT (line 11)</dt><dd>{usd(result.form6251.amt)}</dd></div>
               </dl>
             </details>
           )}

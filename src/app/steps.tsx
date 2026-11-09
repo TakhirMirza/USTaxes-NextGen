@@ -1,6 +1,7 @@
-import { ReactElement } from 'react'
+import { ReactElement, useState } from 'react'
 import type { TaxReturnInput, Owner, BusinessExpenses, Person } from '../engine/model.ts'
-import { EXPENSE_LABELS, emptyBusiness, emptyDependent, emptyProvider, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099Int, empty1099R, emptySocialSecurity } from '../engine/model.ts'
+import { EXPENSE_LABELS, RENTAL_EXPENSE_LABELS, RENTAL_TYPE_LABELS, emptyBusiness, emptyDependent, emptyProvider, emptyRental, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099Int, empty1099R, emptySocialSecurity } from '../engine/model.ts'
+import type { HomeOffice, HsaAccount, RentalExpenses, RentalType } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import { careQualifyingPerson, ctcChild, eicChild } from '../engine/compute.ts'
 import { FILING_STATUS_LABELS } from '../engine/rules2025.ts'
@@ -10,7 +11,7 @@ import { Check, Choice, DigitsField, DocList, MoneyField, NumberField, Section, 
 export type Setter = (fn: (r: TaxReturnInput) => TaxReturnInput) => void
 export interface StepProps { ret: TaxReturnInput; set: Setter; result: TaxReturnResult }
 
-type ListKey = 'w2s' | 'interest' | 'dividends' | 'capitalTransactions' | 'businesses' | 'dependents' | 'retirement' | 'socialSecurity' | 'students'
+type ListKey = 'w2s' | 'interest' | 'dividends' | 'capitalTransactions' | 'businesses' | 'dependents' | 'retirement' | 'socialSecurity' | 'students' | 'rentals'
 function listOps<K extends ListKey>(set: Setter, key: K) {
   type Item = TaxReturnInput[K][number]
   return {
@@ -143,6 +144,7 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
   const cap = listOps(set, 'capitalTransactions')
   const biz = listOps(set, 'businesses')
   const ret1099r = listOps(set, 'retirement')
+  const rent = listOps(set, 'rentals')
   const ssa = listOps(set, 'socialSecurity')
   const bizResult = (id: string) => result.scheduleC.find((b) => b.id === id)
   return (
@@ -274,11 +276,12 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
                 <details className="more span-2" open={Object.values(b.expenses).some((v) => v > 0)}>
                   <summary>Expenses {res && res.totalExpenses > 0 ? `· ${usd(res.totalExpenses)}` : ''}</summary>
                   <div className="grid">
-                    {(Object.keys(EXPENSE_LABELS) as (keyof BusinessExpenses)[]).map((k) => (
+                    {(Object.keys(EXPENSE_LABELS) as (keyof BusinessExpenses)[]).filter((k) => k !== 'homeOffice').map((k) => (
                       <MoneyField key={k} label={EXPENSE_LABELS[k]} value={b.expenses[k]} onChange={(n) => exp(k, n)} />
                     ))}
                   </div>
                 </details>
+                <div className="span-2"><HomeOfficeEditor ho={b.homeOffice} result={res?.homeOffice} onChange={(h) => biz.patch(b.id, { homeOffice: { ...b.homeOffice, ...h } })} /></div>
                 {b.expenses.carAndTruck > 0 && (
                   <details className="more span-2" open>
                     <summary>Vehicle details (Schedule C, Part IV)</summary>
@@ -343,11 +346,76 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
           )} />
       </Section>
 
+      <Section title="Rental property" intro="Schedule E: homes, apartments or land you rent out, and royalties."
+        aside={ret.rentals.length > 0 ? <span className="pill">Net {usd(result.scheduleE.net)}</span> : undefined}>
+        <DocList items={ret.rentals} addLabel="Add a rental property" emptyText="No rental income."
+          title={(x, i) => x.address.trim() || `Property ${i + 1}`}
+          onAdd={() => rent.add(emptyRental())} onRemove={rent.remove}
+          render={(x) => {
+            const rr = result.scheduleE.properties.find((p) => p.id === x.id)
+            const ex = (k: keyof RentalExpenses, n: number): void => rent.patch(x.id, { expenses: { ...x.expenses, [k]: n } })
+            return (
+              <>
+                <div className="span-2"><TextField label="Property address" placeholder="Street, city, state, ZIP" value={x.address} onChange={(v) => rent.patch(x.id, { address: v })} /></div>
+                <div className="span-2"><OwnerPicker ret={ret} value={x.owner} onChange={(v) => rent.patch(x.id, { owner: v })} /></div>
+                <SelectField label="Type of property" value={x.type} onChange={(v) => rent.patch(x.id, { type: v as RentalType })}
+                  options={(Object.keys(RENTAL_TYPE_LABELS) as RentalType[]).map((k) => ({ value: k, label: RENTAL_TYPE_LABELS[k] }))} />
+                <span />
+                <NumberField label="Days rented at fair rent" max={366} value={x.fairRentalDays} onChange={(n) => rent.patch(x.id, { fairRentalDays: n })} />
+                <NumberField label="Days of personal use" max={366} hint="You, family, or anyone paying below fair rent" value={x.personalUseDays} onChange={(n) => rent.patch(x.id, { personalUseDays: n })} />
+                <MoneyField label="Rents received" value={x.rents} onChange={(n) => rent.patch(x.id, { rents: n })} />
+                <MoneyField label="Royalties received" value={x.royalties} onChange={(n) => rent.patch(x.id, { royalties: n })} />
+                <details className="more span-2" open={Object.values(x.expenses).some((v) => v > 0)}>
+                  <summary>Expenses {rr && rr.expenses > 0 ? `· ${usd(rr.expenses)}` : ''}</summary>
+                  <div className="grid">
+                    {(Object.keys(RENTAL_EXPENSE_LABELS) as (keyof RentalExpenses)[]).map((k) => (
+                      <MoneyField key={k} label={RENTAL_EXPENSE_LABELS[k]} value={x.expenses[k]} onChange={(n) => ex(k, n)} />
+                    ))}
+                  </div>
+                </details>
+                <div className="span-2 checks">
+                  <Check label="I actively participate (I approve tenants, set rents, or approve repairs)" hint="Needed to deduct up to $25,000 of rental losses" checked={x.activeParticipation} onChange={(v) => rent.patch(x.id, { activeParticipation: v })} />
+                </div>
+                {rr && <p className={`span-2 result-line ${rr.net < 0 ? 'is-loss' : ''}`}>Net {rr.net < 0 ? 'loss' : 'income'} <strong>{usd(rr.net)}</strong></p>}
+              </>
+            )
+          }} />
+        {ret.rentals.length > 0 && (
+          <>
+            <div style={{ marginTop: 16 }}>
+              <Choice legend="Did you make rental payments in 2025 that require Forms 1099 (for example, $600+ to a contractor)?" value={ret.rentalForms1099.required === null ? '' : ret.rentalForms1099.required ? 'yes' : 'no'}
+                onChange={(v) => set((r) => ({ ...r, rentalForms1099: { ...r.rentalForms1099, required: v === 'yes' } }))}
+                options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
+              {ret.rentalForms1099.required && <div className="checks"><Check label="I filed (or will file) them" checked={ret.rentalForms1099.filed} onChange={(v) => set((r) => ({ ...r, rentalForms1099: { ...r.rentalForms1099, filed: v } }))} /></div>}
+            </div>
+            <details className="more" open={ret.priorPassiveCarryover > 0}>
+              <summary>Rental losses carried over from 2024</summary>
+              <div className="grid">
+                <MoneyField label="Unallowed passive losses from 2024" hint="From your 2024 Form 8582" value={ret.priorPassiveCarryover} onChange={(n) => set((r) => ({ ...r, priorPassiveCarryover: n }))} />
+              </div>
+            </details>
+            {result.scheduleE.disallowed > 0 && <p className="note is-warn">{usd(result.scheduleE.disallowed)} of rental loss can’t be used this year (allowance {usd(result.scheduleE.allowance)} at your income). It carries over to 2026.</p>}
+          </>
+        )}
+      </Section>
+
       <Section title="Other income">
         <div className="grid">
           <MoneyField label="Unemployment compensation" box="1099-G" value={ret.unemployment} onChange={(n) => set((r) => ({ ...r, unemployment: n }))} />
           <MoneyField label="Other taxable income" hint="Prizes, jury duty, and similar (Schedule 1, line 8)" value={ret.otherIncome} onChange={(n) => set((r) => ({ ...r, otherIncome: n }))} />
         </div>
+      </Section>
+
+      <Section title="Less common items" intro="Only if they apply to you.">
+        <details className="more" style={{ marginTop: 0 }} open={ret.amt.isoBargainElement + ret.amt.privateActivityBondInterest + Math.abs(ret.amt.otherAdjustments) > 0}>
+          <summary>Alternative minimum tax (Form 6251)</summary>
+          <div className="grid">
+            <MoneyField label="Incentive stock options exercised and held" hint="Market value minus price paid (Form 3921), for shares still held at year end" value={ret.amt.isoBargainElement} onChange={(n) => set((r) => ({ ...r, amt: { ...r.amt, isoBargainElement: n } }))} />
+            <MoneyField label="Private activity bond interest" box="1099-INT box 9" value={ret.amt.privateActivityBondInterest} onChange={(n) => set((r) => ({ ...r, amt: { ...r.amt, privateActivityBondInterest: n } }))} />
+            <MoneyField label="Other AMT adjustments" hint="Net of other Form 6251 line 2 items (can be negative)" allowNegative value={ret.amt.otherAdjustments} onChange={(n) => set((r) => ({ ...r, amt: { ...r.amt, otherAdjustments: n } }))} />
+          </div>
+          <p className="why">The alternative minimum tax is always checked. {result.f1040['17'] > 0 ? `It adds ${usd(result.f1040['17'])} to your tax.` : 'You owe none.'}</p>
+        </details>
       </Section>
     </>
   )
@@ -365,7 +433,6 @@ export function DeductionsStep({ ret, set, result }: StepProps): ReactElement {
         <div className="grid">
           <MoneyField label="Student loan interest" box="1098-E" hint="Up to $2,500" value={ret.adjustments.studentLoanInterest} onChange={(n) => adj('studentLoanInterest', n)} />
           <MoneyField label="Deductible IRA contributions" value={ret.adjustments.iraDeduction} onChange={(n) => adj('iraDeduction', n)} />
-          <MoneyField label="HSA deduction" hint="From Form 8889; not employer contributions" value={ret.adjustments.hsaDeduction} onChange={(n) => adj('hsaDeduction', n)} />
           <MoneyField label="Educator expenses" hint="K–12 teachers, up to $300 each" value={ret.adjustments.educatorExpenses} onChange={(n) => adj('educatorExpenses', n)} />
           {ret.businesses.length > 0 && (
             <MoneyField label="Self-employed health insurance" value={ret.adjustments.selfEmployedHealthInsurance} onChange={(n) => adj('selfEmployedHealthInsurance', n)} />
@@ -374,6 +441,15 @@ export function DeductionsStep({ ret, set, result }: StepProps): ReactElement {
         {result.schedule1.adjustments.deductibleHalfOfSeTax > 0 && (
           <p className="note">Half of your self-employment tax, {usd(result.schedule1.adjustments.deductibleHalfOfSeTax)}, is deducted automatically.</p>
         )}
+      </Section>
+
+      <Section title="Health savings account (HSA)" intro="Form 8889. Contributions you made yourself are deductible; money put in through payroll is already excluded from your W-2."
+        aside={result.schedule1.adjustments.hsaDeduction > 0 ? <span className="pill">{usd(result.schedule1.adjustments.hsaDeduction)}</span> : undefined}>
+        {(ret.filingStatus === 'mfj' ? (['taxpayer', 'spouse'] as const) : (['taxpayer'] as const)).map((who) => (
+          <HsaEditor key={who} who={who} name={who === 'spouse' ? (ret.spouse.firstName || 'Your spouse') : (ret.taxpayer.firstName || 'You')}
+            h={ret.hsa[who]} result={result.form8889.find((x) => x.owner === who)}
+            onChange={(p) => set((r) => ({ ...r, hsa: { ...r.hsa, [who]: { ...r.hsa[who], ...p } } }))} />
+        ))}
       </Section>
 
       <Section title="New deductions for 2025" intro="Schedule 1-A. You can take these whether or not you itemize."
@@ -594,5 +670,86 @@ export function PaymentsStep({ ret, set, result }: StepProps): ReactElement {
           : result.form2210.reason && result.form2210.line7 >= 1000 ? <p className="note">No estimated tax penalty: {result.form2210.reason.charAt(0).toLowerCase() + result.form2210.reason.slice(1)}</p> : null}
       </Section>
     </>
+  )
+}
+
+// ── Shared editors ──────────────────────────────────────────────────────────
+let selectCount = 0
+export function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }): ReactElement {
+  const [id] = useState(() => `sel-${++selectCount}`)
+  return (
+    <div className="field">
+      <label htmlFor={id}><span>{label}</span></label>
+      <select id={id} className="select" value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  )
+}
+
+function HomeOfficeEditor({ ho, result, onChange }: { ho: HomeOffice; result?: TaxReturnResult['scheduleC'][number]['homeOffice']; onChange: (h: Partial<HomeOffice>) => void }): ReactElement {
+  return (
+    <details className="more" open={ho.method !== 'none'}>
+      <summary>Home office {result && result.deduction > 0 ? `· ${usd(result.deduction)}` : ''}</summary>
+      <Choice legend="How to figure the home office deduction" value={ho.method} onChange={(v) => onChange({ method: v })}
+        options={[
+          { value: 'none', label: 'No home office' },
+          { value: 'simplified', label: 'Simplified', hint: '$5 per square foot, up to 300' },
+          { value: 'regular', label: 'Actual expenses', hint: 'Form 8829, share of home costs' },
+          { value: 'amount', label: 'I already figured it', hint: 'Enter the line 30 amount' }
+        ]} />
+      {ho.method !== 'none' && ho.method !== 'amount' && (
+        <div className="grid" style={{ marginTop: 14 }}>
+          <NumberField label="Square feet of the office" max={99999} hint="Used regularly and only for this business" value={ho.officeSqFt} onChange={(n) => onChange({ officeSqFt: n })} />
+          <NumberField label="Square feet of the whole home" max={99999} value={ho.homeSqFt} onChange={(n) => onChange({ homeSqFt: n })} />
+        </div>
+      )}
+      {ho.method === 'regular' && (
+        <>
+          <p className="why">Enter whole-home amounts for 2025; the business share ({ho.homeSqFt > 0 ? `${Math.round(Math.min(1, ho.officeSqFt / ho.homeSqFt) * 1000) / 10}%` : '—'}) is applied for you.</p>
+          <div className="grid">
+            <MoneyField label="Mortgage interest" value={ho.mortgageInterest} onChange={(n) => onChange({ mortgageInterest: n })} />
+            <MoneyField label="Real estate taxes" value={ho.realEstateTaxes} onChange={(n) => onChange({ realEstateTaxes: n })} />
+            <MoneyField label="Homeowners or renters insurance" value={ho.insurance} onChange={(n) => onChange({ insurance: n })} />
+            <MoneyField label="Rent" value={ho.rent} onChange={(n) => onChange({ rent: n })} />
+            <MoneyField label="Utilities" value={ho.utilities} onChange={(n) => onChange({ utilities: n })} />
+            <MoneyField label="Repairs and maintenance" value={ho.repairs} onChange={(n) => onChange({ repairs: n })} />
+            <MoneyField label="Other home expenses" value={ho.other} onChange={(n) => onChange({ other: n })} />
+            <MoneyField label="Depreciation of the office" hint="Business part, from Form 8829 Part III" value={ho.depreciation} onChange={(n) => onChange({ depreciation: n })} />
+          </div>
+          {result && result.carryover > 0 && <p className="note">{usd(result.carryover)} can’t be deducted this year because it is more than the business profit. It carries over to 2026.</p>}
+        </>
+      )}
+      {ho.method === 'amount' && (
+        <div className="grid" style={{ marginTop: 14 }}>
+          <MoneyField label="Home office deduction" box="Sch. C line 30" value={ho.amount} onChange={(n) => onChange({ amount: n })} />
+        </div>
+      )}
+    </details>
+  )
+}
+
+function HsaEditor({ who, name, h, result, onChange }: { who: 'taxpayer' | 'spouse'; name: string; h: HsaAccount; result?: TaxReturnResult['form8889'][number]; onChange: (p: Partial<HsaAccount>) => void }): ReactElement {
+  return (
+    <div className="doc" style={{ marginBottom: 12 }}>
+      <header><h3>{name}</h3>{result && <span className="why" style={{ margin: 0 }}>Limit {usd(result.line8)}</span>}</header>
+      <Choice legend={`${name}: high-deductible health plan coverage in 2025`} value={h.coverage} onChange={(v) => onChange({ coverage: v })}
+        options={[{ value: 'none', label: 'No HSA' }, { value: 'self', label: 'Self-only' }, { value: 'family', label: 'Family' }]} />
+      {h.coverage !== 'none' && (
+        <>
+          <div className="grid" style={{ marginTop: 14 }}>
+            <NumberField label="Months covered" max={12} suffix="of 12" value={h.monthsCovered} onChange={(n) => onChange({ monthsCovered: n })} />
+            <span />
+            <MoneyField label="Contributions you made yourself" hint="Not through payroll" value={h.personalContributions} onChange={(n) => onChange({ personalContributions: n })} />
+            <MoneyField label="Employer and payroll contributions" box="W-2 box 12, W" value={h.employerContributions} onChange={(n) => onChange({ employerContributions: n })} />
+            <MoneyField label="Distributions" box="1099-SA box 1" value={h.distributions} onChange={(n) => onChange({ distributions: n })} />
+            <MoneyField label="Spent on qualified medical costs" value={h.qualifiedExpenses} onChange={(n) => onChange({ qualifiedExpenses: n })} />
+          </div>
+          {h.distributions > h.qualifiedExpenses && (
+            <div className="checks"><Check label={who === 'spouse' ? 'My spouse was 65 or older, or disabled, when taking the money' : 'I was 65 or older, or disabled, when taking the money'} hint="No 20% additional tax then" checked={h.exceptionApplies} onChange={(v) => onChange({ exceptionApplies: v })} /></div>
+          )}
+        </>
+      )}
+    </div>
   )
 }

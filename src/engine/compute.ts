@@ -4,7 +4,7 @@
  * One pure function: TaxReturnInput → TaxReturnResult. Every Form 1040 line and supporting
  * schedule is derived here, in IRS order, with whole-dollar rounding at each line.
  */
-import type { Dependent, Owner, Person, ScheduleCBusiness, TaxReturnInput } from './model.ts'
+import type { Dependent, HomeOffice, HsaAccount, Owner, Person, ScheduleCBusiness, TaxReturnInput } from './model.ts'
 import * as R from './rules2025.ts'
 import type { FilingStatus } from './rules2025.ts'
 
@@ -15,13 +15,25 @@ export interface Issue {
   message: string
 }
 
-export interface ScheduleCResult { id: string; name: string; owner: Owner; grossIncome: number; totalExpenses: number; netProfit: number }
+export interface HomeOfficeResult {
+  method: HomeOffice['method']; businessPct: number
+  line8: number; line14: number; line15: number; operating: number; line25: number; line27: number
+  depreciationAllowed: number; carryover: number; deduction: number
+}
+export interface ScheduleCResult {
+  id: string; name: string; owner: Owner; grossIncome: number
+  /** Line 28, total expenses before business use of home. */ totalExpenses: number
+  /** Line 29. */ tentativeProfit: number
+  homeOffice: HomeOfficeResult
+  /** Line 31. */ netProfit: number
+}
+export interface RentalResult { id: string; address: string; income: number; expenses: number; net: number; personalUseWarning: boolean }
 export interface ScheduleSEResult { owner: Owner; netEarnings: number; socialSecurityTax: number; medicareTax: number; total: number }
 
 export interface TaxReturnResult {
   /** Form 1040 lines, keyed by line number. */
   f1040: Record<string, number>
-  schedule1: { businessIncome: number; unemployment: number; otherIncome: number; additionalIncome: number; adjustments: Record<string, number>; totalAdjustments: number }
+  schedule1: { businessIncome: number; rentalIncome: number; unemployment: number; hsaTaxable: number; otherIncome: number; additionalIncome: number; adjustments: Record<string, number>; totalAdjustments: number }
   schedule1A: {
     magi: number
     tipsCapped: number; tipOtExcess: number; tipOtReduction: number; tips: number
@@ -35,7 +47,11 @@ export interface TaxReturnResult {
   scheduleC: ScheduleCResult[]
   scheduleD: { shortTerm: number; longTerm: number; net: number; allowedLoss: number; carryoverShort: number; carryoverLong: number; preferentialGain: number }
   scheduleSE: ScheduleSEResult[]
-  schedule2: { selfEmploymentTax: number; additionalMedicareTax: number; netInvestmentIncomeTax: number; earlyDistributionTax: number; total: number }
+  /** total = Part II (line 21, Form 1040 line 23); amt is Part I (line 1040 line 17). */
+  schedule2: { amt: number; selfEmploymentTax: number; additionalMedicareTax: number; netInvestmentIncomeTax: number; earlyDistributionTax: number; hsaAdditionalTax: number; total: number }
+  scheduleE: { properties: RentalResult[]; gross: number; priorCarryover: number; magi: number; allowance: number; allowedLoss: number; disallowed: number; net: number }
+  form8889: { owner: Owner; coverage: string; months: number; line2: number; line3: number; line7: number; line8: number; line9: number; line12: number; line13: number; line14: number; line15: number; line16: number; line17b: number; excess: number }[]
+  form6251: Form6251Result
   schedule3: { dependentCare: number; education: number; saversCredit: number; excessSocialSecurity: number }
   form2441: {
     qualifyingPersons: number; expensesUsed: number; rate: number; credit: number
@@ -126,10 +142,40 @@ export function qualifiedDividendsTax(taxableIncome: number, qualifiedDividends:
   return r(Math.min(l23, regularTax(l1, fs)))
 }
 
+/**
+ * Business use of home. Simplified method: $5 × up to 300 sq ft, limited to tentative profit.
+ * Regular method follows Form 8829 Part II: mortgage interest and real estate taxes (business share) are
+ * always deductible; operating expenses, then depreciation, only up to the remaining profit; the rest carries over.
+ */
+export function homeOfficeDeduction(h: HomeOffice, tentativeProfit: number): HomeOfficeResult {
+  const none: HomeOfficeResult = { method: h.method, businessPct: 0, line8: r(tentativeProfit), line14: 0, line15: 0, operating: 0, line25: 0, line27: 0, depreciationAllowed: 0, carryover: 0, deduction: 0 }
+  if (h.method === 'simplified') {
+    const sqft = Math.min(pos(h.officeSqFt), R.HOME_OFFICE_SIMPLIFIED_MAX_SQFT)
+    return { ...none, deduction: r(Math.min(sqft * R.HOME_OFFICE_SIMPLIFIED_RATE, pos(tentativeProfit))) }
+  }
+  if (h.method === 'amount') return { ...none, deduction: r(pos(h.amount)) }
+  if (h.method !== 'regular' || h.homeSqFt <= 0 || h.officeSqFt <= 0) return none
+  const pct = Math.min(1, h.officeSqFt / h.homeSqFt)
+  const line8 = pos(tentativeProfit)
+  const line14 = r((h.mortgageInterest + h.realEstateTaxes) * pct)
+  const line15 = pos(line8 - line14)
+  const operating = r((h.insurance + h.utilities + h.repairs + h.rent + h.other) * pct)
+  const line25 = Math.min(operating, line15)
+  const line27 = pos(line15 - line25)
+  const depreciationAllowed = Math.min(r(h.depreciation), line27)
+  const carryover = pos(operating - line25) + pos(r(h.depreciation) - depreciationAllowed)
+  return { method: h.method, businessPct: pct, line8: r(line8), line14, line15: r(line15), operating, line25, line27: r(line27), depreciationAllowed, carryover, deduction: line14 + line25 + depreciationAllowed }
+}
+
 function scheduleC(b: ScheduleCBusiness): ScheduleCResult {
   const grossIncome = b.grossReceipts - b.returnsAndAllowances - b.costOfGoodsSold + b.otherIncome
-  const totalExpenses = sum(Object.values(b.expenses))
-  return { id: b.id, name: b.name || 'Business', owner: b.owner, grossIncome: r(grossIncome), totalExpenses: r(totalExpenses), netProfit: r(grossIncome - totalExpenses) }
+  const totalExpenses = sum(Object.entries(b.expenses).filter(([k]) => k !== 'homeOffice').map(([, v]) => v))
+  const tentativeProfit = r(grossIncome - totalExpenses)
+  const homeOffice = homeOfficeDeduction(b.homeOffice, tentativeProfit)
+  return {
+    id: b.id, name: b.name || 'Business', owner: b.owner, grossIncome: r(grossIncome), totalExpenses: r(totalExpenses),
+    tentativeProfit, homeOffice, netProfit: tentativeProfit - homeOffice.deduction
+  }
 }
 
 /** Child Tax Credit child: under 17, SSN, lived with you more than half the year, child-type relationship. */
@@ -147,6 +193,68 @@ export function eicFromTable(amount: number, children: number, phaseoutStart: nu
   const k = Math.min(3, Math.max(0, children))
   const credit = Math.min(mid * R.EIC_CREDIT_RATE[k], R.EIC_MAX_CREDIT[k]) - pos(mid - phaseoutStart) * R.EIC_PHASEOUT_RATE[k]
   return r(pos(credit))
+}
+
+export interface Form6251Result {
+  line1a: number; line1b: number; line2a: number; line2g: number; line2i: number; line3: number; line4: number
+  line5: number; line6: number; line7: number; line9: number; line10: number; amt: number
+  /** Part III lines 12–40, present when qualified dividends or capital gains are involved. */
+  part3: Record<string, number> | null
+}
+
+/** Form 6251 (2025) Parts I–III for the adjustments this app knows about. */
+export function alternativeMinimumTax(a: {
+  fs: FilingStatus; line11b: number; line14: number; seniorDeduction: number; itemized: boolean; saltDeducted: number
+  standardDeduction: number; amtInput: TaxReturnInput['amt']; qualifiedDividends: number; preferentialGain: number
+  taxableIncome: number; regularTax: number
+}): Form6251Result {
+  const line1a = r(a.line14 - a.seniorDeduction)
+  const line1b = r(a.line11b - line1a)
+  const line2a = r(a.itemized ? a.saltDeducted : a.standardDeduction)
+  const line2g = r(pos(a.amtInput.privateActivityBondInterest))
+  const line2i = r(pos(a.amtInput.isoBargainElement))
+  const line3 = r(a.amtInput.otherAdjustments)
+  const line4 = line1b + line2a + line2g + line2i + line3
+  const line5 = r(pos(R.AMT_EXEMPTION[a.fs] - pos(line4 - R.AMT_PHASEOUT_START[a.fs]) * R.AMT_PHASEOUT_RATE))
+  const line6 = pos(line4 - line5)
+  const t28 = R.AMT_28_THRESHOLD[a.fs]
+  const flat = (x: number): number => r(x <= t28 ? x * R.AMT_RATE_LOW : x * R.AMT_RATE_HIGH - t28 * (R.AMT_RATE_HIGH - R.AMT_RATE_LOW))
+  let line7 = flat(line6)
+  let part3: Record<string, number> | null = null
+  const qdcg4 = r(pos(a.qualifiedDividends) + pos(a.preferentialGain))
+  if (qdcg4 > 0 && line6 > 0) {
+    const qdcg5 = pos(r(a.taxableIncome) - qdcg4)
+    const l12 = line6
+    const l13 = qdcg4
+    const l15 = l13
+    const l16 = Math.min(l12, l15)
+    const l17 = l12 - l16
+    const l18 = flat(l17)
+    const l19 = R.CAPITAL_GAIN_ZERO_TOP[a.fs]
+    const l20 = qdcg5
+    const l21 = pos(l19 - l20)
+    const l22 = Math.min(l12, l13)
+    const l23 = Math.min(l21, l22)
+    const l24 = l22 - l23
+    const l25 = R.CAPITAL_GAIN_FIFTEEN_TOP[a.fs]
+    const l26 = l21
+    const l27 = qdcg5
+    const l28 = l26 + l27
+    const l29 = pos(l25 - l28)
+    const l30 = Math.min(l24, l29)
+    const l31 = r(l30 * 0.15)
+    const l32 = l23 + l30
+    const l33 = l22 - l32
+    const l34 = r(l33 * 0.20)
+    const l38 = l18 + l31 + l34
+    const l39 = flat(l12)
+    const l40 = Math.min(l38, l39)
+    part3 = { l12, l13, l15, l16, l17, l18, l19, l20, l21, l22, l23, l24, l25, l26, l27, l28, l29, l30, l31, l32, l33, l34, l38, l39, l40 }
+    line7 = l40
+  }
+  const line9 = line7
+  const line10 = r(a.regularTax)
+  return { line1a, line1b, line2a, line2g, line2i, line3, line4, line5, line6, line7, line9, line10, amt: pos(line9 - line10), part3 }
 }
 
 export interface PenaltyResult {
@@ -248,7 +356,9 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
     if (b.required1099s === null) issues.push({ level: 'warning', step: 'income', message: `${who}: answer whether you made payments that require Forms 1099 (Schedule C, line I).` })
     if (b.expenses.carAndTruck > 0 && (!b.vehicle.placedInService.trim() || b.vehicle.businessMiles <= 0)) issues.push({ level: 'warning', step: 'income', message: `${who}: car and truck expenses need the vehicle details (Schedule C, Part IV).` })
     if (b.costOfGoodsSold > 0) issues.push({ level: 'info', step: 'income', message: `${who}: cost of goods sold is printed on Schedule C line 4 and 42. Fill in the inventory lines 33–41 on the printed form by hand.` })
-    if (b.expenses.homeOffice > 0) issues.push({ level: 'info', step: 'income', message: `${who}: home office expenses (line 30) need Form 8829 or the simplified-method worksheet; attach it or enter the square footage on the printed form.` })
+    if (b.homeOffice.method === 'amount' && b.homeOffice.amount > 0) issues.push({ level: 'info', step: 'income', message: `${who}: you entered the home office deduction directly. Attach your own Form 8829 or simplified-method worksheet, or switch to a method the app figures.` })
+    if (b.homeOffice.method === 'regular' && (b.homeOffice.mortgageInterest > 0 || b.homeOffice.realEstateTaxes > 0) && input.deductionChoice !== 'standard') issues.push({ level: 'info', step: 'deductions', message: `${who}: if you itemize, enter only the personal part of mortgage interest and real estate taxes on Schedule A; the business part is on Form 8829.` })
+    if (b.homeOffice.method === 'simplified' && b.homeOffice.officeSqFt > R.HOME_OFFICE_SIMPLIFIED_MAX_SQFT) issues.push({ level: 'info', step: 'income', message: `${who}: the simplified method counts at most ${R.HOME_OFFICE_SIMPLIFIED_MAX_SQFT} square feet.` })
     if (!b.materiallyParticipated) issues.push({ level: 'warning', step: 'income', message: `${who}: if you did not materially participate, passive activity loss limits (Form 8582) may apply. They are not figured here.` })
   })
   input.businesses.forEach((b, i) => { if (!ownedBy(b.owner)) issues.push({ level: 'error', step: 'income', message: `Business #${i + 1} belongs to your spouse, but this is not a joint return. It is excluded.` }) })
@@ -352,10 +462,76 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   const earlyDistributionTax = r(earlyDistributionBase * R.EARLY_DISTRIBUTION_RATE)
   if (earlyDistributionTax > 0) issues.push({ level: 'warning', step: 'income', message: `A 10% additional tax of $${earlyDistributionTax.toLocaleString()} applies to early distributions (code 1). If an exception applies (disability, first home, medical costs and others), Form 5329 can reduce it; that is not figured here.` })
 
-  // Schedule 1, Part I
+  // Form 8889 — Health savings accounts (one per person with coverage)
+  const hsaOwners = owners.filter((o) => input.hsa[o].coverage !== 'none')
+  const hsaFamilyBoth = joint && input.hsa.taxpayer.coverage === 'family' && input.hsa.spouse.coverage === 'family'
+  const hsaResults = hsaOwners.map((o) => {
+    const h: HsaAccount = input.hsa[o]
+    const p = o === 'spouse' ? input.spouse : input.taxpayer
+    const months = Math.min(12, Math.max(0, Math.round(h.monthsCovered || 0)))
+    const base = h.coverage === 'family' ? R.HSA_LIMIT_FAMILY : R.HSA_LIMIT_SELF
+    let line3 = r(base * months / 12)
+    if (hsaFamilyBoth) line3 = r(line3 / 2)
+    const line7 = p.age >= R.HSA_CATCH_UP_AGE ? r(R.HSA_CATCH_UP * months / 12) : 0
+    const line8 = line3 + line7
+    const line9 = r(pos(h.employerContributions))
+    const line12 = pos(line8 - line9)
+    const line2 = r(pos(h.personalContributions))
+    const line13 = Math.min(line2, line12)
+    const excess = pos(line2 - line12) + pos(line9 - line8)
+    const line14 = r(pos(h.distributions))
+    const line16 = pos(line14 - r(pos(h.qualifiedExpenses)))
+    const line17b = h.exceptionApplies ? 0 : r(line16 * R.HSA_ADDITIONAL_TAX_RATE)
+    return { owner: o, coverage: h.coverage, months, line2, line3, line7, line8, line9, line12, line13, line14, line15: r(pos(h.qualifiedExpenses)), line16, line17b, excess }
+  })
+  hsaResults.forEach((x) => {
+    const p = x.owner === 'spouse' ? input.spouse : input.taxpayer
+    const name = p.firstName || (x.owner === 'spouse' ? 'Your spouse' : 'You')
+    if (x.excess > 0) issues.push({ level: 'warning', step: 'deductions', message: `${name}: HSA contributions are $${x.excess.toLocaleString()} over the 2025 limit. Withdraw the excess by the filing deadline or a 6% excise tax applies each year (Form 5329).` })
+    if (x.line16 > 0) issues.push({ level: 'info', step: 'deductions', message: `${name}: $${x.line16.toLocaleString()} of HSA distributions was not used for medical expenses, so it is taxable${x.line17b ? ` plus a 20% additional tax of $${x.line17b.toLocaleString()}` : ''}.` })
+  })
+  if (hsaFamilyBoth) issues.push({ level: 'info', step: 'deductions', message: 'Both spouses have family HSA coverage, so the family limit is split equally between you. You may agree to a different split on Form 8889.' })
+  if (input.filingStatus !== 'mfj' && input.hsa.spouse.coverage !== 'none') issues.push({ level: 'info', step: 'deductions', message: 'Your spouse’s HSA is ignored on a separate or single return.' })
+  const hsaDeduction = sum(hsaResults.map((x) => x.line13))
+  const hsaTaxable = sum(hsaResults.map((x) => x.line16))
+  const hsaAdditionalTax = sum(hsaResults.map((x) => x.line17b))
+
+  // Schedule E Part I — rental real estate and royalties
+  const rentalsIn = input.rentals.filter((p) => ownedBy(p.owner))
+  input.rentals.forEach((p, i) => {
+    if (!ownedBy(p.owner)) issues.push({ level: 'error', step: 'income', message: `Rental #${i + 1} belongs to your spouse, but this is not a joint return. It is excluded.` })
+  })
+  const rentalResults: RentalResult[] = rentalsIn.map((p) => {
+    const income = r(p.rents + p.royalties)
+    const expenses = r(sum(Object.values(p.expenses)))
+    const personalUseWarning = p.personalUseDays > Math.max(14, 0.1 * p.fairRentalDays)
+    return { id: p.id, address: p.address || 'Rental property', income, expenses, net: income - expenses, personalUseWarning }
+  })
+  rentalResults.filter((x) => x.personalUseWarning).forEach((x) => issues.push({ level: 'warning', step: 'income', message: `${x.address}: personal use was more than 14 days or 10% of rental days, so it counts as a residence. Expenses must be split and limited (Pub. 527); this app does not do that split.` }))
+  rentalsIn.filter((p) => p.fairRentalDays > 0 && p.fairRentalDays < 15).forEach((p) => issues.push({ level: 'info', step: 'income', message: `${p.address || 'A property'}: rented fewer than 15 days, so the rent is generally not taxable and expenses are not deductible. Check whether it belongs on Schedule E.` }))
+  if (rentalsIn.length && input.rentalForms1099.required === null) issues.push({ level: 'warning', step: 'income', message: 'Answer whether your rentals required you to file Forms 1099 (Schedule E, line A).' })
+  const rentalGross = sum(rentalResults.map((x) => x.net)) - r(pos(input.priorPassiveCarryover))
   const unemployment = r(input.unemployment)
   const otherIncome = r(input.otherIncome)
-  const additionalIncome = r(businessIncome + unemployment + otherIncome)
+  // MAGI for the $25,000 allowance: AGI without passive losses, taxable Social Security, IRA,
+  // student loan interest, or the deductible half of SE tax.
+  const magiPassive = line1z + line2b + line3b + line4b + line5b + line7 + businessIncome + unemployment + otherIncome + hsaTaxable -
+    (Math.min(pos(input.adjustments.educatorExpenses), joint ? 600 : 300) + hsaDeduction)
+  let rentalAllowedLoss = 0
+  let rentalDisallowed = 0
+  let passiveAllowance = 0
+  if (rentalGross < 0) {
+    const anyActive = rentalsIn.some((p) => p.activeParticipation)
+    passiveAllowance = fs === 'mfs' || !anyActive ? 0 : pos(R.PASSIVE_ALLOWANCE - pos(magiPassive - R.PASSIVE_PHASEOUT_START) * R.PASSIVE_PHASEOUT_RATE)
+    rentalAllowedLoss = Math.min(-rentalGross, r(passiveAllowance))
+    rentalDisallowed = -rentalGross - rentalAllowedLoss
+    if (rentalDisallowed > 0) issues.push({ level: 'info', step: 'income', message: `$${rentalDisallowed.toLocaleString()} of rental loss is not allowed this year (passive activity rules) and carries over to 2026. Keep Form 8582 for your records.` })
+    if (fs === 'mfs') issues.push({ level: 'info', step: 'income', message: 'Married filing separately: the $25,000 rental loss allowance is $0 if you lived with your spouse at any time in 2025 ($12,500 if you lived apart all year — not figured here).' })
+  }
+  const rentalNet = rentalGross >= 0 ? r(rentalGross) : -rentalAllowedLoss
+
+  // Schedule 1, Part I
+  const additionalIncome = r(businessIncome + rentalNet + unemployment + hsaTaxable + otherIncome)
   const line8 = additionalIncome
 
   // Schedule 1, Part II (adjustments other than student loan interest)
@@ -367,7 +543,7 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   const seHealth = Math.min(pos(a.selfEmployedHealthInsurance), seHealthLimit)
   if (a.selfEmployedHealthInsurance > seHealthLimit) issues.push({ level: 'info', step: 'deductions', message: 'Self-employed health insurance is limited to your net business profit minus half of SE tax.' })
   if (a.selfEmployedHealthInsurance > 0 && businesses.length === 0) issues.push({ level: 'warning', step: 'deductions', message: 'Self-employed health insurance requires self-employment income.' })
-  const hsa = pos(a.hsaDeduction)
+  const hsa = hsaDeduction
   const ira = pos(a.iraDeduction)
   const adjustmentsBeforeSli = educator + hsa + halfSeTax + seHealth + ira
 
@@ -488,7 +664,13 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   // ── Tax ───────────────────────────────────────────────────────────────────
   const usesWorksheet = line3a + preferentialGain > 0
   const line16 = usesWorksheet ? qualifiedDividendsTax(line15, line3a, preferentialGain, fs) : regularTax(line15, fs)
-  const line17 = 0
+  // Form 6251 — Alternative minimum tax (Schedule 2 line 2 → Form 1040 line 17)
+  const amtResult = alternativeMinimumTax({
+    fs, line11b: line11, line14, seniorDeduction: senior, itemized: used === 'itemized', saltDeducted: taxes,
+    standardDeduction: line12, amtInput: input.amt, qualifiedDividends: line3a, preferentialGain, taxableIncome: line15, regularTax: line16
+  })
+  const line17 = amtResult.amt
+  if (line17 > 0) issues.push({ level: 'warning', step: 'review', message: `Alternative minimum tax of $${line17.toLocaleString()} applies (Form 6251).` })
   const line18 = line16 + line17
 
   // Form 2441 Parts II and III (lines 27–31) — Child and Dependent Care Credit (Schedule 3 line 2)
@@ -615,9 +797,9 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   const totalMedicareWages = sum(w2s.map(medicareWages))
   const seEarnings = sum(scheduleSE.map((x) => x.netEarnings))
   const addlMedicare = r(pos(totalMedicareWages - threshold) * R.ADDITIONAL_MEDICARE_RATE + pos(seEarnings - pos(threshold - totalMedicareWages)) * R.ADDITIONAL_MEDICARE_RATE)
-  const netInvestmentIncome = pos(line2b + line3b + line7)
+  const netInvestmentIncome = pos(line2b + line3b + line7 + rentalNet)
   const niit = r(Math.min(netInvestmentIncome, pos(magi - threshold)) * R.NIIT_RATE)
-  const schedule2Total = seTax + addlMedicare + niit + earlyDistributionTax
+  const schedule2Total = seTax + addlMedicare + niit + earlyDistributionTax + hsaAdditionalTax
   const line23 = schedule2Total
   const line24 = line22 + line23
 
@@ -684,7 +866,6 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
 
   // ── Coverage notes ────────────────────────────────────────────────────────
   if (eic > 0) issues.push({ level: 'info', step: 'credits', message: 'Earned Income Credit is included. Attach Schedule EIC for each qualifying child, and confirm each child lived with you in the U.S. for more than half of 2025.' })
-  if (agi > 200000 && line15 > 0) issues.push({ level: 'info', step: 'review', message: 'Alternative Minimum Tax (Form 6251) is not calculated. Most filers at this income still owe none, but check if you have ISOs or large deductions.' })
   if (scheduleSE.length && businesses.length) issues.push({ level: 'info', step: 'income', message: 'Schedule C is figured on the cash method from the totals you enter. Depreciation (Form 4562) and inventory details are not itemized.' })
   if (w2s.some((w) => w.wages > 0 && (w.medicareWages === 0 || w.socialSecurityWages === 0))) issues.push({ level: 'info', step: 'income', message: 'For W-2s where box 3 or box 5 is blank, box 1 wages were used instead.' })
   if (input.dependents.some((d) => !d.name.trim())) issues.push({ level: 'warning', step: 'about', message: 'Enter a name for each dependent.' })
@@ -706,7 +887,7 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
       '25d': line25d, '26': line26, '27a': line27, '28': line28, '29': line29, '31': line31, '32': line32, '33': line33,
       '34': line34, '37': line37, '38': line38
     },
-    schedule1: { businessIncome: r(businessIncome), unemployment, otherIncome, additionalIncome, adjustments, totalAdjustments: line10 },
+    schedule1: { businessIncome: r(businessIncome), rentalIncome: rentalNet, unemployment, hsaTaxable, otherIncome, additionalIncome, adjustments, totalAdjustments: line10 },
     schedule1A: {
       magi, tipsCapped, tipOtExcess, tipOtReduction, tips, overtimeCapped, overtime,
       carCapped, carExcess, carReduction, carLoanInterest: carLoan,
@@ -717,13 +898,16 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
     scheduleC: scheduleCResults,
     scheduleD: { shortTerm, longTerm, net: netCapital, allowedLoss: line7 < 0 ? -line7 : 0, carryoverShort, carryoverLong, preferentialGain },
     scheduleSE,
-    schedule2: { selfEmploymentTax: seTax, additionalMedicareTax: addlMedicare, netInvestmentIncomeTax: niit, earlyDistributionTax, total: schedule2Total },
+    schedule2: { amt: line17, selfEmploymentTax: seTax, additionalMedicareTax: addlMedicare, netInvestmentIncomeTax: niit, earlyDistributionTax, hsaAdditionalTax, total: schedule2Total },
     schedule3: { dependentCare: careAllowed, education: educationAllowed, saversCredit: saverAllowed, excessSocialSecurity: line31 },
     form2441: {
       qualifyingPersons: carePersons, expensesUsed: careExpensesUsed, rate: careRate, credit: careCredit,
       line3: f2441.line3, line4: f2441.line4, line5: f2441.line5,
       partIII: care.employerBenefits > 0 ? { ...p3, line27: f2441.line27, line28: f2441.line28, line29: f2441.line29, line30: f2441.line30, line31: f2441.line31 } : null
     },
+    scheduleE: { properties: rentalResults, gross: r(sum(rentalResults.map((x) => x.net))), priorCarryover: r(pos(input.priorPassiveCarryover)), magi: r(magiPassive), allowance: r(passiveAllowance), allowedLoss: rentalAllowedLoss, disallowed: rentalDisallowed, net: rentalNet },
+    form8889: hsaResults,
+    form6251: amtResult,
     form8880: { people: saverLines, line7: saverLine7, rate: saverRate, tentative: saverTentative, limit: saverLimit, credit: saverAllowed },
     form2210: penalty,
     form8863Detail: { phaseoutFraction: eduFraction, aotcTentative: r(aotcTentative), llcTentative: r(llcTentative), llcExpenses: r(Math.min(llcExpenses, R.LLC_EXPENSE_LIMIT)) },

@@ -229,10 +229,12 @@ function schedule1(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
     values: {
       ...header(ret, 'f1_01[0]', 'f1_02[0]'),
       'f1_07[0]': amt(s.businessIncome),
+      'f1_09[0]': amt(s.rentalIncome),
       'f1_12[0]': amt(s.unemployment),
+      'f1_18[0]': amt(s.hsaTaxable),
       'f1_35[0]': s.otherIncome ? 'Other income' : '',
       'f1_36[0]': amt(s.otherIncome),
-      'f1_37[0]': amt(s.otherIncome),
+      'f1_37[0]': amt(s.otherIncome + s.hsaTaxable),
       'f1_38[0]': amt(s.additionalIncome, true),
       'f2_01[0]': amt(a.educatorExpenses),
       'f2_03[0]': amt(a.hsaDeduction),
@@ -301,11 +303,15 @@ function schedule2(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
     id: 's2', file: 'f1040s2.pdf', title: 'Schedule 2',
     values: {
       ...header(ret, 'f1_01[0]', 'f1_02[0]'),
+      'f1_12[0]': amt(s.amt),
+      'f1_13[0]': amt(s.amt),
       'f1_15[0]': amt(s.selfEmploymentTax),
       'f1_19[0]': amt(s.earlyDistributionTax),
       'Line8_ReadOrder[0].c1_6[0]': s.earlyDistributionTax > 0,
       'f1_22[0]': amt(s.additionalMedicareTax),
       'f1_23[0]': amt(s.netInvestmentIncomeTax),
+      'f2_04[0]': amt(s.hsaAdditionalTax),
+      'f2_21[0]': amt(s.hsaAdditionalTax),
       'f2_24[0]': amt(s.total, true)
     }
   }
@@ -421,9 +427,10 @@ function scheduleC(ret: TaxReturnInput, res: TaxReturnResult, b: TaxReturnInput[
   const line3 = b.grossReceipts - b.returnsAndAllowances
   const line5 = line3 - b.costOfGoodsSold
   const line7 = line5 + b.otherIncome
-  const line28 = Object.entries(e).filter(([k]) => k !== 'homeOffice').reduce((t, [, n]) => t + n, 0)
-  const line29 = line7 - line28
-  const line31 = c ? c.netProfit : line29 - e.homeOffice
+  const line28 = c ? c.totalExpenses : Object.entries(e).filter(([k]) => k !== 'homeOffice').reduce((t, [, n]) => t + n, 0)
+  const line29 = c ? c.tentativeProfit : line7 - line28
+  const line30 = c ? c.homeOffice.deduction : 0
+  const line31 = c ? c.netProfit : line29 - line30
   const v: Record<string, FieldValue> = {
     'f1_1[0]': fullName(person), 'f1_2[0]': ssnDashed(person.ssn),
     'f1_3[0]': b.activity, 'f1_4[0]': digits(b.businessCode), 'f1_5[0]': b.name,
@@ -440,9 +447,13 @@ function scheduleC(ret: TaxReturnInput, res: TaxReturnResult, b: TaxReturnInput[
     'f1_24[0]': amt(e.insurance), 'f1_27[0]': amt(e.legalAndProfessional), 'f1_28[0]': amt(e.office),
     'f1_31[0]': amt(e.rentOrLease), 'f1_33[0]': amt(e.supplies), 'f1_34[0]': amt(e.taxesAndLicenses),
     'f1_35[0]': amt(e.travel), 'f1_36[0]': amt(e.meals), 'f1_37[0]': amt(e.utilities), 'f1_39[0]': amt(e.other),
-    'f1_41[0]': amt(line28, true), 'f1_42[0]': amt(line29, true), 'f1_45[0]': amt(e.homeOffice), 'f1_46[0]': amt(line31, true)
+    'f1_41[0]': amt(line28, true), 'f1_42[0]': amt(line29, true), 'f1_45[0]': amt(line30), 'f1_46[0]': amt(line31, true)
   }
   if (b.required1099s) { v['Page1[0].c1_5[0]'] = b.filed1099s; v['Page1[0].c1_5[1]'] = !b.filed1099s }
+  if (b.homeOffice.method === 'simplified' && line30 > 0) {
+    v['Line30_ReadOrder[0].f1_43[0]'] = amt(b.homeOffice.homeSqFt)
+    v['Line30_ReadOrder[0].f1_44[0]'] = amt(Math.min(b.homeOffice.officeSqFt, R.HOME_OFFICE_SIMPLIFIED_MAX_SQFT))
+  }
   if (line31 < 0) { v['Page1[0].c1_7[0]'] = b.allAtRisk; v['Page1[0].c1_7[1]'] = !b.allAtRisk }
   if (b.costOfGoodsSold > 0) v['f2_8[0]'] = amt(b.costOfGoodsSold)
   if (e.carAndTruck > 0) {
@@ -784,6 +795,117 @@ function form8880(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
   return { id: '8880', file: 'f8880.pdf', title: 'Form 8880', values: v }
 }
 
+
+// ── Schedule E (Part I, three properties per page) ───────────────────────────
+const RENTAL_TYPE_CODE: Record<string, string> = { single: '1', multi: '2', vacation: '3', commercial: '4', land: '5', royalties: '6', selfrental: '7', other: '8' }
+/** Field for a Schedule E line (3–22) in column A, B or C. */
+const eField = (line: number, col: number): string => {
+  if (line === 21) return `f1_${71 + col}[0]`
+  if (line === 22) return `f1_${74 + col}[0]`
+  // Line 19 has its own description field (f1_64), so amounts from line 19 on shift by one.
+  const base = line === 3 ? 16 : line === 4 ? 19 : 22 + (line - 5) * 3 + (line >= 19 ? 1 : 0)
+  return `f1_${base + col}[0]`
+}
+function scheduleE(ret: TaxReturnInput, res: TaxReturnResult): FormFill[] {
+  const e = res.scheduleE
+  const props = ret.rentals.filter((p) => ret.filingStatus === 'mfj' || p.owner === 'taxpayer')
+  const results = e.properties
+  // Line 22: the allowed part of each loss (Form 8582 result), spread over loss properties.
+  const positive = results.filter((x) => x.net > 0).reduce((t, x) => t + x.net, 0)
+  const line25 = Math.max(0, positive - e.net)
+  const lossProps = results.filter((x) => x.net < 0)
+  const totalLoss = lossProps.reduce((t, x) => t - x.net, 0)
+  const line22 = new Map<string, number>()
+  let assigned = 0
+  lossProps.forEach((x, i) => {
+    const share = i === lossProps.length - 1 ? line25 - assigned : Math.round(line25 * (-x.net / (totalLoss || 1)))
+    line22.set(x.id, share)
+    assigned += share
+  })
+  if (!lossProps.length && line25 > 0 && results[0]) line22.set(results[0].id, line25)
+  const sheets: FormFill[] = []
+  for (let start = 0; start < Math.max(1, props.length); start += 3) {
+    const chunk = props.slice(start, start + 3)
+    const v: Record<string, FieldValue> = { ...header(ret, 'f1_1[0]', 'f1_2[0]') }
+    if (ret.rentalForms1099.required !== null) {
+      v['c1_1[0]'] = ret.rentalForms1099.required
+      v['c1_1[1]'] = !ret.rentalForms1099.required
+      if (ret.rentalForms1099.required) { v['c1_2[0]'] = ret.rentalForms1099.filed; v['c1_2[1]'] = !ret.rentalForms1099.filed }
+    }
+    chunk.forEach((p, col) => {
+      const x = results.find((rr) => rr.id === p.id)
+      v[`f1_${3 + col}[0]`] = p.address
+      v[`f1_${6 + col}[0]`] = RENTAL_TYPE_CODE[p.type]
+      v[`f1_${9 + col * 2}[0]`] = String(p.fairRentalDays)
+      v[`f1_${10 + col * 2}[0]`] = String(p.personalUseDays)
+      const ex = p.expenses
+      const lines: [number, number][] = [
+        [3, p.rents], [4, p.royalties], [5, ex.advertising], [6, ex.auto], [7, ex.cleaning], [8, ex.commissions], [9, ex.insurance],
+        [10, ex.legal], [11, ex.management], [12, ex.mortgageInterest], [13, ex.otherInterest], [14, ex.repairs], [15, ex.supplies],
+        [16, ex.taxes], [17, ex.utilities], [18, ex.depreciation], [19, ex.other]
+      ]
+      for (const [line, n] of lines) v[eField(line, col)] = amt(n)
+      if (x) {
+        v[eField(20, col)] = amt(x.expenses, true)
+        v[eField(21, col)] = amt(x.net, true)
+        if (line22.has(p.id)) v[eField(22, col)] = paren(line22.get(p.id) ?? 0)
+      }
+    })
+    if (chunk.some((p) => p.expenses.other > 0)) v['f1_64[0]'] = 'See attached'
+    if (start === 0) {
+      Object.assign(v, {
+        'f1_77[0]': amt(props.reduce((t, p) => t + p.rents, 0)), 'f1_78[0]': amt(props.reduce((t, p) => t + p.royalties, 0)),
+        'f1_79[0]': amt(props.reduce((t, p) => t + p.expenses.mortgageInterest, 0)), 'f1_80[0]': amt(props.reduce((t, p) => t + p.expenses.depreciation, 0)),
+        'f1_81[0]': amt(results.reduce((t, x) => t + x.expenses, 0)), 'f1_82[0]': amt(positive, true),
+        'f1_83[0]': paren(line25), 'f1_84[0]': amt(e.net, true)
+      })
+    }
+    sheets.push({ id: start === 0 ? 'se' : `se-${start / 3 + 1}`, file: 'f1040se.pdf', title: start === 0 ? 'Schedule E' : `Schedule E, page 1 (properties ${start + 1}–${start + chunk.length})`, values: v, pages: [0] })
+  }
+  return sheets
+}
+
+// ── Form 8889 (one per spouse with an HSA) ───────────────────────────────────
+function form8889(ret: TaxReturnInput, res: TaxReturnResult, h: TaxReturnResult['form8889'][number]): FormFill {
+  const person = h.owner === 'spouse' ? ret.spouse : ret.taxpayer
+  return {
+    id: `8889-${h.owner}`, file: 'f8889.pdf', title: `Form 8889 (${person.firstName || h.owner})`,
+    values: {
+      'f1_1[0]': namesOnReturn(ret), 'f1_2[0]': ssnDashed(person.ssn),
+      'c1_1[0]': h.coverage === 'self', 'c1_1[1]': h.coverage === 'family',
+      'f1_3[0]': amt(h.line2, true), 'f1_4[0]': amt(h.line3, true), 'f1_6[0]': amt(h.line3, true), 'f1_7[0]': amt(h.line3, true),
+      'f1_8[0]': amt(h.line7), 'f1_9[0]': amt(h.line8, true), 'f1_10[0]': amt(h.line9), 'f1_12[0]': amt(h.line9, true),
+      'f1_13[0]': amt(h.line12, true), 'f1_14[0]': amt(h.line13, true),
+      'f1_15[0]': amt(h.line14), 'f1_17[0]': amt(h.line14), 'f1_18[0]': amt(h.line15),
+      'f1_19[0]': h.line14 ? amt(h.line16, true) : '', 'c1_2[0]': h.line16 > 0 && h.line17b === 0,
+      'f1_20[0]': h.line16 > 0 ? amt(h.line17b, true) : ''
+    }
+  }
+}
+
+// ── Form 6251 ────────────────────────────────────────────────────────────────
+function form6251(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
+  const a = res.form6251
+  const v: Record<string, FieldValue> = {
+    ...header(ret, 'f1_1[0]', 'f1_2[0]'),
+    'f1_3[0]': amt(a.line1a, true), 'f1_4[0]': amt(a.line1b, true), 'f1_5[0]': amt(a.line2a, true),
+    'f1_11[0]': amt(a.line2g), 'f1_13[0]': amt(a.line2i), 'f1_25[0]': amt(a.line3),
+    'f1_26[0]': amt(a.line4, true), 'f1_27[0]': amt(a.line5, true), 'f1_28[0]': amt(a.line6, true),
+    'f1_29[0]': amt(a.line7, true), 'f1_31[0]': amt(a.line9, true), 'f1_32[0]': amt(a.line10, true), 'f1_33[0]': amt(a.amt, true)
+  }
+  const p = a.part3
+  if (p) {
+    const map: [string, number][] = [
+      ['f2_1', p.l12], ['f2_2', p.l13], ['f2_4', p.l15], ['f2_5', p.l16], ['f2_6', p.l17], ['f2_7', p.l18], ['f2_8', p.l19],
+      ['f2_9', p.l20], ['f2_10', p.l21], ['f2_11', p.l22], ['f2_12', p.l23], ['f2_13', p.l24], ['f2_14', p.l25], ['f2_15', p.l26],
+      ['f2_16', p.l27], ['f2_17', p.l28], ['f2_18', p.l29], ['f2_19', p.l30], ['f2_20', p.l31], ['f2_21', p.l32],
+      ['f2_22', p.l33], ['f2_23', p.l34], ['f2_27', p.l38], ['f2_28', p.l39], ['f2_29', p.l40]
+    ]
+    for (const [k, n] of map) v[`${k}[0]`] = amt(n, true)
+  }
+  return { id: '6251', file: 'f6251.pdf', title: 'Form 6251', values: v, pages: p ? undefined : [0] }
+}
+
 // ── Form 1040-V ──────────────────────────────────────────────────────────────
 function form1040V(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
   const c = ret.contact
@@ -809,21 +931,24 @@ export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult, prepa
   const forms: FormFill[] = [form1040(ret, res, needD, preparer)]
   if (res.schedule1.additionalIncome !== 0 || res.schedule1.totalAdjustments > 0) forms.push(schedule1(ret, res))
   if (res.schedule1A.total > 0) forms.push(schedule1A(ret, res))
-  if (res.schedule2.total > 0) forms.push(schedule2(ret, res))
+  if (res.schedule2.total > 0 || res.schedule2.amt > 0) forms.push(schedule2(ret, res))
   if (res.schedule3.dependentCare + res.schedule3.education + res.schedule3.saversCredit + res.schedule3.excessSocialSecurity > 0) forms.push(schedule3(ret, res))
   if (res.deduction.used === 'itemized') forms.push(scheduleA(ret, res))
   if (res.scheduleB.required) forms.push(scheduleB(ret, res))
   const owners = ret.filingStatus === 'mfj' ? ['taxpayer', 'spouse'] : ['taxpayer']
   ret.businesses.filter((b) => owners.includes(b.owner)).forEach((b) => forms.push(scheduleC(ret, res, b)))
   if (needD && (ret.capitalTransactions.length || f['7a'] !== 0)) forms.push(scheduleD(ret, res))
+  if (res.scheduleE.properties.length) forms.push(...scheduleE(ret, res))
   for (const owner of ['taxpayer', 'spouse'] as Owner[]) {
     const se = scheduleSE(ret, res, owner)
     if (se) forms.push(se)
   }
   if (res.form2441.credit > 0 || res.form2441.partIII) forms.push(form2441(ret, res))
+  if (res.form6251.amt > 0) forms.push(form6251(ret, res))
   if (res.eic.credit > 0 && res.eic.qualifyingChildren > 0) forms.push(scheduleEIC(ret))
   if (res.schedule8812.creditBeforePhaseout > 0) forms.push(schedule8812(ret, res))
   if (res.form8863.aotc + res.form8863.llc > 0) forms.push(...form8863(ret, res))
+  res.form8889.forEach((h) => forms.push(form8889(ret, res, h)))
   if (res.schedule3.saversCredit > 0) forms.push(form8880(ret, res))
   if (res.qbi.deduction > 0) forms.push(form8995(ret, res))
   if (res.schedule2.additionalMedicareTax > 0 || f['25c'] > 0) forms.push(form8959(ret, res))
@@ -832,6 +957,9 @@ export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult, prepa
 
   const notIncluded: string[] = []
   if (ret.dependents.length > 4) notIncluded.push('A statement listing dependents after the fourth')
-  if (ret.businesses.some((b) => b.expenses.homeOffice > 0)) notIncluded.push('Form 8829 or the simplified-method worksheet for home office expenses')
+  if (ret.businesses.some((b) => b.homeOffice.method === 'regular' && b.homeOffice.officeSqFt > 0)) notIncluded.push('Form 8829 (Expenses for Business Use of Your Home), one per home office — the amounts are on the Review step')
+  if (ret.businesses.some((b) => b.homeOffice.method === 'amount' && b.homeOffice.amount > 0)) notIncluded.push('Your own Form 8829 or simplified-method worksheet for the home office amount you entered')
+  if (res.scheduleE.disallowed > 0 || res.scheduleE.priorCarryover > 0) notIncluded.push('Form 8582 (Passive Activity Loss Limitations)')
+  if (res.form8889.some((h) => h.excess > 0)) notIncluded.push('Form 5329, Part VII, if excess HSA contributions are not withdrawn by the due date')
   return { forms, notIncluded }
 }

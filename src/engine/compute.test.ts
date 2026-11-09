@@ -6,7 +6,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { computeReturn, regularTax, taxFromSchedule } from './compute.ts'
-import { emptyBusiness, emptyDependent, emptyReturn, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099R, emptySocialSecurity, normalizeReturn } from './model.ts'
+import { emptyBusiness, emptyDependent, emptyHomeOffice, emptyHsa, emptyRental, emptyReturn, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099R, emptySocialSecurity, normalizeReturn } from './model.ts'
 import type { TaxReturnInput } from './model.ts'
 
 const base = (patch: Partial<TaxReturnInput> = {}): TaxReturnInput => ({
@@ -319,4 +319,124 @@ test('example household computes without errors and uses the new credits', async
   assert.ok(res.eic.credit > 0)
   assert.equal(res.form2210.penalty, 0)
   assert.ok(res.f1040['34'] > 0)
+})
+
+
+// ── Home office, rentals, HSA, AMT ────────────────────────────────────────────
+const bizWith = (gross: number, supplies: number, homeOffice = emptyHomeOffice()) =>
+  ({ ...emptyBusiness(), name: 'Studio', grossReceipts: gross, expenses: { ...emptyBusiness().expenses, supplies }, homeOffice })
+
+test('home office, simplified method: $5 per square foot, limited to profit', () => {
+  const a = computeReturn(base({ businesses: [bizWith(30000, 5000, { ...emptyHomeOffice(), method: 'simplified', officeSqFt: 200 })] }))
+  assert.equal(a.scheduleC[0].tentativeProfit, 25000)
+  assert.equal(a.scheduleC[0].homeOffice.deduction, 1000)
+  assert.equal(a.scheduleC[0].netProfit, 24000)
+  const b = computeReturn(base({ businesses: [bizWith(1200, 500, { ...emptyHomeOffice(), method: 'simplified', officeSqFt: 400 })] }))
+  assert.equal(b.scheduleC[0].homeOffice.deduction, 700)
+  assert.equal(b.scheduleC[0].netProfit, 0)
+})
+
+test('home office, regular method: Form 8829 ordering and carryover', () => {
+  const ho = { ...emptyHomeOffice(), method: 'regular' as const, homeSqFt: 2000, officeSqFt: 200, mortgageInterest: 10000, realEstateTaxes: 4000, insurance: 1000, utilities: 3000, repairs: 1000, depreciation: 2000 }
+  const res = computeReturn(base({ businesses: [bizWith(8000, 5000, ho)] }))
+  const h = res.scheduleC[0].homeOffice
+  assert.equal(h.line14, 1400)
+  assert.equal(h.line25, 500)
+  assert.equal(h.depreciationAllowed, 1100)
+  assert.equal(h.carryover, 900)
+  assert.equal(h.deduction, 3000)
+  assert.equal(res.scheduleC[0].netProfit, 0)
+})
+
+test('older files: a home office amount among expenses becomes the "already figured" method', () => {
+  const n = normalizeReturn({ businesses: [{ name: 'Old', grossReceipts: 10000, expenses: { homeOffice: 800 } }] })
+  assert.equal(n.businesses[0].homeOffice.method, 'amount')
+  assert.equal(n.businesses[0].homeOffice.amount, 800)
+  assert.equal(n.businesses[0].expenses.homeOffice, 0)
+  assert.equal(computeReturn(n).scheduleC[0].netProfit, 9200)
+})
+
+const rental = (rents: number, expenses: number, active = true) =>
+  ({ ...emptyRental(), address: '5 Rent Rd', rents, activeParticipation: active, expenses: { ...emptyRental().expenses, repairs: expenses } })
+
+test('rental loss up to $25,000 is allowed with active participation', () => {
+  const res = computeReturn(base({ w2s: [w2(80000, 0)], rentals: [rental(12000, 20000)] }))
+  assert.equal(res.scheduleE.allowedLoss, 8000)
+  assert.equal(res.f1040['8'], -8000)
+  assert.equal(res.f1040['11a'], 72000)
+})
+
+test('rental loss allowance phases out above $100,000 MAGI', () => {
+  const res = computeReturn(base({ w2s: [w2(140000, 0)], rentals: [rental(10000, 40000)] }))
+  assert.equal(res.scheduleE.allowance, 5000)
+  assert.equal(res.scheduleE.allowedLoss, 5000)
+  assert.equal(res.scheduleE.disallowed, 25000)
+  const passive = computeReturn(base({ w2s: [w2(60000, 0)], rentals: [rental(10000, 15000, false)] }))
+  assert.equal(passive.scheduleE.allowedLoss, 0)
+})
+
+test('rental income adds to Schedule 1 and to net investment income', () => {
+  const res = computeReturn(base({ w2s: [w2(240000, 0)], rentals: [rental(30000, 10000)] }))
+  assert.equal(res.schedule1.rentalIncome, 20000)
+  assert.equal(res.schedule2.netInvestmentIncomeTax, Math.round(20000 * 0.038))
+})
+
+test('HSA: deduction is the limit minus employer money; non-medical withdrawals are taxed', () => {
+  const hsa = { ...emptyHsa(), coverage: 'self' as const, personalContributions: 3000, employerContributions: 1000, distributions: 500, qualifiedExpenses: 200 }
+  const res = computeReturn(base({ w2s: [w2(60000, 0)], hsa: { taxpayer: hsa, spouse: emptyHsa() } }))
+  assert.equal(res.form8889[0].line12, 3300)
+  assert.equal(res.schedule1.adjustments.hsaDeduction, 3000)
+  assert.equal(res.schedule1.hsaTaxable, 300)
+  assert.equal(res.schedule2.hsaAdditionalTax, 60)
+  const over = computeReturn(base({ w2s: [w2(60000, 0)], hsa: { taxpayer: { ...hsa, personalContributions: 4000 }, spouse: emptyHsa() } }))
+  assert.equal(over.form8889[0].line13, 3300)
+  assert.equal(over.form8889[0].excess, 700)
+})
+
+test('HSA: catch-up at 55, and a shared family limit when both spouses have family coverage', () => {
+  const older = computeReturn(base({ taxpayer: { ...base().taxpayer, age: 56 }, hsa: { taxpayer: { ...emptyHsa(), coverage: 'self', personalContributions: 6000 }, spouse: emptyHsa() } }))
+  assert.equal(older.form8889[0].line8, 5300)
+  const fam = { ...emptyHsa(), coverage: 'family' as const, personalContributions: 5000 }
+  const both = computeReturn(base({ filingStatus: 'mfj', hsa: { taxpayer: fam, spouse: fam } }))
+  assert.equal(both.form8889[0].line3, 4275)
+  assert.equal(both.schedule1.adjustments.hsaDeduction, 8550)
+})
+
+test('AMT: large incentive stock option exercise triggers the alternative minimum tax', () => {
+  const res = computeReturn(base({ w2s: [w2(150000, 0)], amt: { isoBargainElement: 300000, privateActivityBondInterest: 0, otherAdjustments: 0 } }))
+  assert.equal(res.f1040['16'], 25067)
+  assert.equal(res.form6251.line4, 450000)
+  assert.equal(res.form6251.line7, 96550)
+  assert.equal(res.f1040['17'], 71483)
+  assert.equal(res.f1040['18'], 25067 + 71483)
+})
+
+test('AMT: an ordinary W-2 return owes none', () => {
+  assert.equal(computeReturn(base({ w2s: [w2(60000, 0)] })).f1040['17'], 0)
+})
+
+test('AMT: the senior deduction is added back (Form 6251 line 1a), tips are not', () => {
+  const ret = base({ taxpayer: { ...base().taxpayer, age: 70 }, w2s: [w2(60000, 0)], schedule1A: { qualifiedTips: 3000, qualifiedOvertime: 0, carLoanInterest: 0, vehicleVin: '' } })
+  const res = computeReturn(ret)
+  // line 14 = 17,750 standard + 6,000 senior + 3,000 tips; line 1a removes only the senior part
+  assert.equal(res.form6251.line1a, 17750 + 3000)
+  assert.equal(res.form6251.line1b, 60000 - 20750)
+  assert.equal(res.form6251.line4, 60000 - 20750 + 17750)
+})
+
+test('AMT Part III keeps the 15% rate on long-term gains', () => {
+  const tx = { ...emptyTransaction(), term: 'long' as const, proceeds: 250000, costBasis: 50000 }
+  const res = computeReturn(base({ w2s: [w2(100000, 0)], capitalTransactions: [tx], amt: { isoBargainElement: 200000, privateActivityBondInterest: 0, otherAdjustments: 0 } }))
+  const p = res.form6251.part3!
+  assert.ok(p)
+  assert.equal(p.l13, 200000)
+  assert.equal(p.l40, Math.min(p.l38, p.l39))
+  assert.equal(res.form6251.line7, p.l40)
+  assert.ok(res.f1040['17'] > 0)
+})
+
+test('an unknown filing status from an imported file falls back to single', () => {
+  const ret = normalizeReturn({ filingStatus: 'married_joint', w2s: [{ wages: 50000 }] })
+  assert.equal(ret.filingStatus, 'single')
+  assert.ok(computeReturn(ret).f1040['16'] > 0)
 })

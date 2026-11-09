@@ -187,6 +187,28 @@ export interface VehicleInfo {
   evidenceWritten: boolean
 }
 
+export type HomeOfficeMethod = 'none' | 'simplified' | 'regular' | 'amount'
+
+export interface HomeOffice {
+  method: HomeOfficeMethod
+  /** Square feet used regularly and exclusively for business. */
+  officeSqFt: number
+  /** Total square feet of the home (regular method). */
+  homeSqFt: number
+  /** Regular method (Form 8829): whole-home amounts, before the business percentage. */
+  mortgageInterest: number
+  realEstateTaxes: number
+  insurance: number
+  utilities: number
+  repairs: number
+  rent: number
+  other: number
+  /** Business-use depreciation of the home, already figured (Form 8829 line 42). */
+  depreciation: number
+  /** Already-figured deduction when method is 'amount'. */
+  amount: number
+}
+
 export interface ScheduleCBusiness {
   id: string
   owner: Owner
@@ -207,11 +229,63 @@ export interface ScheduleCBusiness {
   /** Line 32: all investment at risk (used only when there is a loss). */
   allAtRisk: boolean
   vehicle: VehicleInfo
+  homeOffice: HomeOffice
   grossReceipts: number
   returnsAndAllowances: number
   costOfGoodsSold: number
   otherIncome: number
   expenses: BusinessExpenses
+}
+
+export type RentalType = 'single' | 'multi' | 'vacation' | 'commercial' | 'land' | 'royalties' | 'selfrental' | 'other'
+
+export interface RentalExpenses {
+  advertising: number
+  auto: number
+  cleaning: number
+  commissions: number
+  insurance: number
+  legal: number
+  management: number
+  mortgageInterest: number
+  otherInterest: number
+  repairs: number
+  supplies: number
+  taxes: number
+  utilities: number
+  depreciation: number
+  other: number
+}
+
+export interface RentalProperty {
+  id: string
+  owner: Owner
+  address: string
+  type: RentalType
+  fairRentalDays: number
+  personalUseDays: number
+  /** Active participation (you make management decisions). Needed for the $25,000 loss allowance. */
+  activeParticipation: boolean
+  rents: number
+  royalties: number
+  expenses: RentalExpenses
+}
+
+export interface HsaAccount {
+  /** HDHP coverage for 2025. 'none' = no HSA activity for this person. */
+  coverage: 'none' | 'self' | 'family'
+  /** Months of HDHP coverage in 2025 (1–12). */
+  monthsCovered: number
+  /** Your own contributions for 2025, not through payroll (Form 8889 line 2). */
+  personalContributions: number
+  /** Employer and payroll (cafeteria plan) contributions, W-2 box 12 code W (line 9). */
+  employerContributions: number
+  /** Total distributions, Form 1099-SA box 1 (line 14a). */
+  distributions: number
+  /** Distributions used for qualified medical expenses (line 15). */
+  qualifiedExpenses: number
+  /** Distribution not subject to the 20% additional tax (age 65+, disabled, or died). */
+  exceptionApplies: boolean
 }
 
 export interface Adjustments {
@@ -266,6 +340,14 @@ export interface TaxReturnInput {
   capitalTransactions: CapitalTransaction[]
   capitalLossCarryover: { shortTerm: number; longTerm: number }
   businesses: ScheduleCBusiness[]
+  rentals: RentalProperty[]
+  /** Schedule E lines A–B: payments that would require Forms 1099. null = not answered. */
+  rentalForms1099: { required: boolean | null; filed: boolean }
+  /** Passive losses from 2024 that were not allowed (Form 8582), carried into 2025. */
+  priorPassiveCarryover: number
+  hsa: { taxpayer: HsaAccount; spouse: HsaAccount }
+  /** Alternative minimum tax inputs (Form 6251) beyond what the return already knows. */
+  amt: { isoBargainElement: number; privateActivityBondInterest: number; otherAdjustments: number }
   retirement: Form1099R[]
   socialSecurity: SocialSecurityBenefits[]
   unemployment: number
@@ -322,10 +404,36 @@ export const emptyVehicle = (): VehicleInfo => ({
   placedInService: '', businessMiles: 0, commutingMiles: 0, otherMiles: 0,
   availableOffDuty: true, anotherVehicle: false, hasEvidence: true, evidenceWritten: true
 })
+export const emptyHomeOffice = (): HomeOffice => ({
+  method: 'none', officeSqFt: 0, homeSqFt: 0, mortgageInterest: 0, realEstateTaxes: 0, insurance: 0,
+  utilities: 0, repairs: 0, rent: 0, other: 0, depreciation: 0, amount: 0
+})
+export const emptyRentalExpenses = (): RentalExpenses => ({
+  advertising: 0, auto: 0, cleaning: 0, commissions: 0, insurance: 0, legal: 0, management: 0, mortgageInterest: 0,
+  otherInterest: 0, repairs: 0, supplies: 0, taxes: 0, utilities: 0, depreciation: 0, other: 0
+})
+export const RENTAL_EXPENSE_LABELS: Record<keyof RentalExpenses, string> = {
+  advertising: 'Advertising', auto: 'Auto and travel', cleaning: 'Cleaning and maintenance', commissions: 'Commissions',
+  insurance: 'Insurance', legal: 'Legal and professional fees', management: 'Management fees',
+  mortgageInterest: 'Mortgage interest paid to banks (1098)', otherInterest: 'Other interest', repairs: 'Repairs',
+  supplies: 'Supplies', taxes: 'Taxes', utilities: 'Utilities', depreciation: 'Depreciation (from Form 4562)', other: 'Other'
+}
+export const RENTAL_TYPE_LABELS: Record<RentalType, string> = {
+  single: 'Single family residence', multi: 'Multi-family residence', vacation: 'Vacation or short-term rental',
+  commercial: 'Commercial', land: 'Land', royalties: 'Royalties', selfrental: 'Self-rental', other: 'Other'
+}
+export const emptyRental = (owner: Owner = 'taxpayer'): RentalProperty => ({
+  id: newId('rent'), owner, address: '', type: 'single', fairRentalDays: 365, personalUseDays: 0, activeParticipation: true,
+  rents: 0, royalties: 0, expenses: emptyRentalExpenses()
+})
+export const emptyHsa = (): HsaAccount => ({
+  coverage: 'none', monthsCovered: 12, personalContributions: 0, employerContributions: 0, distributions: 0, qualifiedExpenses: 0, exceptionApplies: false
+})
+
 export const emptyBusiness = (owner: Owner = 'taxpayer'): ScheduleCBusiness => ({
   id: newId('biz'), owner, name: '', activity: '', businessCode: '', ein: '', address: '', cityStateZip: '',
   accountingMethod: 'cash', materiallyParticipated: true, startedThisYear: false, required1099s: null, filed1099s: false,
-  allAtRisk: true, vehicle: emptyVehicle(), grossReceipts: 0, returnsAndAllowances: 0,
+  allAtRisk: true, vehicle: emptyVehicle(), homeOffice: emptyHomeOffice(), grossReceipts: 0, returnsAndAllowances: 0,
   costOfGoodsSold: 0, otherIncome: 0, expenses: emptyExpenses()
 })
 export const emptyDependent = (): Dependent => ({
@@ -363,6 +471,11 @@ export const emptyReturn = (): TaxReturnInput => ({
   capitalTransactions: [],
   capitalLossCarryover: { shortTerm: 0, longTerm: 0 },
   businesses: [],
+  rentals: [],
+  rentalForms1099: { required: null, filed: false },
+  priorPassiveCarryover: 0,
+  hsa: { taxpayer: emptyHsa(), spouse: emptyHsa() },
+  amt: { isoBargainElement: 0, privateActivityBondInterest: 0, otherAdjustments: 0 },
   retirement: [],
   socialSecurity: [],
   unemployment: 0,
@@ -398,6 +511,13 @@ const normalizePayments = (p: Partial<TaxReturnInput['payments']> | undefined): 
   return { estimatedByQuarter: [0, 0, 0, 0], estimatedTaxPayments: 0, otherWithholding: other }
 }
 
+/** Older files had a single "HSA deduction" adjustment; treat it as the taxpayer's own self-only contribution. */
+const normalizeHsa = (h: Partial<TaxReturnInput['hsa']> | undefined, legacyDeduction: number): TaxReturnInput['hsa'] => {
+  const out = { taxpayer: { ...emptyHsa(), ...(h?.taxpayer ?? {}) }, spouse: { ...emptyHsa(), ...(h?.spouse ?? {}) } }
+  if (!h && legacyDeduction > 0) out.taxpayer = { ...out.taxpayer, coverage: 'self', personalContributions: legacyDeduction }
+  return out
+}
+
 const person = (p: Partial<Person> | undefined): Person => {
   const merged = { ...emptyPerson(), ...(p ?? {}) }
   if (!merged.age && merged.age65OrOlder) merged.age = 65
@@ -420,6 +540,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
   return {
     ...base,
     ...r,
+    filingStatus: (['single', 'mfj', 'mfs', 'hoh', 'qss'] as const).includes(r.filingStatus as FilingStatus) ? (r.filingStatus as FilingStatus) : 'single',
     version: 1,
     taxpayer: person(r.taxpayer),
     spouse: person(r.spouse),
@@ -438,11 +559,22 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     capitalTransactions: arr(r.capitalTransactions, emptyTransaction),
     capitalLossCarryover: { ...base.capitalLossCarryover, ...(r.capitalLossCarryover ?? {}) },
     businesses: Array.isArray(r.businesses)
-      ? r.businesses.map((b) => ({ ...emptyBusiness(), ...b, expenses: { ...emptyExpenses(), ...(b?.expenses ?? {}) }, vehicle: { ...emptyVehicle(), ...(b?.vehicle ?? {}) } }))
+      ? r.businesses.map((b) => {
+        const expenses = { ...emptyExpenses(), ...(b?.expenses ?? {}) }
+        const homeOffice = { ...emptyHomeOffice(), ...(b?.homeOffice ?? {}) }
+        // Older files kept a home office amount among the expenses; move it to the "already figured" method.
+        if (expenses.homeOffice > 0 && homeOffice.method === 'none') { homeOffice.method = 'amount'; homeOffice.amount = expenses.homeOffice }
+        expenses.homeOffice = 0
+        return { ...emptyBusiness(), ...b, expenses, homeOffice, vehicle: { ...emptyVehicle(), ...(b?.vehicle ?? {}) } }
+      })
       : [],
-    adjustments: { ...base.adjustments, ...(r.adjustments ?? {}) },
     schedule1A: { ...base.schedule1A, ...(r.schedule1A ?? {}) },
     itemized: { ...base.itemized, ...(r.itemized ?? {}) },
+    rentals: Array.isArray(r.rentals) ? r.rentals.map((x) => ({ ...emptyRental(), ...x, expenses: { ...emptyRentalExpenses(), ...(x?.expenses ?? {}) } })) : [],
+    rentalForms1099: { ...base.rentalForms1099, ...(r.rentalForms1099 ?? {}) },
+    hsa: normalizeHsa(r.hsa, r.adjustments?.hsaDeduction ?? 0),
+    adjustments: { ...base.adjustments, ...(r.adjustments ?? {}), hsaDeduction: 0 },
+    amt: { ...base.amt, ...(r.amt ?? {}) },
     savings: { taxpayer: { ...emptySavings(), ...(r.savings?.taxpayer ?? {}) }, spouse: { ...emptySavings(), ...(r.savings?.spouse ?? {}) } },
     priorYear: { ...base.priorYear, ...(r.priorYear ?? {}) },
     payments: normalizePayments(r.payments)

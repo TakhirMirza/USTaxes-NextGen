@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import * as lib from 'pdf-lib'
 import { computeReturn } from '../engine/compute.ts'
-import { emptyBusiness, emptyDependent, emptyProvider, emptyReturn, emptyStudent, empty1099Div, empty1099R, emptySocialSecurity, emptyW2 } from '../engine/model.ts'
+import { emptyBusiness, emptyDependent, emptyHomeOffice, emptyHsa, emptyProvider, emptyRental, emptyReturn, emptyStudent, empty1099Div, empty1099R, emptySocialSecurity, emptyW2 } from '../engine/model.ts'
 import type { TaxReturnInput } from '../engine/model.ts'
 import { buildPacket2025 } from './irs2025.ts'
 import { buildPdf, fillForm, findField } from './fill.ts'
@@ -128,13 +128,14 @@ test('simple W-2 return prints only Form 1040', async () => {
 
 test('Schedule C prints net profit on line 31 and the home office note is listed', () => {
   const ret = busy()
-  ret.businesses[0].expenses.homeOffice = 1500
+  ret.businesses[0].homeOffice = { ...emptyHomeOffice(), method: 'amount', amount: 1500 }
   const res = computeReturn(ret)
   const packet = buildPacket2025(ret, res)
   const sc = packet.forms.find((f) => f.id.startsWith('sc-'))!
   assert.equal(sc.values['f1_46[0]'], res.scheduleC[0].netProfit.toLocaleString('en-US'))
   assert.equal(sc.values['f1_1[0]'], 'Sam Rivera')
-  assert.ok(packet.notIncluded.some((s) => s.startsWith('Form 8829')))
+  assert.equal(sc.values['f1_45[0]'], '1,500')
+  assert.ok(packet.notIncluded.some((s) => s.includes('Form 8829')))
 })
 
 test('every blank form in public/forms/2025 is the 2025 revision', async () => {
@@ -181,4 +182,27 @@ test('paid preparer, designee and IP PIN print on Form 1040 page 2', async () =>
   assert.deepEqual(problems, [])
   const noPrep = buildPacket2025({ ...ret, usePaidPreparer: false }, computeReturn(ret), preparer).forms[0]
   assert.equal(noPrep.values['f2_46[0]'], undefined)
+})
+
+test('rentals, HSA, home office and AMT print on Schedule E, Forms 8889 and 6251', async () => {
+  const r = (addr: string, rents: number, repairs: number) => ({ ...emptyRental(), address: addr, rents, expenses: { ...emptyRental().expenses, repairs, taxes: 2000, depreciation: 4000 } })
+  const ret: TaxReturnInput = {
+    ...busy(),
+    rentals: [r('1 Oak St, Reston, VA', 24000, 3000), r('2 Elm St, Reston, VA', 9000, 14000), r('3 Fir St, Reston, VA', 15000, 1000), r('4 Ash St, Reston, VA', 12000, 2000)],
+    rentalForms1099: { required: true, filed: true },
+    hsa: { taxpayer: { ...emptyHsa(), coverage: 'family', personalContributions: 3000, employerContributions: 2000, distributions: 1500, qualifiedExpenses: 1000 }, spouse: emptyHsa() },
+    amt: { isoBargainElement: 400000, privateActivityBondInterest: 0, otherAdjustments: 0 },
+    businesses: busy().businesses.map((b) => ({ ...b, homeOffice: { ...emptyHomeOffice(), method: 'simplified' as const, homeSqFt: 1800, officeSqFt: 150 } }))
+  }
+  const res = computeReturn(ret)
+  assert.ok(res.f1040['17'] > 0, 'AMT expected')
+  const packet = buildPacket2025(ret, res)
+  const ids = packet.forms.map((f) => f.id)
+  for (const id of ['se', 'se-2', '8889-taxpayer', '6251']) assert.ok(ids.includes(id), `missing ${id}: ${ids.join(', ')}`)
+  const se = packet.forms.find((f) => f.id === 'se')!
+  assert.equal(se.values['f1_84[0]'], res.scheduleE.net.toLocaleString('en-US'))
+  assert.equal(se.values['f1_68[0]'], res.scheduleE.properties[0].expenses.toLocaleString('en-US'))
+  const { bytes, problems } = await buildPdf(lib, packet.forms, load)
+  assert.deepEqual(problems, [])
+  if (process.env.PDF_OUT3) await writeFile(process.env.PDF_OUT3, bytes)
 })

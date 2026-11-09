@@ -197,3 +197,33 @@ export const PENALTY_HIGH_AGI_SHARE = 1.10
 export const PENALTY_RATE = 0.07
 export const INSTALLMENT_DUE_DATES = ['2025-04-15', '2025-06-15', '2025-09-15', '2026-01-15'] as const
 export const RETURN_DUE_DATE = '2026-04-15'
+
+/** Home office, simplified method (Rev. Proc. 2013-13): $5 per square foot, up to 300 square feet. */
+export const HOME_OFFICE_SIMPLIFIED_RATE = 5
+export const HOME_OFFICE_SIMPLIFIED_MAX_SQFT = 300
+
+/** Rental real estate with active participation (Form 8582): $25,000 allowance, cut by 50% of MAGI over $100,000. */
+export const PASSIVE_ALLOWANCE = 25000
+export const PASSIVE_PHASEOUT_START = 100000
+export const PASSIVE_PHASEOUT_RATE = 0.5
+
+/** Health savings accounts, 2025 (Rev. Proc. 2024-25). */
+export const HSA_LIMIT_SELF = 4300
+export const HSA_LIMIT_FAMILY = 8550
+export const HSA_CATCH_UP = 1000
+export const HSA_CATCH_UP_AGE = 55
+export const HSA_ADDITIONAL_TAX_RATE = 0.20
+
+/** Alternative minimum tax, 2025 (Rev. Proc. 2024-40). */
+export const AMT_EXEMPTION: Record<FilingStatus, number> = {
+  single: 88100, mfj: 137000, mfs: 68500, hoh: 88100, qss: 137000
+}
+export const AMT_PHASEOUT_START: Record<FilingStatus, number> = {
+  single: 626350, mfj: 1252700, mfs: 626350, hoh: 626350, qss: 1252700
+}
+export const AMT_PHASEOUT_RATE = 0.25
+export const AMT_28_THRESHOLD: Record<FilingStatus, number> = {
+  single: 239100, mfj: 239100, mfs: 119550, hoh: 239100, qss: 239100
+}
+export const AMT_RATE_LOW = 0.26
+export const AMT_RATE_HIGH = 0.28
