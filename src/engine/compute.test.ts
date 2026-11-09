@@ -11,8 +11,8 @@ import type { TaxReturnInput } from './model.ts'
 
 const base = (patch: Partial<TaxReturnInput> = {}): TaxReturnInput => ({
   ...emptyReturn(),
-  taxpayer: { firstName: 'Test', lastName: 'Payer', age: 40, age65OrOlder: false, blind: false },
-  spouse: { firstName: 'Test', lastName: 'Spouse', age: 40, age65OrOlder: false, blind: false },
+  taxpayer: { ...emptyReturn().taxpayer, firstName: 'Test', lastName: 'Payer', age: 40, age65OrOlder: false, blind: false },
+  spouse: { ...emptyReturn().spouse, firstName: 'Test', lastName: 'Spouse', age: 40, age65OrOlder: false, blind: false },
   ...patch
 })
 const w2 = (wages: number, withholding: number, owner: 'taxpayer' | 'spouse' = 'taxpayer') =>
@@ -31,8 +31,8 @@ test('tax computation worksheet at and above $100,000', () => {
 
 test('single W-2 filer gets a refund', () => {
   const res = computeReturn(base({ w2s: [w2(60000, 6000)] }))
-  assert.equal(res.f1040['11'], 60000)
-  assert.equal(res.f1040['12'], 15750)
+  assert.equal(res.f1040['11a'], 60000)
+  assert.equal(res.f1040['12e'], 15750)
   assert.equal(res.f1040['15'], 44250)
   assert.equal(res.f1040['16'], 5075)
   assert.equal(res.f1040['34'], 925)
@@ -58,7 +58,7 @@ test('refundable Additional Child Tax Credit is limited to $1,700 per child', ()
   }))
   assert.equal(res.f1040['15'], 0)
   assert.equal(res.f1040['28'], 3400)
-  assert.equal(res.f1040['27'], 7152)
+  assert.equal(res.f1040['27a'], 7152)
   assert.equal(res.f1040['34'], 11552)
 })
 
@@ -67,7 +67,7 @@ test('Schedule C → SE tax, half-SE adjustment and QBI deduction', () => {
   const res = computeReturn(base({ businesses: [biz] }))
   assert.equal(res.schedule2.selfEmploymentTax, 7065)
   assert.equal(res.schedule1.adjustments.deductibleHalfOfSeTax, 3533)
-  assert.equal(res.f1040['11'], 46467)
+  assert.equal(res.f1040['11a'], 46467)
   assert.equal(res.f1040['13a'], 6143)
   assert.equal(res.f1040['15'], 24574)
   assert.equal(res.f1040['16'], 2711)
@@ -84,19 +84,19 @@ test('qualified dividends inside the 0% zone are untaxed', () => {
 test('capital loss is limited to $3,000 with a carryover', () => {
   const tx = { ...emptyTransaction(), term: 'short' as const, proceeds: 5000, costBasis: 15000 }
   const res = computeReturn(base({ w2s: [w2(50000, 0)], capitalTransactions: [tx] }))
-  assert.equal(res.f1040['7'], -3000)
+  assert.equal(res.f1040['7a'], -3000)
   assert.equal(res.scheduleD.carryoverShort, 7000)
 })
 
 test('senior gets additional standard deduction and $6,000 Schedule 1-A deduction', () => {
-  const res = computeReturn(base({ taxpayer: { firstName: 'S', lastName: 'R', age: 66, age65OrOlder: false, blind: false }, w2s: [w2(50000, 0)] }))
-  assert.equal(res.f1040['12'], 17750)
+  const res = computeReturn(base({ taxpayer: { ...emptyReturn().taxpayer, firstName: 'S', lastName: 'R', age: 66, age65OrOlder: false, blind: false }, w2s: [w2(50000, 0)] }))
+  assert.equal(res.f1040['12e'], 17750)
   assert.equal(res.f1040['13b'], 6000)
   assert.equal(res.f1040['16'], 2915)
 })
 
 test('tips deduction phases out $100 per $1,000 above $150,000', () => {
-  const res = computeReturn(base({ w2s: [w2(160000, 0)], schedule1A: { qualifiedTips: 20000, qualifiedOvertime: 0, carLoanInterest: 0 } }))
+  const res = computeReturn(base({ w2s: [w2(160000, 0)], schedule1A: { qualifiedTips: 20000, qualifiedOvertime: 0, carLoanInterest: 0, vehicleVin: '' } }))
   assert.equal(res.schedule1A.tips, 19000)
 })
 
@@ -132,7 +132,7 @@ const kid = (age: number, patch = {}) => ({ ...emptyDependent(), name: `Kid ${ag
 
 test('EIC without children for a 30-year-old', () => {
   const res = computeReturn(base({ taxpayer: { ...base().taxpayer, age: 30 }, w2s: [w2(10000, 300)] }))
-  assert.equal(res.f1040['27'], 649)
+  assert.equal(res.f1040['27a'], 649)
   assert.equal(res.f1040['34'], 949)
 })
 
@@ -160,8 +160,8 @@ test('Social Security benefits: worksheet taxes part of the benefits', () => {
   assert.equal(res.f1040['5b'], 20000)
   assert.equal(res.f1040['6a'], 24000)
   assert.equal(res.f1040['6b'], 3500)
-  assert.equal(res.f1040['11'], 23500)
-  assert.equal(res.f1040['12'], 17750)
+  assert.equal(res.f1040['11a'], 23500)
+  assert.equal(res.f1040['12e'], 17750)
   assert.equal(res.f1040['13b'], 6000)
   assert.equal(res.f1040['15'], 0)
 })
@@ -209,4 +209,23 @@ test('version-1 saved files map the old qualifying-child checkbox to an age', ()
   assert.equal(n.dependents[0].age, 10)
   assert.equal(n.dependents[1].age, 17)
   assert.equal(n.taxpayer.age, 65)
+})
+
+test('Schedule 1-A tips: reduction uses whole thousands (rounded down)', () => {
+  const res = computeReturn(base({ w2s: [w2(160500, 0)], schedule1A: { qualifiedTips: 20000, qualifiedOvertime: 0, carLoanInterest: 0, vehicleVin: '' } }))
+  assert.equal(res.schedule1A.tipOtReduction, 1000)
+  assert.equal(res.schedule1A.tips, 19000)
+})
+
+test('Schedule 1-A car loan: reduction rounds the thousands up', () => {
+  const res = computeReturn(base({ w2s: [w2(100500, 0)], schedule1A: { qualifiedTips: 0, qualifiedOvertime: 0, carLoanInterest: 5000, vehicleVin: '' } }))
+  assert.equal(res.schedule1A.carReduction, 200)
+  assert.equal(res.schedule1A.carLoanInterest, 4800)
+})
+
+test('Schedule 1-A seniors: each spouse is reduced by 6% of the excess', () => {
+  const old = { age: 70, age65OrOlder: true }
+  const res = computeReturn(base({ filingStatus: 'mfj', taxpayer: { ...base().taxpayer, ...old }, spouse: { ...base().spouse, ...old }, w2s: [w2(160000, 0)] }))
+  assert.equal(res.schedule1A.seniorEach, 5400)
+  assert.equal(res.schedule1A.senior, 10800)
 })

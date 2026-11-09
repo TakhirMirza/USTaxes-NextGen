@@ -340,3 +340,10 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .tags li.is-on { border-color: var(--form-green); color: var(--form-green); background: var(--form-green-tint); font-weight: 600; }
 .why { margin: 10px 0 0; color: var(--ink-soft); font-size: 0.88rem; }
 @media (max-width: 760px) { .grid-3 { grid-template-columns: minmax(0, 1fr); } }
+
+/* ── IRS forms list ─────────────────────────────────────── */
+.form-list { list-style: none; margin: 0 0 16px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.form-list li { padding: 4px 10px; border: 1px solid var(--rule-strong); border-radius: var(--radius-sm); background: var(--sheet); font-size: 0.85rem; font-weight: 600; }
+.note.is-warn { background: var(--warn-tint); }
+.note ul { margin: 6px 0 0; padding-left: 20px; }
+.button:disabled { opacity: 0.6; cursor: progress; }

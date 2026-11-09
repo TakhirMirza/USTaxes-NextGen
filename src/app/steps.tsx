@@ -5,7 +5,7 @@ import type { TaxReturnResult } from '../engine/compute.ts'
 import { careQualifyingPerson, ctcChild, eicChild } from '../engine/compute.ts'
 import { FILING_STATUS_LABELS } from '../engine/rules2025.ts'
 import type { FilingStatus } from '../engine/rules2025.ts'
-import { Check, Choice, DocList, MoneyField, NumberField, Section, Tags, TextField, usd } from './fields'
+import { Check, Choice, DigitsField, DocList, MoneyField, NumberField, Section, Tags, TextField, usd } from './fields'
 
 export type Setter = (fn: (r: TaxReturnInput) => TaxReturnInput) => void
 export interface StepProps { ret: TaxReturnInput; set: Setter; result: TaxReturnResult }
@@ -32,6 +32,7 @@ function OwnerPicker({ ret, value, onChange }: { ret: TaxReturnInput; value: Own
 // ── About you ───────────────────────────────────────────────────────────────
 export function AboutStep({ ret, set }: StepProps): ReactElement {
   const person = (who: 'taxpayer' | 'spouse', p: Partial<Person>): void => set((r) => ({ ...r, [who]: { ...r[who], ...p } }))
+  const contact = (p: Partial<TaxReturnInput['contact']>): void => set((r) => ({ ...r, contact: { ...r.contact, ...p } }))
   const deps = listOps(set, 'dependents')
   const married = ret.filingStatus === 'mfj' || ret.filingStatus === 'mfs'
   const statusHints: Record<FilingStatus, string> = {
@@ -54,6 +55,10 @@ export function AboutStep({ ret, set }: StepProps): ReactElement {
           <TextField label="Last name" value={ret.taxpayer.lastName} onChange={(v) => person('taxpayer', { lastName: v })} />
           <NumberField label="Age" hint="On Dec 31, 2025" value={ret.taxpayer.age} onChange={(n) => person('taxpayer', { age: n, age65OrOlder: n >= 65 })} />
         </div>
+        <div className="grid" style={{ marginTop: 16 }}>
+          <DigitsField label="Social Security number" length={9} groups={[3, 2, 4]} placeholder="123-45-6789" value={ret.taxpayer.ssn} onChange={(v) => person('taxpayer', { ssn: v })} />
+          <TextField label="Occupation" value={ret.taxpayer.occupation} onChange={(v) => person('taxpayer', { occupation: v })} />
+        </div>
         <div className="checks">
           <Check label="I am blind" checked={ret.taxpayer.blind} onChange={(v) => person('taxpayer', { blind: v })} />
           <Check label="Someone can claim me as a dependent" checked={ret.canBeClaimedAsDependent} onChange={(v) => set((r) => ({ ...r, canBeClaimedAsDependent: v }))} />
@@ -67,12 +72,34 @@ export function AboutStep({ ret, set }: StepProps): ReactElement {
             <TextField label="Last name" value={ret.spouse.lastName} onChange={(v) => person('spouse', { lastName: v })} />
             <NumberField label="Age" hint="On Dec 31, 2025" value={ret.spouse.age} onChange={(n) => person('spouse', { age: n, age65OrOlder: n >= 65 })} />
           </div>
+          <div className="grid" style={{ marginTop: 16 }}>
+            <DigitsField label="Spouse’s Social Security number" length={9} groups={[3, 2, 4]} placeholder="123-45-6789" value={ret.spouse.ssn} onChange={(v) => person('spouse', { ssn: v })} />
+            <TextField label="Spouse’s occupation" value={ret.spouse.occupation} onChange={(v) => person('spouse', { occupation: v })} />
+          </div>
           <div className="checks">
             <Check label="My spouse is blind" checked={ret.spouse.blind} onChange={(v) => person('spouse', { blind: v })} />
           </div>
         </Section>
       )}
       {married && ret.filingStatus === 'mfs' && <p className="note">On a separate return, enter only your own income and deductions.</p>}
+
+      <Section title="Home address" intro="Printed on Form 1040. Your information stays in this browser.">
+        <div className="grid">
+          <div className="span-2"><TextField label="Street address" value={ret.contact.street} onChange={(v) => contact({ street: v })} /></div>
+          <TextField label="Apt. no." value={ret.contact.apt} onChange={(v) => contact({ apt: v })} />
+          <TextField label="City" value={ret.contact.city} onChange={(v) => contact({ city: v })} />
+          <TextField label="State" placeholder="VA" value={ret.contact.state} onChange={(v) => contact({ state: v.toUpperCase().slice(0, 2) })} />
+          <DigitsField label="ZIP code" length={9} groups={[5, 4]} validLengths={[5, 9]} value={ret.contact.zip} onChange={(v) => contact({ zip: v })} hint="5 or 9 digits" />
+          <TextField label="Phone" value={ret.contact.phone} onChange={(v) => contact({ phone: v })} />
+          <TextField label="Email" value={ret.contact.email} onChange={(v) => contact({ email: v })} />
+        </div>
+        <div className="checks">
+          <Check label={ret.filingStatus === 'mfj' ? 'Our main home was in the U.S. for more than half of 2025' : 'My main home was in the U.S. for more than half of 2025'}
+            checked={ret.contact.livedInUsHalfYear} onChange={(v) => contact({ livedInUsHalfYear: v })} />
+          <Check label="Send $3 to the Presidential Election Campaign Fund" hint="Does not change your tax or refund." checked={ret.taxpayer.presidentialFund} onChange={(v) => person('taxpayer', { presidentialFund: v })} />
+          {ret.filingStatus === 'mfj' && <Check label="My spouse also wants to send $3" checked={ret.spouse.presidentialFund} onChange={(v) => person('spouse', { presidentialFund: v })} />}
+        </div>
+      </Section>
 
       <Section title="Dependents" intro="Children and relatives you support. Credits are checked for each one: Child Tax Credit up to $2,200, Earned Income Credit, and child care.">
         <DocList items={ret.dependents} addLabel="Add a dependent" emptyText="No dependents added."
@@ -82,6 +109,8 @@ export function AboutStep({ ret, set }: StepProps): ReactElement {
             <>
               <TextField label="Full name" value={d.name} onChange={(v) => deps.patch(d.id, { name: v })} />
               <TextField label="Relationship" placeholder="Son, daughter, parent…" value={d.relationship} onChange={(v) => deps.patch(d.id, { relationship: v })} />
+              <DigitsField label="Social Security number" length={9} groups={[3, 2, 4]} placeholder="123-45-6789" value={d.ssn} onChange={(v) => deps.patch(d.id, { ssn: v })} />
+              <span />
               <NumberField label="Age on Dec 31, 2025" hint="Enter 0 for a baby born in 2025" value={d.age} onChange={(n) => deps.patch(d.id, { age: n })} />
               <NumberField label="Months lived with you in 2025" max={12} suffix="of 12" value={d.monthsLivedWithYou} onChange={(n) => deps.patch(d.id, { monthsLivedWithYou: n })} />
               <div className="span-2 checks">
@@ -116,6 +145,12 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
   const bizResult = (id: string) => result.scheduleC.find((b) => b.id === id)
   return (
     <>
+      <Section title="Digital assets" intro="Form 1040 asks every filer. Answer Yes if at any time in 2025 you received crypto or other digital assets as a reward, award or payment, or sold, exchanged or otherwise disposed of them. Simply holding them is No.">
+        <Choice legend="Digital assets" value={ret.digitalAssets === null ? '' : ret.digitalAssets ? 'yes' : 'no'}
+          onChange={(v) => set((r) => ({ ...r, digitalAssets: v === 'yes' }))}
+          options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes', hint: 'Report sales as investment sales below' }]} />
+      </Section>
+
       <Section title="Wages" intro="One entry for each Form W-2 you received.">
         <DocList items={ret.w2s} addLabel="Add a W-2" emptyText="No W-2s yet. Skip this if you had no job income."
           title={(w, i) => w.employer.trim() || `W-2 ${i + 1}`}
@@ -162,6 +197,13 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
             </>
           )} />
       </Section>
+
+      {result.scheduleB.required && (
+        <Section title="Foreign accounts" intro="Your interest or dividends are over $1,500, so Schedule B asks this question.">
+          <Check label="In 2025 I had a financial account in a foreign country, or received a distribution from or was involved with a foreign trust"
+            hint="Leave unchecked to answer No on Schedule B, Part III." checked={ret.foreignAccounts} onChange={(v) => set((r) => ({ ...r, foreignAccounts: v }))} />
+        </Section>
+      )}
 
       <Section title="Sales of stock and other investments" intro="From Form 1099-B. Long-term means you held it more than one year."
         aside={ret.capitalTransactions.length > 0 ? <span className="pill">Net {usd(result.scheduleD.net)}</span> : undefined}>
@@ -293,6 +335,10 @@ export function DeductionsStep({ ret, set, result }: StepProps): ReactElement {
           <MoneyField label="Qualified tips" hint="Up to $25,000; reported on your W-2 or 1099" value={ret.schedule1A.qualifiedTips} onChange={(n) => s1a('qualifiedTips', n)} />
           <MoneyField label="Qualified overtime premium" hint="Only the extra “half” of time-and-a-half" value={ret.schedule1A.qualifiedOvertime} onChange={(n) => s1a('qualifiedOvertime', n)} />
           <MoneyField label="Car loan interest" hint="New U.S.-assembled vehicle, up to $10,000" value={ret.schedule1A.carLoanInterest} onChange={(n) => s1a('carLoanInterest', n)} />
+          {ret.schedule1A.carLoanInterest > 0 && (
+            <TextField label="Vehicle identification number (VIN)" hint="17 characters, required on Schedule 1-A"
+              value={ret.schedule1A.vehicleVin} onChange={(v) => set((r) => ({ ...r, schedule1A: { ...r.schedule1A, vehicleVin: v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 17) } }))} />
+          )}
         </div>
         {result.schedule1A.senior > 0 && <p className="note">Senior deduction for age 65 and older: {usd(result.schedule1A.senior)}, applied automatically.</p>}
       </Section>
@@ -400,6 +446,17 @@ export function PaymentsStep({ ret, set, result }: StepProps): ReactElement {
           )
         })()}
       </Section>
+
+      {result.summary.refund > 0 && (
+        <Section title="Direct deposit" intro={`Get your ${usd(result.summary.refund)} refund faster by direct deposit. Leave blank to get a paper check.`}>
+          <div className="grid">
+            <DigitsField label="Routing number" length={9} value={ret.refundDeposit.routingNumber} onChange={(v) => set((r) => ({ ...r, refundDeposit: { ...r.refundDeposit, routingNumber: v } }))} />
+            <DigitsField label="Account number" length={17} validLengths={[4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]} value={ret.refundDeposit.accountNumber} onChange={(v) => set((r) => ({ ...r, refundDeposit: { ...r.refundDeposit, accountNumber: v } }))} />
+          </div>
+          <Choice legend="Account type" value={ret.refundDeposit.accountType} onChange={(v) => set((r) => ({ ...r, refundDeposit: { ...r.refundDeposit, accountType: v } }))}
+            options={[{ value: 'checking', label: 'Checking' }, { value: 'savings', label: 'Savings' }]} />
+        </Section>
+      )}
 
       <Section title="Tax you already paid">
         <dl className="facts">

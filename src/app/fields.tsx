@@ -187,3 +187,27 @@ export function Tags({ items }: { items: { label: string; on: boolean }[] }): Re
     </ul>
   )
 }
+
+/** Digits-only input shown with separators, e.g. SSN 123-45-6789. */
+export function DigitsField({ label, value, onChange, length, groups, hint, placeholder, validLengths }: {
+  label: string; value: string; onChange: (v: string) => void; length: number; groups?: number[]; hint?: string; placeholder?: string; validLengths?: number[]
+}): ReactElement {
+  const id = useFieldId('d')
+  const digits = value.replace(/\D/g, '').slice(0, length)
+  let shown = digits
+  if (groups) {
+    const parts: string[] = []
+    let i = 0
+    for (const g of groups) { if (i >= digits.length) break; parts.push(digits.slice(i, i + g)); i += g }
+    shown = parts.join('-')
+  }
+  const incomplete = digits.length > 0 && !(validLengths ?? [length]).includes(digits.length)
+  return (
+    <div className={`field ${incomplete ? 'is-invalid' : ''}`}>
+      <label htmlFor={id}><span>{label}</span></label>
+      <input id={id} type="text" inputMode="numeric" autoComplete="off" value={shown} placeholder={placeholder}
+        aria-invalid={incomplete} onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, length))} />
+      {(hint || incomplete) && <small>{incomplete ? `Enter ${(validLengths ?? [length]).join(' or ')} digits` : hint}</small>}
+    </div>
+  )
+}

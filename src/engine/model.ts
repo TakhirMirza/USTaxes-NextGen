@@ -3,8 +3,13 @@ import type { FilingStatus } from './rules2025.ts'
 export type Owner = 'taxpayer' | 'spouse'
 
 export interface Person {
+  /** First name and middle initial, as on the Social Security card. */
   firstName: string
   lastName: string
+  /** 9 digits, no dashes. Stored only in this browser. */
+  ssn: string
+  occupation: string
+  presidentialFund: boolean
   /** Age on December 31, 2025. 0 = not entered. */
   age: number
   age65OrOlder: boolean
@@ -27,6 +32,26 @@ export interface Dependent {
   disabled: boolean
   /** Your child, stepchild, foster child, sibling, step-sibling, or a descendant of one. */
   childRelationship: boolean
+  /** 9 digits, no dashes. */
+  ssn: string
+}
+
+export interface Contact {
+  street: string
+  apt: string
+  city: string
+  state: string
+  zip: string
+  phone: string
+  email: string
+  /** Main home (and spouse's, if joint) in the U.S. for more than half of 2025. */
+  livedInUsHalfYear: boolean
+}
+
+export interface RefundDeposit {
+  routingNumber: string
+  accountNumber: string
+  accountType: 'checking' | 'savings'
 }
 
 export interface Form1099R {
@@ -134,6 +159,8 @@ export interface Schedule1A {
   qualifiedTips: number
   qualifiedOvertime: number
   carLoanInterest: number
+  /** Vehicle identification number for Schedule 1-A line 22. */
+  vehicleVin: string
 }
 
 export interface ItemizedDeductions {
@@ -155,6 +182,12 @@ export interface TaxReturnInput {
   taxpayer: Person
   spouse: Person
   canBeClaimedAsDependent: boolean
+  contact: Contact
+  /** Form 1040 digital-asset question. null = not answered. */
+  digitalAssets: boolean | null
+  /** Schedule B Part III: foreign financial account or foreign trust. */
+  foreignAccounts: boolean
+  refundDeposit: RefundDeposit
   dependents: Dependent[]
   w2s: W2[]
   interest: Form1099Int[]
@@ -178,7 +211,7 @@ export interface TaxReturnInput {
 let counter = 0
 export const newId = (prefix: string): string => `${prefix}-${Date.now().toString(36)}-${(counter++).toString(36)}`
 
-export const emptyPerson = (): Person => ({ firstName: '', lastName: '', age: 0, age65OrOlder: false, blind: false })
+export const emptyPerson = (): Person => ({ firstName: '', lastName: '', ssn: '', occupation: '', presidentialFund: false, age: 0, age65OrOlder: false, blind: false })
 
 export const emptyExpenses = (): BusinessExpenses => ({
   advertising: 0, carAndTruck: 0, contractLabor: 0, insurance: 0, legalAndProfessional: 0, office: 0,
@@ -217,7 +250,7 @@ export const emptyBusiness = (owner: Owner = 'taxpayer'): ScheduleCBusiness => (
 })
 export const emptyDependent = (): Dependent => ({
   id: newId('dep'), name: '', relationship: '', age: 0, hasSsn: true, monthsLivedWithYou: 12,
-  student: false, disabled: false, childRelationship: true
+  student: false, disabled: false, childRelationship: true, ssn: ''
 })
 export const empty1099R = (owner: Owner = 'taxpayer'): Form1099R => ({
   id: newId('ret'), owner, payer: '', grossDistribution: 0, taxableAmount: 0, federalWithholding: 0, code: '7', ira: false
@@ -231,6 +264,10 @@ export const emptyReturn = (): TaxReturnInput => ({
   taxpayer: emptyPerson(),
   spouse: emptyPerson(),
   canBeClaimedAsDependent: false,
+  contact: { street: '', apt: '', city: '', state: '', zip: '', phone: '', email: '', livedInUsHalfYear: true },
+  digitalAssets: null,
+  foreignAccounts: false,
+  refundDeposit: { routingNumber: '', accountNumber: '', accountType: 'checking' },
   dependents: [],
   w2s: [],
   interest: [],
@@ -243,7 +280,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   unemployment: 0,
   otherIncome: 0,
   adjustments: { educatorExpenses: 0, hsaDeduction: 0, selfEmployedHealthInsurance: 0, iraDeduction: 0, studentLoanInterest: 0 },
-  schedule1A: { qualifiedTips: 0, qualifiedOvertime: 0, carLoanInterest: 0 },
+  schedule1A: { qualifiedTips: 0, qualifiedOvertime: 0, carLoanInterest: 0, vehicleVin: '' },
   itemized: {
     medical: 0, stateLocalIncomeOrSalesTax: 0, realEstateTax: 0, personalPropertyTax: 0,
     mortgageInterest: 0, charityCash: 0, charityNonCash: 0, other: 0
@@ -285,6 +322,9 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     socialSecurity: arr(r.socialSecurity, emptySocialSecurity),
     students: arr(r.students, emptyStudent),
     dependentCare: { ...base.dependentCare, ...(r.dependentCare ?? {}) },
+    contact: { ...base.contact, ...(r.contact ?? {}) },
+    refundDeposit: { ...base.refundDeposit, ...(r.refundDeposit ?? {}) },
+    digitalAssets: typeof r.digitalAssets === 'boolean' ? r.digitalAssets : null,
     w2s: arr(r.w2s, emptyW2),
     interest: arr(r.interest, empty1099Int),
     dividends: arr(r.dividends, empty1099Div),

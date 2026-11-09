@@ -1,0 +1,100 @@
+/**
+ * Fills the real IRS 2025 PDFs in public/forms/2025 and checks that every mapped key
+ * matches exactly one field and that key values land on the right lines.
+ */
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { readFile, writeFile } from 'node:fs/promises'
+import * as lib from 'pdf-lib'
+import { computeReturn } from '../engine/compute.ts'
+import { emptyBusiness, emptyDependent, emptyReturn, empty1099Div, empty1099R, emptySocialSecurity, emptyW2 } from '../engine/model.ts'
+import type { TaxReturnInput } from '../engine/model.ts'
+import { buildPacket2025 } from './irs2025.ts'
+import { buildPdf, fillForm, findField } from './fill.ts'
+import type { FillProblem } from './fill.ts'
+
+const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+
+const w2 = (owner: 'taxpayer' | 'spouse', wages: number, withholding: number) => ({
+  ...emptyW2(owner), employer: 'Acme', wages, federalWithholding: withholding,
+  socialSecurityWages: wages, socialSecurityWithheld: wages * 0.062, medicareWages: wages, medicareWithheld: wages * 0.0145
+})
+
+/** A deliberately busy return that needs nearly every supported form. */
+const busy = (): TaxReturnInput => ({
+  ...emptyReturn(),
+  filingStatus: 'mfj',
+  taxpayer: { ...emptyReturn().taxpayer, firstName: 'Alex', lastName: 'Rivera', ssn: '123456789', age: 66, occupation: 'Engineer', presidentialFund: true },
+  spouse: { ...emptyReturn().spouse, firstName: 'Sam', lastName: 'Rivera', ssn: '987654321', age: 45, occupation: 'Photographer' },
+  contact: { street: '12 Oak St', apt: '3', city: 'Haymarket', state: 'VA', zip: '20169', phone: '555-0100', email: 'a@example.com', livedInUsHalfYear: true },
+  digitalAssets: false,
+  dependents: [{ ...emptyDependent(), name: 'Mia Rivera', relationship: 'Daughter', age: 9, ssn: '111223333' }, { ...emptyDependent(), name: 'Leo Rivera', relationship: 'Son', age: 20, student: true, ssn: '111224444' }],
+  w2s: [w2('taxpayer', 230000, 40000), w2('spouse', 30000, 3000)],
+  interest: [{ id: 'i1', payer: 'Harbor Bank', interest: 2500, taxExemptInterest: 0, federalWithholding: 0 }],
+  dividends: [{ ...empty1099Div(), payer: 'Index Fund', ordinaryDividends: 6000, qualifiedDividends: 5000, capitalGainDistributions: 400 }],
+  capitalTransactions: [{ id: 'c1', description: 'XYZ', term: 'long', proceeds: 20000, costBasis: 12000 }],
+  businesses: [{ ...emptyBusiness('spouse'), name: 'Rivera Studio', grossReceipts: 40000, expenses: { ...emptyBusiness().expenses, supplies: 5000 } }],
+  retirement: [{ ...empty1099R(), payer: 'IRA Co', grossDistribution: 5000, taxableAmount: 5000, code: '1', ira: true }],
+  socialSecurity: [{ ...emptySocialSecurity(), netBenefits: 12000 }],
+  schedule1A: { qualifiedTips: 0, qualifiedOvertime: 4000, carLoanInterest: 3000, vehicleVin: '1HGCM82633A004352' },
+  deductionChoice: 'itemized',
+  itemized: { ...emptyReturn().itemized, stateLocalIncomeOrSalesTax: 18000, realEstateTax: 9000, mortgageInterest: 14000, charityCash: 3000 },
+  refundDeposit: { routingNumber: '021000021', accountNumber: '123456789', accountType: 'checking' }
+})
+
+test('every mapped key matches exactly one field in the official PDFs', async () => {
+  const ret = busy()
+  const packet = buildPacket2025(ret, computeReturn(ret))
+  const ids = packet.forms.map((f) => f.id)
+  for (const expected of ['1040', 's1', 's1a', 's2', 'sa', 'sb', 'sd', 'sse-spouse', 's8812', '8995', '8959', '8960']) {
+    assert.ok(ids.includes(expected), `packet should include ${expected}; got ${ids.join(', ')}`)
+  }
+  const problems: FillProblem[] = []
+  for (const form of packet.forms) await fillForm(lib, await load(form.file), form, problems)
+  assert.deepEqual(problems, [])
+})
+
+test('values land on the right Form 1040 lines', async () => {
+  const ret = busy()
+  const res = computeReturn(ret)
+  const form = buildPacket2025(ret, res).forms[0]
+  const doc = await lib.PDFDocument.load(await load(form.file))
+  const fields = doc.getForm().getFields()
+  const text = (key: string): string => (findField(fields, key)[0] as lib.PDFTextField).getText() ?? ''
+  const problems: FillProblem[] = []
+  const filled = await fillForm(lib, await load(form.file), { ...form, values: form.values }, problems)
+  assert.deepEqual(problems, [])
+  assert.ok(filled.getPageCount() === 2)
+  // Spot-check the mapping table itself against computed lines
+  assert.equal(form.values['f1_75[0]'], res.f1040['11a'].toLocaleString('en-US'))
+  assert.equal(form.values['f2_16[0]'], res.f1040['24'].toLocaleString('en-US'))
+  assert.equal(form.values['Checkbox_ReadOrder[0].c1_8[1]'], true)
+  assert.equal(text('f1_14[0]'), '')
+})
+
+test('builds one merged PDF and a payment voucher when tax is owed', async () => {
+  const ret: TaxReturnInput = { ...busy(), w2s: [w2('taxpayer', 230000, 1000), w2('spouse', 30000, 0)], refundDeposit: { routingNumber: '', accountNumber: '', accountType: 'checking' } }
+  const res = computeReturn(ret)
+  assert.ok(res.f1040['37'] > 0)
+  const packet = buildPacket2025(ret, res)
+  assert.equal(packet.forms[packet.forms.length - 1].id, '1040v')
+  const { bytes, problems } = await buildPdf(lib, packet.forms, load)
+  assert.deepEqual(problems, [])
+  const merged = await lib.PDFDocument.load(bytes)
+  assert.ok(merged.getPageCount() >= 20)
+  if (process.env.PDF_OUT) await writeFile(process.env.PDF_OUT, bytes)
+})
+
+test('simple W-2 return prints only Form 1040', async () => {
+  const ret: TaxReturnInput = { ...emptyReturn(), taxpayer: { ...emptyReturn().taxpayer, firstName: 'Pat', lastName: 'Lee', ssn: '123456789', age: 30 }, digitalAssets: false, w2s: [w2('taxpayer', 60000, 6000)] }
+  const packet = buildPacket2025(ret, computeReturn(ret))
+  assert.deepEqual(packet.forms.map((f) => f.id), ['1040'])
+  assert.deepEqual(packet.notIncluded, [])
+})
+
+test('lists the forms that must still be attached by hand', () => {
+  const ret = { ...busy(), dependentCare: { expenses: 3000, employerBenefits: 0 } }
+  const packet = buildPacket2025(ret, computeReturn(ret))
+  assert.ok(packet.notIncluded.some((s) => s.startsWith('Schedule C')))
+})

@@ -2,6 +2,7 @@ import { ChangeEvent, ReactElement, useRef, useState } from 'react'
 import type { StepProps } from './steps'
 import type { Issue } from '../engine/compute.ts'
 import { normalizeReturn, emptyReturn } from '../engine/model.ts'
+import { buildPacket2025 } from '../pdf/irs2025.ts'
 import { FILING_STATUS_LABELS } from '../engine/rules2025.ts'
 import { Section, usd } from './fields'
 
@@ -18,12 +19,12 @@ const LINES: [line: string, label: string][] = [
   ['5b', 'Pensions and annuities, taxable'],
   ['6a', 'Social Security benefits'],
   ['6b', 'Social Security benefits, taxable'],
-  ['7', 'Capital gain or (loss)'],
+  ['7a', 'Capital gain or (loss)'],
   ['8', 'Additional income (Schedule 1)'],
   ['9', 'Total income'],
   ['10', 'Adjustments to income'],
-  ['11', 'Adjusted gross income'],
-  ['12', 'Standard or itemized deduction'],
+  ['11a', 'Adjusted gross income'],
+  ['12e', 'Standard or itemized deduction'],
   ['13a', 'Qualified business income deduction'],
   ['13b', 'Additional deductions (Schedule 1-A)'],
   ['14', 'Total deductions'],
@@ -37,7 +38,7 @@ const LINES: [line: string, label: string][] = [
   ['24', 'Total tax'],
   ['25d', 'Federal income tax withheld'],
   ['26', 'Estimated tax payments'],
-  ['27', 'Earned income credit'],
+  ['27a', 'Earned income credit'],
   ['28', 'Additional child tax credit'],
   ['29', 'American opportunity credit, refundable'],
   ['31', 'Excess Social Security withheld (Schedule 3)'],
@@ -45,8 +46,8 @@ const LINES: [line: string, label: string][] = [
   ['34', 'Overpaid'],
   ['37', 'Amount you owe']
 ]
-const KEY_LINES = new Set(['9', '11', '15', '24', '33', '34', '37'])
-const ALWAYS = new Set(['1z', '9', '11', '12', '15', '16', '24', '33'])
+const KEY_LINES = new Set(['9', '11a', '15', '24', '33', '34', '37'])
+const ALWAYS = new Set(['1z', '9', '11a', '12e', '15', '16', '24', '33'])
 
 const STEP_LABEL: Record<Issue['step'], string> = { about: 'About you', income: 'Income', deductions: 'Deductions', credits: 'Credits & payments', review: 'Review' }
 
@@ -70,6 +71,16 @@ export function IssueList({ issues, onGo }: { issues: Issue[]; onGo?: (step: Iss
 export function ReviewStep({ ret, set, result, onGo }: StepProps & { onGo: (step: Issue['step']) => void }): ReactElement {
   const fileInput = useRef<HTMLInputElement>(null)
   const [message, setMessage] = useState('')
+  const [pdfState, setPdfState] = useState<{ busy: boolean; note: string }>({ busy: false, note: '' })
+  const packet = buildPacket2025(ret, result)
+  const blocking = result.issues.filter((i) => i.level === 'error' || (i.level === 'warning' && i.step === 'about'))
+  const makePdf = (): void => {
+    setPdfState({ busy: true, note: '' })
+    import('../pdf/download.ts')
+      .then(({ downloadIrsForms }) => downloadIrsForms(ret, result))
+      .then(({ pages, problems }) => setPdfState({ busy: false, note: `Downloaded ${pages} pages.${problems ? ` ${problems} field(s) could not be filled; check the PDF before filing.` : ''}` }))
+      .catch((e: unknown) => setPdfState({ busy: false, note: `The PDF could not be created: ${e instanceof Error ? e.message : String(e)}` }))
+  }
   const f = result.f1040
 
   const download = (): void => {
@@ -103,6 +114,24 @@ export function ReviewStep({ ret, set, result, onGo }: StepProps & { onGo: (step
     <>
       <Section title="Things to look at" intro={result.issues.length ? undefined : 'Nothing needs your attention.'}>
         <IssueList issues={result.issues} onGo={onGo} />
+      </Section>
+
+      <Section title="IRS forms" intro="Your return on the official 2025 IRS forms, filled in and ready to print, sign and mail. The PDF is made on this device.">
+        <ul className="form-list">
+          {packet.forms.map((f) => <li key={f.id}>{f.title}</li>)}
+        </ul>
+        {packet.notIncluded.length > 0 && (
+          <div className="note is-warn">
+            <strong>Attach these yourself.</strong> The app does not print them yet; get them at irs.gov/forms and copy the amounts from this review:
+            <ul>{packet.notIncluded.map((n) => <li key={n}>{n}</li>)}</ul>
+          </div>
+        )}
+        {blocking.length > 0 && <p className="note is-warn">Some details are missing ({blocking.length}). You can still download, but finish them under “Things to look at” before you file.</p>}
+        <div className="actions">
+          <button type="button" className="button" onClick={makePdf} disabled={pdfState.busy}>{pdfState.busy ? 'Preparing PDF…' : 'Download IRS forms (PDF)'}</button>
+        </div>
+        {pdfState.note && <p className="note" role="status">{pdfState.note}</p>}
+        <p className="why">Before mailing: sign and date page 2 of Form 1040, attach Copy B of your W-2s (and any 1099-R with tax withheld), and send to the IRS address for your state listed in the Form 1040 instructions.</p>
       </Section>
 
       <Section title="Form 1040" intro={`${FILING_STATUS_LABELS[ret.filingStatus]} · tax year 2025`}>
@@ -175,7 +204,7 @@ export function ReviewStep({ ret, set, result, onGo }: StepProps & { onGo: (step
               <dl className="facts">
                 <div><dt>Net short-term</dt><dd>{usd(result.scheduleD.shortTerm)}</dd></div>
                 <div><dt>Net long-term</dt><dd>{usd(result.scheduleD.longTerm)}</dd></div>
-                <div><dt>On Form 1040 line 7</dt><dd>{usd(f['7'])}</dd></div>
+                <div><dt>On Form 1040 line 7a</dt><dd>{usd(f['7a'])}</dd></div>
                 {result.scheduleD.carryoverShort + result.scheduleD.carryoverLong > 0 && <div><dt>Carryover to 2026</dt><dd>{usd(result.scheduleD.carryoverShort + result.scheduleD.carryoverLong)}</dd></div>}
               </dl>
             </details>

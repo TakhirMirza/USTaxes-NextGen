@@ -22,7 +22,14 @@ export interface TaxReturnResult {
   /** Form 1040 lines, keyed by line number. */
   f1040: Record<string, number>
   schedule1: { businessIncome: number; unemployment: number; otherIncome: number; additionalIncome: number; adjustments: Record<string, number>; totalAdjustments: number }
-  schedule1A: { tips: number; overtime: number; carLoanInterest: number; senior: number; total: number }
+  schedule1A: {
+    magi: number
+    tipsCapped: number; tipOtExcess: number; tipOtReduction: number; tips: number
+    overtimeCapped: number; overtime: number
+    carCapped: number; carExcess: number; carReduction: number; carLoanInterest: number
+    seniorExcess: number; seniorEach: number; seniorTaxpayer: number; seniorSpouse: number; senior: number
+    total: number
+  }
   scheduleA: { medical: number; taxes: number; saltBeforeCap: number; saltCap: number; interest: number; charity: number; other: number; total: number }
   scheduleB: { interest: number; ordinaryDividends: number; required: boolean }
   scheduleC: ScheduleCResult[]
@@ -34,7 +41,7 @@ export interface TaxReturnResult {
   form8863: { aotc: number; aotcRefundable: number; llc: number; nonrefundableAllowed: number }
   eic: { qualifyingChildren: number; earnedIncome: number; investmentIncome: number; credit: number; notEligibleBecause: string[] }
   schedule8812: { qualifyingChildren: number; otherDependents: number; creditBeforePhaseout: number; phaseoutReduction: number; nonrefundable: number; refundable: number }
-  qbi: { qualifiedBusinessIncome: number; deduction: number }
+  qbi: { qualifiedBusinessIncome: number; deduction: number; taxableIncomeBeforeQbi: number; netCapitalGain: number }
   deduction: { standard: number; itemized: number; used: 'standard' | 'itemized' }
   summary: {
     totalIncome: number
@@ -142,6 +149,12 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   // ── Validation ────────────────────────────────────────────────────────────
   if (!input.taxpayer.firstName.trim() || !input.taxpayer.lastName.trim()) issues.push({ level: 'warning', step: 'about', message: 'Enter your first and last name.' })
   if (joint && (!input.spouse.firstName.trim() || !input.spouse.lastName.trim())) issues.push({ level: 'warning', step: 'about', message: 'Enter your spouse’s name for a joint return.' })
+  const ssnOk = (v: string): boolean => /^\d{9}$/.test(v.replace(/\D/g, ''))
+  if (!ssnOk(input.taxpayer.ssn)) issues.push({ level: 'warning', step: 'about', message: 'Enter your 9-digit Social Security number. The IRS forms need it.' })
+  if (joint && !ssnOk(input.spouse.ssn)) issues.push({ level: 'warning', step: 'about', message: 'Enter your spouse’s Social Security number.' })
+  if (input.dependents.some((d) => !ssnOk(d.ssn))) issues.push({ level: 'warning', step: 'about', message: 'Enter a Social Security number for each dependent.' })
+  if (!input.contact.street.trim() || !input.contact.city.trim() || !input.contact.zip.trim()) issues.push({ level: 'warning', step: 'about', message: 'Enter your home address for the IRS forms.' })
+  if (input.digitalAssets === null) issues.push({ level: 'warning', step: 'income', message: 'Answer the digital assets question. Form 1040 requires a Yes or No.' })
   if (fs === 'hoh' && input.dependents.length === 0) issues.push({ level: 'warning', step: 'about', message: 'Head of household usually requires a qualifying person. Add a dependent or check your filing status.' })
   if (fs === 'qss' && input.dependents.length === 0) issues.push({ level: 'warning', step: 'about', message: 'Qualifying surviving spouse status requires a dependent child.' })
   input.w2s.forEach((w, i) => {
@@ -322,12 +335,24 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   const s = input.schedule1A
   const marriedNotJoint = fs === 'mfs'
   if (marriedNotJoint && (s.qualifiedTips > 0 || s.qualifiedOvertime > 0)) issues.push({ level: 'warning', step: 'deductions', message: 'Married taxpayers must file jointly to deduct tips or overtime.' })
-  const tipOtReduction = stepPhaseout(magi - R.TIPS_OVERTIME_PHASEOUT_START[fs], R.TIPS_OVERTIME_PHASEOUT_PER_1000)
-  const tips = marriedNotJoint ? 0 : r(pos(Math.min(s.qualifiedTips, R.TIPS_MAX) - tipOtReduction))
-  const overtime = marriedNotJoint ? 0 : r(pos(Math.min(s.qualifiedOvertime, R.OVERTIME_MAX[fs]) - tipOtReduction))
-  const carLoan = r(pos(Math.min(s.carLoanInterest, R.CAR_LOAN_INTEREST_MAX) - stepPhaseout(magi - R.CAR_LOAN_PHASEOUT_START[fs], R.CAR_LOAN_PHASEOUT_PER_1000)))
-  const seniors = marriedNotJoint ? 0 : sum((joint ? [input.taxpayer, input.spouse] : [input.taxpayer]).map((p) => (is65(p) ? 1 : 0)))
-  const senior = r(pos(seniors * R.SENIOR_DEDUCTION - (seniors > 0 ? pos(magi - R.SENIOR_PHASEOUT_START[fs]) * R.SENIOR_PHASEOUT_RATE : 0)))
+  // Tips (lines 4–13) and overtime (lines 14–21): reduced $100 per FULL $1,000 of MAGI over the threshold
+  const tipOtExcess = marriedNotJoint ? 0 : pos(magi - R.TIPS_OVERTIME_PHASEOUT_START[fs])
+  const tipOtReduction = Math.floor(tipOtExcess / 1000) * R.TIPS_OVERTIME_PHASEOUT_PER_1000
+  const tipsCapped = marriedNotJoint ? 0 : r(Math.min(pos(s.qualifiedTips), R.TIPS_MAX))
+  const overtimeCapped = marriedNotJoint ? 0 : r(Math.min(pos(s.qualifiedOvertime), R.OVERTIME_MAX[fs]))
+  const tips = pos(tipsCapped - tipOtReduction)
+  const overtime = pos(overtimeCapped - tipOtReduction)
+  // Car loan interest (lines 22–30): reduced $200 per $1,000 or fraction of MAGI over the threshold
+  const carCapped = r(Math.min(pos(s.carLoanInterest), R.CAR_LOAN_INTEREST_MAX))
+  const carExcess = pos(magi - R.CAR_LOAN_PHASEOUT_START[fs])
+  const carReduction = stepPhaseout(carExcess, R.CAR_LOAN_PHASEOUT_PER_1000)
+  const carLoan = pos(carCapped - carReduction)
+  // Seniors (lines 31–37): $6,000 per qualifying person, each reduced by 6% of MAGI over the threshold
+  const seniorExcess = pos(magi - R.SENIOR_PHASEOUT_START[fs])
+  const seniorEach = r(pos(R.SENIOR_DEDUCTION - seniorExcess * R.SENIOR_PHASEOUT_RATE))
+  const seniorTaxpayer = !marriedNotJoint && is65(input.taxpayer) ? seniorEach : 0
+  const seniorSpouse = joint && is65(input.spouse) ? seniorEach : 0
+  const senior = seniorTaxpayer + seniorSpouse
   if (marriedNotJoint && is65(input.taxpayer)) issues.push({ level: 'info', step: 'deductions', message: 'The $6,000 senior deduction is not available when married filing separately.' })
   if (s.carLoanInterest > 0) issues.push({ level: 'info', step: 'deductions', message: 'Car loan interest qualifies only for a new personal-use vehicle assembled in the U.S., bought after 2024. Keep the VIN for Schedule 1-A.' })
   const line13b = tips + overtime + carLoan + senior
@@ -336,11 +361,11 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   const tiBeforeQbi = pos(agi - line12 - line13b)
   const qbiAmount = pos(businessIncome - halfSeTax - seHealth)
   let line13a = 0
+  const netCapitalGainForQbi = line3a + preferentialGain
   if (qbiAmount > 0) {
     if (tiBeforeQbi > R.QBI_SIMPLE_THRESHOLD[fs]) {
       issues.push({ level: 'warning', step: 'review', message: 'Your taxable income is above the Form 8995 threshold. The QBI deduction needs Form 8995-A (wage and property limits), which this app does not calculate, so it is set to $0.' })
     } else {
-      const netCapitalGainForQbi = line3a + preferentialGain
       line13a = r(Math.min(qbiAmount * R.QBI_RATE, pos(tiBeforeQbi - netCapitalGainForQbi) * R.QBI_RATE))
     }
   }
@@ -512,14 +537,18 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
     f1040: {
       '1a': line1a, '1z': line1z, '2a': line2a, '2b': line2b, '3a': line3a, '3b': line3b,
       '4a': line4a, '4b': line4b, '5a': line5a, '5b': line5b, '6a': line6a, '6b': line6b,
-      '7': line7, '8': line8, '9': line9, '10': line10, '11': line11, '12': line12, '13a': line13a, '13b': line13b,
+      '7a': line7, '8': line8, '9': line9, '10': line10, '11a': line11, '11b': line11, '12e': line12, '13a': line13a, '13b': line13b,
       '14': line14, '15': line15, '16': line16, '17': line17, '18': line18, '19': line19, '20': line20,
       '21': line21, '22': line22, '23': line23, '24': line24, '25a': line25a, '25b': line25b, '25c': line25c,
-      '25d': line25d, '26': line26, '27': line27, '28': line28, '29': line29, '31': line31, '32': line32, '33': line33,
+      '25d': line25d, '26': line26, '27a': line27, '28': line28, '29': line29, '31': line31, '32': line32, '33': line33,
       '34': line34, '37': line37
     },
     schedule1: { businessIncome: r(businessIncome), unemployment, otherIncome, additionalIncome, adjustments, totalAdjustments: line10 },
-    schedule1A: { tips, overtime, carLoanInterest: carLoan, senior, total: line13b },
+    schedule1A: {
+      magi, tipsCapped, tipOtExcess, tipOtReduction, tips, overtimeCapped, overtime,
+      carCapped, carExcess, carReduction, carLoanInterest: carLoan,
+      seniorExcess, seniorEach, seniorTaxpayer, seniorSpouse, senior, total: line13b
+    },
     scheduleA: { medical, taxes, saltBeforeCap, saltCap: r(saltCap), interest: r(it.mortgageInterest), charity, other: r(it.other), total: itemizedTotal },
     scheduleB: { interest: line2b, ordinaryDividends: line3b, required: line2b > 1500 || line3b > 1500 },
     scheduleC: scheduleCResults,
@@ -531,7 +560,7 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
     form8863: { aotc, aotcRefundable, llc, nonrefundableAllowed: educationAllowed },
     eic: { qualifyingChildren: eicChildren, earnedIncome, investmentIncome, credit: eic, notEligibleBecause: eic > 0 ? [] : eicReasons },
     schedule8812: { qualifyingChildren, otherDependents, creditBeforePhaseout, phaseoutReduction, nonrefundable, refundable },
-    qbi: { qualifiedBusinessIncome: r(qbiAmount), deduction: line13a },
+    qbi: { qualifiedBusinessIncome: r(qbiAmount), deduction: line13a, taxableIncomeBeforeQbi: tiBeforeQbi, netCapitalGain: netCapitalGainForQbi },
     deduction: { standard, itemized: itemizedTotal, used },
     summary: {
       totalIncome: line9, agi, taxableIncome: line15, totalTax: line24, totalPayments: line33,

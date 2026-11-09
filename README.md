@@ -24,8 +24,13 @@ the browser's local storage and can be downloaded as a JSON file.
 | Credits | Earned Income Credit (Schedule EIC), Child Tax Credit $2,200 / credit for other dependents / refundable ACTC (Schedule 8812), child and dependent care (Form 2441), American Opportunity and Lifetime Learning (Form 8863) |
 | Payments | Withholding, Additional Medicare withholding, excess Social Security, estimated payments |
 
+**IRS forms (PDF):** the Review step fills the official 2025 IRS PDFs in the browser and downloads one
+print-ready file: Form 1040, Schedules 1, 1-A, 2, 3, A, B, D, SE, EIC, 8812, Forms 8959, 8960, 8995, and the
+1040-V payment voucher when tax is owed. The blank forms live in `public/forms/2025` (official IRS PDFs).
+
 **Not yet supported:** AMT, saver's credit, Form 5329 exceptions, Form 8995-A, depreciation detail,
-state returns, PDF form filling, e-file. The app flags these when they may apply.
+state returns, e-file. Schedule C, Form 2441 and Form 8863 are calculated but not yet printed; the app lists
+them so they can be attached by hand. The app flags these when they may apply.
 
 ## Project layout
 
@@ -42,6 +47,11 @@ src/
     review.tsx     Form 1040 lines, schedules, warnings, save/open/print
     fields.tsx     Form controls
     app.css        Styles
+  pdf/
+    irs2025.ts     Which IRS form fields get which values
+    fill.ts        Fills and merges the PDFs with pdf-lib
+    irs2025.test.ts  Fills the real IRS PDFs and checks every field mapping
+public/forms/2025  Blank official IRS fillable PDFs
 ```
 
 To add a tax year, copy `rules2025.ts`, update the figures, and point the engine at it.
