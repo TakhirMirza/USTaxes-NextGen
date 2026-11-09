@@ -124,6 +124,10 @@ export const QBI_RATE = 0.20
 export const QBI_SIMPLE_THRESHOLD: Record<FilingStatus, number> = {
   single: 197300, mfj: 394600, mfs: 197300, hoh: 197300, qss: 197300
 }
+/** Form 8995-A phase-in range above the threshold (line 23). */
+export const QBI_PHASE_IN_RANGE: Record<FilingStatus, number> = {
+  single: 50000, mfj: 100000, mfs: 50000, hoh: 50000, qss: 50000
+}
 
 /** Student loan interest deduction (Schedule 1 line 21). */
 export const STUDENT_LOAN_INTEREST_MAX = 2500
@@ -213,6 +217,8 @@ export const HSA_LIMIT_FAMILY = 8550
 export const HSA_CATCH_UP = 1000
 export const HSA_CATCH_UP_AGE = 55
 export const HSA_ADDITIONAL_TAX_RATE = 0.20
+/** Form 5329 excise tax on excess contributions (Parts III–VII). */
+export const EXCESS_CONTRIBUTION_RATE = 0.06
 
 /** Alternative minimum tax, 2025 (Rev. Proc. 2024-40). */
 export const AMT_EXEMPTION: Record<FilingStatus, number> = {

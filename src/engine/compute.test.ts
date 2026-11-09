@@ -7,7 +7,10 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { computeReturn, regularTax, taxFromSchedule } from './compute.ts'
 import { emptyBusiness, emptyDependent, emptyHomeOffice, emptyHsa, emptyRental, emptyReturn, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099R, emptySocialSecurity, normalizeReturn } from './model.ts'
-import type { TaxReturnInput } from './model.ts'
+import type { CapitalTransaction, ScheduleCBusiness, TaxReturnInput } from './model.ts'
+import { groups8949, holdingTermFromDates, lineFor, scheduleDLines } from './capital.ts'
+import { qbiDeduction } from './qbi.ts'
+import type { QbiBusinessInput } from './qbi.ts'
 
 const base = (patch: Partial<TaxReturnInput> = {}): TaxReturnInput => ({
   ...emptyReturn(),
@@ -439,4 +442,106 @@ test('an unknown filing status from an imported file falls back to single', () =
   const ret = normalizeReturn({ filingStatus: 'married_joint', w2s: [{ wages: 50000 }] })
   assert.equal(ret.filingStatus, 'single')
   assert.ok(computeReturn(ret).f1040['16'] > 0)
+})
+
+test('Form 8995-A: wage limit and phase-in for a non-service business', () => {
+  const biz = (over: Partial<QbiBusinessInput> = {}): QbiBusinessInput => ({ id: 'a', name: 'A', tin: '', sstb: false, qbi: 200000, w2Wages: 40000, ubia: 0, ...over })
+  const mid = qbiDeduction({ fs: 'single', taxableIncomeBeforeQbi: 222300, netCapitalGain: 0, businesses: [biz()], priorLoss: 0, reitPtp: 0, priorReitLoss: 0 })
+  assert.equal(mid.form, '8995a')
+  const b = mid.businesses[0]
+  assert.deepEqual([b.line3, b.line10, b.line11], [40000, 20000, 20000])
+  assert.deepEqual(b.phase, { line17: 40000, line18: 20000, line19: 20000, line25: 10000, line26: 30000 })
+  assert.equal(mid.deduction, 30000)
+  const sstb = qbiDeduction({ fs: 'single', taxableIncomeBeforeQbi: 222300, netCapitalGain: 0, businesses: [biz({ sstb: true })], priorLoss: 0, reitPtp: 0, priorReitLoss: 0 })
+  assert.equal(sstb.businesses[0].applicablePct, 0.5)
+  assert.equal(sstb.deduction, 15000)
+  const over = qbiDeduction({ fs: 'single', taxableIncomeBeforeQbi: 300000, netCapitalGain: 0, businesses: [biz({ sstb: true })], priorLoss: 0, reitPtp: 0, priorReitLoss: 0 })
+  assert.equal(over.deduction, 0)
+  assert.ok(over.businesses[0].excluded)
+})
+
+test('Form 8995-A: losses and the 2024 carryforward reduce profitable businesses', () => {
+  const res = qbiDeduction({
+    fs: 'single', taxableIncomeBeforeQbi: 300000, netCapitalGain: 0, priorLoss: 10000, reitPtp: 0, priorReitLoss: 0,
+    businesses: [{ id: 'a', name: 'A', tin: '', sstb: false, qbi: 100000, w2Wages: 100000, ubia: 0 }, { id: 'b', name: 'B', tin: '', sstb: false, qbi: -20000, w2Wages: 0, ubia: 0 }]
+  })
+  assert.equal(res.businesses[0].line2, 70000)
+  assert.equal(res.businesses[1].line2, 0)
+  assert.equal(res.deduction, 14000)
+})
+
+test('Form 8995: net loss carries forward and REIT dividends still count', () => {
+  const res = qbiDeduction({
+    fs: 'single', taxableIncomeBeforeQbi: 100000, netCapitalGain: 0, priorLoss: 60000, reitPtp: 1000, priorReitLoss: 0,
+    businesses: [{ id: 'a', name: 'A', tin: '', sstb: false, qbi: 50000, w2Wages: 0, ubia: 0 }]
+  })
+  assert.equal(res.form, '8995')
+  assert.equal(res.lossCarryforward, 10000)
+  assert.equal(res.deduction, 200)
+})
+
+test('high-income sole proprietor: QBI deduction needs wages above the threshold', () => {
+  const ret = (qbi: Partial<ScheduleCBusiness['qbi']>): TaxReturnInput => normalizeReturn({
+    filingStatus: 'single', taxpayer: { firstName: 'A', age: 40 },
+    businesses: [{ ...emptyBusiness(), id: 'b1', name: 'Shop', grossReceipts: 300000, qbi: { w2Wages: 0, ubia: 0, sstb: false, ...qbi } }]
+  })
+  const none = computeReturn(ret({}))
+  assert.equal(none.qbi.form, '8995a')
+  assert.equal(none.qbi.deduction, 0)
+  const wages = computeReturn(ret({ w2Wages: 100000 }))
+  assert.equal(wages.qbi.businesses[0].line5, 50000)
+  assert.equal(wages.qbi.deduction, 50000)
+  assert.equal(wages.f1040['13a'], 50000)
+  assert.equal(computeReturn(ret({ w2Wages: 100000, sstb: true })).qbi.deduction, 0)
+})
+
+test('Form 8949: boxes, wash-sale adjustments and Schedule D lines', () => {
+  const tx = (p: Partial<CapitalTransaction>): CapitalTransaction => ({ ...emptyTransaction(), dateAcquired: '01/05/2024', dateSold: '03/10/2025', proceeds: 1000, costBasis: 800, ...p })
+  const txs = [
+    tx({ term: 'long' }),
+    tx({ term: 'short', dateAcquired: '06/01/2025', proceeds: 5000, costBasis: 7000, adjustmentCode: 'W', adjustment: 1500 }),
+    tx({ term: 'long', reporting: 'noncovered', proceeds: 3000, costBasis: 1000 }),
+    tx({ term: 'short', dateAcquired: '01/02/2025', digitalAsset: true, reporting: 'none', proceeds: 400, costBasis: 100 })
+  ]
+  assert.deepEqual(groups8949(txs).map((g) => `${g.box}:${g.line}`), ['A:1b', 'I:3', 'E:9'])
+  const L = scheduleDLines(txs)
+  assert.deepEqual(L['1b'], { proceeds: 5000, basis: 7000, adjustment: 1500, gain: -500 })
+  assert.equal(L['8a'].gain, 200)
+  const res = computeReturn(base({ capitalTransactions: txs }))
+  assert.equal(res.scheduleD.shortTerm, -500 + 300)
+  assert.equal(res.scheduleD.longTerm, 200 + 2000)
+  assert.equal(holdingTermFromDates('03/10/2024', '03/10/2025'), 'short')
+  assert.equal(holdingTermFromDates('03/10/2024', '03/11/2025'), 'long')
+  assert.equal(holdingTermFromDates('INHERITED', '03/11/2025'), 'long')
+  const wrong = computeReturn(base({ capitalTransactions: [tx({ term: 'short' })] }))
+  assert.ok(wrong.issues.some((i) => i.message.includes('long-term holding period')))
+})
+
+test('older saved sales keep printing on Schedule D line 1a/8a', () => {
+  const ret = normalizeReturn({ capitalTransactions: [{ id: 'x', description: 'XYZ', term: 'long', proceeds: 100, costBasis: 50 }] })
+  assert.equal(ret.capitalTransactions[0].reporting, 'covered')
+  assert.equal(lineFor(ret.capitalTransactions[0]), '8a')
+})
+
+test('Form 5329: early distribution exception and 6% tax on excess HSA contributions', () => {
+  const ret = base({
+    retirement: [
+      { ...empty1099R(), payer: 'IRA Co', grossDistribution: 20000, taxableAmount: 20000, code: '1', ira: true, earlyExceptionCode: '09', earlyExceptionAmount: 10000 },
+      { ...empty1099R(), payer: 'Plan', grossDistribution: 5000, taxableAmount: 5000, code: '1' }
+    ],
+    hsa: { taxpayer: { ...emptyHsa(), coverage: 'self', personalContributions: 5300, yearEndValue: 900 }, spouse: emptyHsa() }
+  })
+  const res = computeReturn(ret)
+  const f = res.form5329[0]
+  assert.deepEqual([f.line1, f.line2, f.exceptionCode, f.line3, f.line4], [25000, 10000, '09', 15000, 1500])
+  assert.equal(f.line47, 1000)
+  assert.equal(f.line49, 54) // 6% of the HSA value (900), smaller than the $1,000 excess
+  assert.equal(res.schedule2.earlyDistributionTax, 1500)
+  assert.equal(res.schedule2.hsaExcessTax, 54)
+  assert.ok(f.required)
+  const withdrawn = computeReturn(base({ hsa: { taxpayer: { ...emptyHsa(), coverage: 'self', personalContributions: 5300, excessWithdrawn: true }, spouse: emptyHsa() } }))
+  assert.equal(withdrawn.schedule2.hsaExcessTax, 0)
+  const plain = computeReturn(base({ retirement: [{ ...empty1099R(), grossDistribution: 4000, taxableAmount: 4000, code: '1' }] }))
+  assert.equal(plain.schedule2.earlyDistributionTax, 400)
+  assert.equal(plain.form5329[0].required, false)
 })

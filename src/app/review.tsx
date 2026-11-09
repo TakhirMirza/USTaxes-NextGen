@@ -3,6 +3,7 @@ import type { StepProps } from './steps'
 import type { Issue } from '../engine/compute.ts'
 import { normalizeReturn, emptyReturn } from '../engine/model.ts'
 import { buildPacket2025 } from '../pdf/irs2025.ts'
+import { groups8949 } from '../engine/capital.ts'
 import { FILING_STATUS_LABELS } from '../engine/rules2025.ts'
 import { Check, DigitsField, Section, TextField, usd } from './fields'
 import { STATUS_LABELS, preparerReady } from './store.ts'
@@ -259,6 +260,7 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
                 {s2.additionalMedicareTax > 0 && <div><dt>Additional Medicare tax (Form 8959)</dt><dd>{usd(s2.additionalMedicareTax)}</dd></div>}
                 {s2.netInvestmentIncomeTax > 0 && <div><dt>Net investment income tax (Form 8960)</dt><dd>{usd(s2.netInvestmentIncomeTax)}</dd></div>}
                 {s2.earlyDistributionTax > 0 && <div><dt>Additional tax on early distributions (Form 5329)</dt><dd>{usd(s2.earlyDistributionTax)}</dd></div>}
+                {s2.hsaExcessTax > 0 && <div><dt>6% tax on excess HSA contributions (Form 5329)</dt><dd>{usd(s2.hsaExcessTax)}</dd></div>}
                 {s2.hsaAdditionalTax > 0 && <div><dt>Additional tax on HSA distributions (Form 8889)</dt><dd>{usd(s2.hsaAdditionalTax)}</dd></div>}
                 {s2.amt > 0 && <div><dt>Alternative minimum tax (Part I, Form 6251)</dt><dd>{usd(s2.amt)}</dd></div>}
               </dl>
@@ -347,14 +349,42 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
               </dl>
             </details>
           )}
-          {result.qbi.deduction > 0 && (
-            <details><summary>Form 8995 <span>Qualified business income deduction</span></summary>
+          {result.qbi.form !== 'none' && (
+            <details><summary>{result.qbi.form === '8995a' ? 'Form 8995-A' : 'Form 8995'} <span>Qualified business income deduction</span></summary>
               <dl className="facts">
-                <div><dt>Qualified business income</dt><dd>{usd(result.qbi.qualifiedBusinessIncome)}</dd></div>
-                <div><dt>Deduction</dt><dd>{usd(result.qbi.deduction)}</dd></div>
+                {result.qbi.businesses.map((b) => (
+                  <div key={b.id}><dt>{b.name}{b.sstb ? ' (service business)' : ''}{b.excluded ? ' — not eligible at this income' : ''}</dt>
+                    <dd>{usd(b.line2)}{result.qbi.form === '8995a' && !b.excluded ? ` → ${usd(b.line15)}` : ''}</dd></div>
+                ))}
+                {result.qbi.priorLoss > 0 && <div><dt>Loss carried from 2024</dt><dd>−{usd(result.qbi.priorLoss)}</dd></div>}
+                {result.qbi.reitPtp > 0 && <div><dt>REIT dividends (20%)</dt><dd>{usd(result.qbi.reitComponent)}</dd></div>}
+                {result.qbi.form === '8995a' && result.qbi.phaseIn && <div><dt>Phase-in percentage</dt><dd>{(result.qbi.phaseIn.pct * 100).toFixed(2)}%</dd></div>}
+                <div><dt>Income limit (20% of taxable income less net capital gain)</dt><dd>{usd(result.qbi.incomeLimit)}</dd></div>
+                <div><dt>Deduction (Form 1040 line 13a)</dt><dd>{usd(result.qbi.deduction)}</dd></div>
+                {result.qbi.lossCarryforward > 0 && <div><dt>Loss carried to 2026</dt><dd>{usd(result.qbi.lossCarryforward)}</dd></div>}
               </dl>
             </details>
           )}
+          {groups8949(ret.capitalTransactions).length > 0 && (
+            <details><summary>Form 8949 <span>Sales listed by box</span></summary>
+              <dl className="facts">
+                {groups8949(ret.capitalTransactions).map((g) => (
+                  <div key={g.box}><dt>Box {g.box}: {g.rows.length} {g.rows.length === 1 ? 'sale' : 'sales'} → Schedule D line {g.line}</dt><dd>{usd(g.totals.gain)}</dd></div>
+                ))}
+              </dl>
+            </details>
+          )}
+          {result.form5329.filter((f) => f.required).map((f) => (
+            <details key={`5329-${f.owner}`}><summary>Form 5329 <span>{f.owner === 'spouse' ? ret.spouse.firstName || 'Spouse' : ret.taxpayer.firstName || 'You'}</span></summary>
+              <dl className="facts">
+                {f.line1 > 0 && <div><dt>Early distributions (line 1)</dt><dd>{usd(f.line1)}</dd></div>}
+                {f.line2 > 0 && <div><dt>Exception {f.exceptionCode} (line 2)</dt><dd>−{usd(f.line2)}</dd></div>}
+                {f.line1 > 0 && <div><dt>10% additional tax (line 4)</dt><dd>{usd(f.line4)}</dd></div>}
+                {f.line48 > 0 && <div><dt>Excess HSA contributions (line 48)</dt><dd>{usd(f.line48)}</dd></div>}
+                {f.line48 > 0 && <div><dt>6% excise tax (line 49)</dt><dd>{usd(f.line49)}</dd></div>}
+              </dl>
+            </details>
+          ))}
         </div>
       </Section>
 

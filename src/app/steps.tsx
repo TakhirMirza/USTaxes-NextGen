@@ -1,7 +1,8 @@
 import { ReactElement, useState } from 'react'
 import type { TaxReturnInput, Owner, BusinessExpenses, Person } from '../engine/model.ts'
 import { EXPENSE_LABELS, RENTAL_EXPENSE_LABELS, RENTAL_TYPE_LABELS, emptyBusiness, emptyDependent, emptyProvider, emptyRental, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099Int, empty1099R, emptySocialSecurity } from '../engine/model.ts'
-import type { HomeOffice, HsaAccount, RentalExpenses, RentalType } from '../engine/model.ts'
+import type { BasisReporting, CapitalTransaction, HomeOffice, HsaAccount, RentalExpenses, RentalType } from '../engine/model.ts'
+import { boxFor, gainOf, holdingTermFromDates, isAggregated } from '../engine/capital.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import { careQualifyingPerson, ctcChild, eicChild } from '../engine/compute.ts'
 import { FILING_STATUS_LABELS } from '../engine/rules2025.ts'
@@ -142,6 +143,12 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
   const int = listOps(set, 'interest')
   const div = listOps(set, 'dividends')
   const cap = listOps(set, 'capitalTransactions')
+  // Entering both dates sets the holding period for you.
+  const saleDates = (x: CapitalTransaction, p: Partial<CapitalTransaction>): void => {
+    const next = { ...x, ...p }
+    const term = holdingTermFromDates(next.dateAcquired, next.dateSold)
+    cap.patch(x.id, term ? { ...p, term } : p)
+  }
   const biz = listOps(set, 'businesses')
   const ret1099r = listOps(set, 'retirement')
   const rent = listOps(set, 'rentals')
@@ -197,6 +204,7 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
               <MoneyField label="Total ordinary dividends" box="Box 1a" value={x.ordinaryDividends} onChange={(n) => div.patch(x.id, { ordinaryDividends: n })} />
               <MoneyField label="Qualified dividends" box="Box 1b" value={x.qualifiedDividends} onChange={(n) => div.patch(x.id, { qualifiedDividends: n })} />
               <MoneyField label="Capital gain distributions" box="Box 2a" value={x.capitalGainDistributions} onChange={(n) => div.patch(x.id, { capitalGainDistributions: n })} />
+              <MoneyField label="Section 199A dividends" box="Box 5" hint="REIT dividends; they get the 20% QBI deduction" value={x.section199ADividends} onChange={(n) => div.patch(x.id, { section199ADividends: n })} />
               <MoneyField label="Federal tax withheld" box="Box 4" value={x.federalWithholding} onChange={(n) => div.patch(x.id, { federalWithholding: n })} />
             </>
           )} />
@@ -209,7 +217,7 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
         </Section>
       )}
 
-      <Section title="Sales of stock and other investments" intro="From Form 1099-B. Long-term means you held it more than one year."
+      <Section title="Sales of stock and other investments" intro="From Form 1099-B or 1099-DA. Long-term means you held it more than one year. Enter both dates and the holding period is set for you."
         aside={ret.capitalTransactions.length > 0 ? <span className="pill">Net {usd(result.scheduleD.net)}</span> : undefined}>
         <DocList items={ret.capitalTransactions} addLabel="Add a sale" emptyText="No investment sales."
           title={(x, i) => x.description.trim() || `Sale ${i + 1}`}
@@ -221,8 +229,27 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
                 <Choice legend="Holding period" value={x.term} onChange={(v) => cap.patch(x.id, { term: v })}
                   options={[{ value: 'short', label: 'Short-term', hint: 'One year or less' }, { value: 'long', label: 'Long-term', hint: 'More than one year' }]} />
               </div>
+              <TextField label="Date acquired" placeholder="MM/DD/YYYY" hint="Or VARIOUS / INHERITED" value={x.dateAcquired} onChange={(v) => saleDates(x, { dateAcquired: v.toUpperCase().slice(0, 10) })} />
+              <TextField label="Date sold" placeholder="MM/DD/YYYY" value={x.dateSold} onChange={(v) => saleDates(x, { dateSold: v.replace(/[^0-9/]/g, '').slice(0, 10) })} />
               <MoneyField label="Proceeds" box="Box 1d" value={x.proceeds} onChange={(n) => cap.patch(x.id, { proceeds: n })} />
               <MoneyField label="Cost basis" box="Box 1e" value={x.costBasis} onChange={(n) => cap.patch(x.id, { costBasis: n })} />
+              <div className="span-2">
+                <SelectField label="How it was reported to you" value={x.reporting} onChange={(v) => cap.patch(x.id, { reporting: v as BasisReporting })}
+                  options={[
+                    { value: 'covered', label: 'On a 1099-B or 1099-DA, basis reported to the IRS' },
+                    { value: 'noncovered', label: 'On a 1099-B or 1099-DA, basis not reported to the IRS' },
+                    { value: 'none', label: 'Not on any 1099-B or 1099-DA' }
+                  ]} />
+              </div>
+              <div className="span-2"><Check label="Digital asset (crypto) reported on Form 1099-DA or not reported" checked={x.digitalAsset} onChange={(v) => cap.patch(x.id, { digitalAsset: v })} /></div>
+              <details className="more span-2" open={!!x.adjustmentCode || x.adjustment !== 0}>
+                <summary>Adjustment (wash sale, wrong basis, and others)</summary>
+                <div className="grid">
+                  <TextField label="Adjustment code" hint="W = wash sale, B = basis reported incorrectly" placeholder="W" value={x.adjustmentCode} onChange={(v) => cap.patch(x.id, { adjustmentCode: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) })} />
+                  <MoneyField label="Adjustment amount" hint="Positive adds to the gain (a disallowed wash-sale loss is positive)" allowNegative value={x.adjustment} onChange={(n) => cap.patch(x.id, { adjustment: n })} />
+                </div>
+              </details>
+              <p className="why span-2">Gain or loss {usd(gainOf(x))}. {isAggregated(x) ? 'Goes straight on Schedule D line ' + (x.term === 'short' ? '1a' : '8a') + '.' : `Listed on Form 8949, Box ${boxFor(x)}.`}</p>
             </>
           )} />
         <details className="more">
@@ -281,6 +308,15 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
                     ))}
                   </div>
                 </details>
+                <details className="more span-2" open={b.qbi.w2Wages + b.qbi.ubia > 0 || b.qbi.sstb || result.qbi.form === '8995a'}>
+                  <summary>QBI deduction details{result.qbi.form === '8995a' ? ' (needed: income is above the threshold)' : ''}</summary>
+                  <p className="why">Used only when taxable income is over {usd(result.qbi.threshold)}; then the 20% deduction is limited by wages paid and property, and service businesses are phased out.</p>
+                  <div className="grid">
+                    <MoneyField label="W-2 wages paid to employees" hint="Total of box 1 on the W-2s this business issued" value={b.qbi.w2Wages} onChange={(n) => biz.patch(b.id, { qbi: { ...b.qbi, w2Wages: n } })} />
+                    <MoneyField label="Qualified property (UBIA)" hint="Original cost of depreciable property still in service" value={b.qbi.ubia} onChange={(n) => biz.patch(b.id, { qbi: { ...b.qbi, ubia: n } })} />
+                    <div className="span-2"><Check label="Specified service business" hint="Health, law, accounting, consulting, financial services, performing arts, athletics, or one that relies on the owner’s reputation or skill" checked={b.qbi.sstb} onChange={(v) => biz.patch(b.id, { qbi: { ...b.qbi, sstb: v } })} /></div>
+                  </div>
+                </details>
                 <div className="span-2"><HomeOfficeEditor ho={b.homeOffice} result={res?.homeOffice} onChange={(h) => biz.patch(b.id, { homeOffice: { ...b.homeOffice, ...h } })} /></div>
                 {b.expenses.carAndTruck > 0 && (
                   <details className="more span-2" open>
@@ -328,6 +364,17 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
               <MoneyField label="Federal tax withheld" box="Box 4" value={x.federalWithholding} onChange={(n) => ret1099r.patch(x.id, { federalWithholding: n })} />
               <TextField label="Distribution code (box 7)" placeholder="7" hint="7 = normal, 1 = early, G = rollover" value={x.code} onChange={(v) => ret1099r.patch(x.id, { code: v.toUpperCase().slice(0, 2) })} />
               <div className="span-2"><Check label="The IRA/SEP/SIMPLE box is checked" checked={x.ira} onChange={(v) => ret1099r.patch(x.id, { ira: v })} /></div>
+              {x.code.includes('1') && (
+                <details className="more span-2" open={x.earlyExceptionAmount > 0}>
+                  <summary>Exception to the 10% early-withdrawal tax (Form 5329)</summary>
+                  <div className="grid">
+                    <div className="span-2">
+                      <SelectField label="Exception" value={x.earlyExceptionCode} onChange={(v) => ret1099r.patch(x.id, { earlyExceptionCode: v })} options={EARLY_EXCEPTIONS} />
+                    </div>
+                    <MoneyField label="Amount the exception covers" hint="Up to the taxable amount" value={x.earlyExceptionAmount} onChange={(n) => ret1099r.patch(x.id, { earlyExceptionAmount: n })} />
+                  </div>
+                </details>
+              )}
             </>
           )} />
       </Section>
@@ -407,6 +454,13 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
       </Section>
 
       <Section title="Less common items" intro="Only if they apply to you.">
+        <details className="more" style={{ marginTop: 0 }} open={ret.qbiCarryforward.business + ret.qbiCarryforward.reitPtp > 0}>
+          <summary>Qualified business losses carried from 2024</summary>
+          <div className="grid">
+            <MoneyField label="Qualified business loss carryforward" hint="2024 Form 8995 line 16 or 8995-A line 16 (Schedule C)" value={ret.qbiCarryforward.business} onChange={(n) => set((r) => ({ ...r, qbiCarryforward: { ...r.qbiCarryforward, business: n } }))} />
+            <MoneyField label="REIT/PTP loss carryforward" hint="2024 Form 8995 line 17 or 8995-A line 40" value={ret.qbiCarryforward.reitPtp} onChange={(n) => set((r) => ({ ...r, qbiCarryforward: { ...r.qbiCarryforward, reitPtp: n } }))} />
+          </div>
+        </details>
         <details className="more" style={{ marginTop: 0 }} open={ret.amt.isoBargainElement + ret.amt.privateActivityBondInterest + Math.abs(ret.amt.otherAdjustments) > 0}>
           <summary>Alternative minimum tax (Form 6251)</summary>
           <div className="grid">
@@ -748,8 +802,34 @@ function HsaEditor({ who, name, h, result, onChange }: { who: 'taxpayer' | 'spou
           {h.distributions > h.qualifiedExpenses && (
             <div className="checks"><Check label={who === 'spouse' ? 'My spouse was 65 or older, or disabled, when taking the money' : 'I was 65 or older, or disabled, when taking the money'} hint="No 20% additional tax then" checked={h.exceptionApplies} onChange={(v) => onChange({ exceptionApplies: v })} /></div>
           )}
+          {(result?.excess ?? 0) > 0 && (
+            <div className="checks"><Check label={`The ${usd(result?.excess ?? 0)} over the limit (and its earnings) was or will be withdrawn by the filing deadline`} hint="Otherwise a 6% excise tax applies (Form 5329, Part VII)" checked={h.excessWithdrawn} onChange={(v) => onChange({ excessWithdrawn: v })} /></div>
+          )}
+          <details className="more" open={h.priorExcess > 0 || ((result?.excess ?? 0) > 0 && !h.excessWithdrawn)}>
+            <summary>Excess contributions (Form 5329)</summary>
+            <div className="grid">
+              <MoneyField label="Excess carried from 2024" hint="2024 Form 5329 line 48" value={h.priorExcess} onChange={(n) => onChange({ priorExcess: n })} />
+              <MoneyField label="HSA value on December 31, 2025" hint="Including 2025 contributions made in 2026" value={h.yearEndValue} onChange={(n) => onChange({ yearEndValue: n })} />
+            </div>
+          </details>
         </>
       )}
     </div>
   )
 }
+
+const EARLY_EXCEPTIONS = [
+  { value: '', label: 'Choose the exception' },
+  { value: '01', label: '01 — Left the employer in or after the year you turned 55 (plans only)' },
+  { value: '02', label: '02 — Series of substantially equal periodic payments' },
+  { value: '03', label: '03 — Total and permanent disability' },
+  { value: '04', label: '04 — Death of the account owner' },
+  { value: '05', label: '05 — Medical expenses above 7.5% of AGI' },
+  { value: '06', label: '06 — Qualified domestic relations order (plans only)' },
+  { value: '07', label: '07 — Health insurance while unemployed (IRAs only)' },
+  { value: '08', label: '08 — Higher education expenses (IRAs only)' },
+  { value: '09', label: '09 — First home, up to $10,000 (IRAs only)' },
+  { value: '10', label: '10 — IRS levy' },
+  { value: '11', label: '11 — Qualified reservist distribution' },
+  { value: '12', label: '12 — Other (see the Form 5329 instructions)' }
+]

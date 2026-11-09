@@ -14,20 +14,20 @@ the browser's local storage and can be downloaded as a JSON file.
 | Area | Supported |
 | --- | --- |
 | Filing status | Single, MFJ, MFS, head of household, qualifying surviving spouse |
-| Income | W-2 (boxes 1–6), 1099-INT, 1099-DIV, 1099-R (IRA, pensions), SSA-1099 with the taxable-benefits worksheet, stock sales (Schedule D), self-employment (Schedule C) with home office (simplified or Form 8829 method), rental real estate and royalties (Schedule E) with the $25,000 passive-loss allowance, unemployment, other income |
+| Income | W-2 (boxes 1–6), 1099-INT, 1099-DIV, 1099-R (IRA, pensions), SSA-1099 with the taxable-benefits worksheet, stock and digital-asset sales (Schedule D and Form 8949: every box A–L, dates, wash-sale and other adjustments), self-employment (Schedule C) with home office (simplified or Form 8829 method), rental real estate and royalties (Schedule E) with the $25,000 passive-loss allowance, unemployment, other income |
 | Adjustments (Schedule 1) | Half of SE tax, SE health insurance, HSA (Form 8889: prorated limits, catch-up, family split, taxable distributions and 20% tax), IRA, student loan interest (with phase-out), educator expenses |
 | New 2025 deductions (Schedule 1-A) | Tips, overtime, car loan interest, $6,000 senior deduction, with phase-outs |
 | Deductions | Standard (incl. 65+/blind and dependent rules) or itemized (Schedule A, $40,000 SALT cap with phase-down) |
-| QBI | Form 8995 deduction below the income threshold |
+| QBI | Form 8995 below the threshold; Form 8995-A above it (W-2 wage and UBIA limit, phase-in, specified service businesses), REIT dividends, loss netting and carryforwards |
 | Tax | IRS Tax Table (< $100,000), Tax Computation Worksheet, Qualified Dividends & Capital Gain worksheet |
 | Alternative minimum tax | Form 6251 with ISO, private activity bond and other adjustments, exemption phase-out, 26%/28% rates and Part III for capital gains |
-| Other taxes (Schedule 2) | Self-employment tax (Schedule SE), Additional Medicare Tax (8959), Net Investment Income Tax (8960), 10% tax on early retirement distributions |
+| Other taxes (Schedule 2) | Self-employment tax (Schedule SE), Additional Medicare Tax (8959), Net Investment Income Tax (8960), 10% tax on early retirement distributions with Form 5329 exceptions, 6% tax on excess HSA contributions (Form 5329 Part VII) |
 | Credits | Saver's Credit (Form 8880), Earned Income Credit (Schedule EIC), Child Tax Credit $2,200 / credit for other dependents / refundable ACTC (Schedule 8812), child and dependent care (Form 2441), American Opportunity and Lifetime Learning (Form 8863) |
 | Payments | Withholding, Additional Medicare withholding, excess Social Security, quarterly estimated payments |
 | Penalty | Estimated tax penalty (Form 2210 Part I and the 2025 Penalty Worksheet, 7%), with the 2024 safe harbor |
 
 **IRS forms (PDF):** the Review step fills the official 2025 IRS PDFs in the browser and downloads one
-print-ready file: Form 1040, Schedules 1, 1-A, 2, 3, A, B, C, D, E, SE, EIC, 8812, Forms 2441, 6251, 8863, 8880, 8889, 8959, 8960, 8995, and the
+print-ready file: Form 1040, Schedules 1, 1-A, 2, 3, A, B, C, D, E, SE, EIC, 8812, Forms 2441, 5329, 6251, 8863, 8880, 8889, 8949, 8995-A, 8959, 8960, 8995, and the
 1040-V payment voucher when tax is owed. The blank forms live in `public/forms/2025` (official IRS PDFs).
 
 ## For preparers and families
@@ -44,8 +44,8 @@ print-ready file: Form 1040, Schedules 1, 1-A, 2, 3, A, B, C, D, E, SE, EIC, 881
 
 **Try it:** the “Try an example” link fills in a made-up household so you can see every step.
 
-**Not yet supported:** depreciation schedules (Form 4562), Form 8582 detail, Form 5329 exceptions, Form 8995-A,
-K-1 income, state returns, e-file. Form 8829 is figured and its key lines are shown on Review, but not yet printed. The app flags these when they may apply.
+**Not yet supported:** depreciation schedules (Form 4562), Form 8582 detail, 8995-A Schedules A–D as separate pages,
+K-1 income, Form 4797, state returns, e-file. Form 8829 is figured and its key lines are shown on Review, but not yet printed. The app flags these when they may apply.
 
 ## Project layout
 

@@ -7,8 +7,8 @@ import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import * as lib from 'pdf-lib'
 import { computeReturn } from '../engine/compute.ts'
-import { emptyBusiness, emptyDependent, emptyHomeOffice, emptyHsa, emptyProvider, emptyRental, emptyReturn, emptyStudent, empty1099Div, empty1099R, emptySocialSecurity, emptyW2 } from '../engine/model.ts'
-import type { TaxReturnInput } from '../engine/model.ts'
+import { emptyBusiness, emptyDependent, emptyHomeOffice, emptyHsa, emptyProvider, emptyRental, emptyReturn, emptyStudent, emptyTransaction, empty1099Div, empty1099R, emptySocialSecurity, emptyW2 } from '../engine/model.ts'
+import type { CapitalTransaction, TaxReturnInput } from '../engine/model.ts'
 import { buildPacket2025 } from './irs2025.ts'
 import { buildPdf, fillForm, findField } from './fill.ts'
 import type { FillProblem } from './fill.ts'
@@ -33,7 +33,7 @@ const busy = (): TaxReturnInput => ({
   w2s: [w2('taxpayer', 230000, 40000), w2('spouse', 30000, 3000)],
   interest: [{ id: 'i1', payer: 'Harbor Bank', interest: 2500, taxExemptInterest: 0, federalWithholding: 0 }],
   dividends: [{ ...empty1099Div(), payer: 'Index Fund', ordinaryDividends: 6000, qualifiedDividends: 5000, capitalGainDistributions: 400 }],
-  capitalTransactions: [{ id: 'c1', description: 'XYZ', term: 'long', proceeds: 20000, costBasis: 12000 }],
+  capitalTransactions: [{ ...emptyTransaction(), id: 'c1', description: 'XYZ', term: 'long', proceeds: 20000, costBasis: 12000 }],
   businesses: [{ ...emptyBusiness('spouse'), name: 'Rivera Studio', activity: 'Photography', businessCode: '541920', required1099s: false, grossReceipts: 40000, expenses: { ...emptyBusiness().expenses, supplies: 5000, carAndTruck: 1200, other: 300 }, vehicle: { ...emptyBusiness().vehicle, placedInService: '03/15/2022', businessMiles: 1700, commutingMiles: 0, otherMiles: 9000 } }],
   retirement: [{ ...empty1099R(), payer: 'IRA Co', grossDistribution: 5000, taxableAmount: 5000, code: '1', ira: true }],
   socialSecurity: [{ ...emptySocialSecurity(), netBenefits: 12000 }],
@@ -205,4 +205,82 @@ test('rentals, HSA, home office and AMT print on Schedule E, Forms 8889 and 6251
   const { bytes, problems } = await buildPdf(lib, packet.forms, load)
   assert.deepEqual(problems, [])
   if (process.env.PDF_OUT3) await writeFile(process.env.PDF_OUT3, bytes)
+})
+
+test('Form 8995-A prints the wage limit, the phase-in, and a second sheet for a fourth business', async () => {
+  const biz = (name: string, receipts: number, w2Wages: number, sstb = false) => ({
+    ...emptyBusiness('spouse'), name, activity: 'Services', businessCode: '541990', required1099s: false, grossReceipts: receipts,
+    qbi: { w2Wages, ubia: 20000, sstb }
+  })
+  const ret: TaxReturnInput = {
+    ...busy(),
+    w2s: [w2('taxpayer', 300000, 60000)],
+    dividends: [{ ...empty1099Div(), payer: 'REIT Fund', ordinaryDividends: 3000, qualifiedDividends: 0, section199ADividends: 2500 }],
+    businesses: [biz('Studio', 60000, 10000), biz('Consulting', 40000, 0, true), biz('Shop', 30000, 4000), biz('Rentals Co', 10000, 0)]
+  }
+  const res = computeReturn(ret)
+  assert.equal(res.qbi.form, '8995a')
+  assert.ok(res.qbi.phaseIn, `taxable income ${res.qbi.taxableIncomeBeforeQbi} should be inside the phase-in range`)
+  const packet = buildPacket2025(ret, res)
+  const ids = packet.forms.map((f) => f.id)
+  assert.ok(ids.includes('8995a') && ids.includes('8995a-2') && !ids.includes('8995'), ids.join(', '))
+  const a = packet.forms.find((f) => f.id === '8995a')!
+  assert.equal(a.values['f2_46[0]'], res.qbi.deduction.toLocaleString('en-US'))
+  assert.equal(a.values['Table_PartI[0].RowB[0].c1_4[0]'], true)
+  assert.ok(packet.notIncluded.some((x) => x.startsWith('Schedule A (Form 8995-A)')))
+  assert.equal(res.f1040['13a'], res.qbi.deduction)
+  const { bytes, problems } = await buildPdf(lib, packet.forms, load)
+  assert.deepEqual(problems, [])
+  if (process.env.PDF_OUT4) await writeFile(process.env.PDF_OUT4, bytes)
+})
+
+test('Form 8949 prints one page per box, 11 sales per page, and Schedule D picks up the totals', async () => {
+  const sale = (i: number, p: Partial<CapitalTransaction> = {}): CapitalTransaction => ({
+    ...emptyTransaction(), description: `${10 + i} sh. Fund ${i}`, term: 'short', dateAcquired: '02/03/2025', dateSold: '09/15/2025',
+    proceeds: 1000 + i, costBasis: 900, adjustmentCode: 'W', adjustment: 25, ...p
+  })
+  const ret: TaxReturnInput = {
+    ...busy(),
+    capitalTransactions: [
+      ...Array.from({ length: 13 }, (_, i) => sale(i)),
+      sale(20, { term: 'long', dateAcquired: 'VARIOUS', reporting: 'noncovered', adjustmentCode: '', adjustment: 0, proceeds: 8000, costBasis: 3000 }),
+      sale(21, { term: 'long', dateAcquired: '01/02/2020', adjustmentCode: '', adjustment: 0 })
+    ]
+  }
+  const res = computeReturn(ret)
+  const packet = buildPacket2025(ret, res)
+  const p8949 = packet.forms.filter((f) => f.file === 'f8949.pdf')
+  assert.deepEqual(p8949.map((f) => f.title), ['Form 8949 (Box A, page 1)', 'Form 8949 (Box A, page 2)', 'Form 8949 (Box E)'])
+  assert.deepEqual(p8949.map((f) => f.pages), [[0], [0], [1]])
+  assert.equal(p8949[2].values['Page2[0].c2_1[1]'], true)
+  assert.equal(p8949[0].values['f1_10[0]'], '125')
+  const sd = packet.forms.find((f) => f.id === 'sd')!
+  assert.equal(sd.values['f1_9[0]'], '325')
+  assert.equal(sd.values['f1_34[0]'], '5,000')
+  assert.equal(sd.values['f1_23[0]'], '1,021')
+  const { bytes, problems } = await buildPdf(lib, packet.forms, load)
+  assert.deepEqual(problems, [])
+  if (process.env.PDF_OUT5) await writeFile(process.env.PDF_OUT5, bytes)
+})
+
+test('Form 5329 prints Part I with the exception and Part VII; Schedule 2 line 8 carries both', async () => {
+  const ret: TaxReturnInput = {
+    ...busy(),
+    retirement: [{ ...empty1099R(), payer: 'IRA Co', grossDistribution: 12000, taxableAmount: 12000, code: '1', ira: true, earlyExceptionCode: '08', earlyExceptionAmount: 4000 }],
+    hsa: { taxpayer: { ...emptyHsa(), coverage: 'self', personalContributions: 6000, yearEndValue: 15000 }, spouse: emptyHsa() }
+  }
+  const res = computeReturn(ret)
+  const packet = buildPacket2025(ret, res)
+  const f = packet.forms.find((x) => x.id === '5329-taxpayer')!
+  assert.ok(f, packet.forms.map((x) => x.id).join(', '))
+  assert.deepEqual(f.pages, [0, 1])
+  assert.equal(f.values['f1_10[0]'], '08')
+  assert.equal(f.values['f1_13[0]'], '800')
+  assert.equal(f.values['f2_24[0]'], (res.form5329[0].line49).toLocaleString('en-US'))
+  const s2 = packet.forms.find((x) => x.id === 's2')!
+  assert.equal(s2.values['f1_19[0]'], (800 + res.form5329[0].line49).toLocaleString('en-US'))
+  assert.equal(s2.values['Line8_ReadOrder[0].c1_6[0]'], false)
+  const { bytes, problems } = await buildPdf(lib, packet.forms, load)
+  assert.deepEqual(problems, [])
+  if (process.env.PDF_OUT6) await writeFile(process.env.PDF_OUT6, bytes)
 })

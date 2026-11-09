@@ -85,6 +85,8 @@ export interface Form1099R {
   /** Box 4 */ federalWithholding: number
   /** Box 7 distribution code */ code: string
   /** IRA/SEP/SIMPLE box checked */ ira: boolean
+  /** Form 5329 line 2 exception number (01–22) for an early distribution, '' if none. */ earlyExceptionCode: string
+  /** Part of the taxable amount the exception covers. */ earlyExceptionAmount: number
 }
 
 export interface SocialSecurityBenefits {
@@ -147,15 +149,25 @@ export interface Form1099Div {
   /** Box 1a */ ordinaryDividends: number
   /** Box 1b */ qualifiedDividends: number
   /** Box 2a */ capitalGainDistributions: number
+  /** Box 5: section 199A (qualified REIT) dividends, part of box 1a. */ section199ADividends: number
   /** Box 4 */ federalWithholding: number
 }
+
+/** How the sale was reported to you (Form 8949 box): covered = basis reported to the IRS. */
+export type BasisReporting = 'covered' | 'noncovered' | 'none'
 
 export interface CapitalTransaction {
   id: string
   description: string
   term: 'short' | 'long'
+  /** MM/DD/YYYY, or VARIOUS / INHERITED. */ dateAcquired: string
+  /** MM/DD/YYYY. */ dateSold: string
   proceeds: number
   costBasis: number
+  reporting: BasisReporting
+  /** Reported on Form 1099-DA (digital assets) rather than 1099-B. */ digitalAsset: boolean
+  /** Form 8949 column (f), e.g. W for a wash sale, B for incorrect basis. */ adjustmentCode: string
+  /** Form 8949 column (g); positive increases the gain (a disallowed wash-sale loss is positive). */ adjustment: number
 }
 
 export interface BusinessExpenses {
@@ -230,11 +242,20 @@ export interface ScheduleCBusiness {
   allAtRisk: boolean
   vehicle: VehicleInfo
   homeOffice: HomeOffice
+  /** Form 8995-A inputs, used only above the QBI threshold. */
+  qbi: BusinessQbi
   grossReceipts: number
   returnsAndAllowances: number
   costOfGoodsSold: number
   otherIncome: number
   expenses: BusinessExpenses
+}
+
+export interface BusinessQbi {
+  /** W-2 wages the business paid to employees in 2025. */ w2Wages: number
+  /** Unadjusted basis immediately after acquisition of qualified property (UBIA). */ ubia: number
+  /** Specified service trade or business: health, law, accounting, consulting, financial services, performing arts, athletics, and similar. */
+  sstb: boolean
 }
 
 export type RentalType = 'single' | 'multi' | 'vacation' | 'commercial' | 'land' | 'royalties' | 'selfrental' | 'other'
@@ -286,6 +307,12 @@ export interface HsaAccount {
   qualifiedExpenses: number
   /** Distribution not subject to the 20% additional tax (age 65+, disabled, or died). */
   exceptionApplies: boolean
+  /** Excess contributions carried from 2024 (2024 Form 5329 line 48). */
+  priorExcess: number
+  /** 2025 excess (and its earnings) withdrawn by the due date of the return. */
+  excessWithdrawn: boolean
+  /** Value of the HSA on December 31, 2025, including 2025 contributions made in 2026. 0 = not entered. */
+  yearEndValue: number
 }
 
 export interface Adjustments {
@@ -345,6 +372,8 @@ export interface TaxReturnInput {
   rentalForms1099: { required: boolean | null; filed: boolean }
   /** Passive losses from 2024 that were not allowed (Form 8582), carried into 2025. */
   priorPassiveCarryover: number
+  /** QBI and REIT/PTP losses carried from 2024 (Form 8995 lines 3 and 7, as positive numbers). */
+  qbiCarryforward: { business: number; reitPtp: number }
   hsa: { taxpayer: HsaAccount; spouse: HsaAccount }
   /** Alternative minimum tax inputs (Form 6251) beyond what the return already knows. */
   amt: { isoBargainElement: number; privateActivityBondInterest: number; otherAdjustments: number }
@@ -397,9 +426,12 @@ export const emptyW2 = (owner: Owner = 'taxpayer'): W2 => ({
 })
 export const empty1099Int = (): Form1099Int => ({ id: newId('int'), payer: '', interest: 0, taxExemptInterest: 0, federalWithholding: 0 })
 export const empty1099Div = (): Form1099Div => ({
-  id: newId('div'), payer: '', ordinaryDividends: 0, qualifiedDividends: 0, capitalGainDistributions: 0, federalWithholding: 0
+  id: newId('div'), payer: '', ordinaryDividends: 0, qualifiedDividends: 0, capitalGainDistributions: 0, section199ADividends: 0, federalWithholding: 0
 })
-export const emptyTransaction = (): CapitalTransaction => ({ id: newId('cap'), description: '', term: 'long', proceeds: 0, costBasis: 0 })
+export const emptyTransaction = (): CapitalTransaction => ({
+  id: newId('cap'), description: '', term: 'long', dateAcquired: '', dateSold: '', proceeds: 0, costBasis: 0,
+  reporting: 'covered', digitalAsset: false, adjustmentCode: '', adjustment: 0
+})
 export const emptyVehicle = (): VehicleInfo => ({
   placedInService: '', businessMiles: 0, commutingMiles: 0, otherMiles: 0,
   availableOffDuty: true, anotherVehicle: false, hasEvidence: true, evidenceWritten: true
@@ -427,13 +459,14 @@ export const emptyRental = (owner: Owner = 'taxpayer'): RentalProperty => ({
   rents: 0, royalties: 0, expenses: emptyRentalExpenses()
 })
 export const emptyHsa = (): HsaAccount => ({
-  coverage: 'none', monthsCovered: 12, personalContributions: 0, employerContributions: 0, distributions: 0, qualifiedExpenses: 0, exceptionApplies: false
+  coverage: 'none', monthsCovered: 12, personalContributions: 0, employerContributions: 0, distributions: 0, qualifiedExpenses: 0, exceptionApplies: false,
+  priorExcess: 0, excessWithdrawn: false, yearEndValue: 0
 })
 
 export const emptyBusiness = (owner: Owner = 'taxpayer'): ScheduleCBusiness => ({
   id: newId('biz'), owner, name: '', activity: '', businessCode: '', ein: '', address: '', cityStateZip: '',
   accountingMethod: 'cash', materiallyParticipated: true, startedThisYear: false, required1099s: null, filed1099s: false,
-  allAtRisk: true, vehicle: emptyVehicle(), homeOffice: emptyHomeOffice(), grossReceipts: 0, returnsAndAllowances: 0,
+  allAtRisk: true, vehicle: emptyVehicle(), homeOffice: emptyHomeOffice(), qbi: { w2Wages: 0, ubia: 0, sstb: false }, grossReceipts: 0, returnsAndAllowances: 0,
   costOfGoodsSold: 0, otherIncome: 0, expenses: emptyExpenses()
 })
 export const emptyDependent = (): Dependent => ({
@@ -441,7 +474,8 @@ export const emptyDependent = (): Dependent => ({
   student: false, disabled: false, childRelationship: true, ssn: ''
 })
 export const empty1099R = (owner: Owner = 'taxpayer'): Form1099R => ({
-  id: newId('ret'), owner, payer: '', grossDistribution: 0, taxableAmount: 0, federalWithholding: 0, code: '7', ira: false
+  id: newId('ret'), owner, payer: '', grossDistribution: 0, taxableAmount: 0, federalWithholding: 0, code: '7', ira: false,
+  earlyExceptionCode: '', earlyExceptionAmount: 0
 })
 export const emptySocialSecurity = (owner: Owner = 'taxpayer'): SocialSecurityBenefits => ({ id: newId('ssa'), owner, netBenefits: 0, federalWithholding: 0 })
 export const emptyStudent = (): Student => ({
@@ -474,6 +508,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   rentals: [],
   rentalForms1099: { required: null, filed: false },
   priorPassiveCarryover: 0,
+  qbiCarryforward: { business: 0, reitPtp: 0 },
   hsa: { taxpayer: emptyHsa(), spouse: emptyHsa() },
   amt: { isoBargainElement: 0, privateActivityBondInterest: 0, otherAdjustments: 0 },
   retirement: [],
@@ -565,7 +600,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
         // Older files kept a home office amount among the expenses; move it to the "already figured" method.
         if (expenses.homeOffice > 0 && homeOffice.method === 'none') { homeOffice.method = 'amount'; homeOffice.amount = expenses.homeOffice }
         expenses.homeOffice = 0
-        return { ...emptyBusiness(), ...b, expenses, homeOffice, vehicle: { ...emptyVehicle(), ...(b?.vehicle ?? {}) } }
+        return { ...emptyBusiness(), ...b, expenses, homeOffice, vehicle: { ...emptyVehicle(), ...(b?.vehicle ?? {}) }, qbi: { ...emptyBusiness().qbi, ...(b?.qbi ?? {}) } }
       })
       : [],
     schedule1A: { ...base.schedule1A, ...(r.schedule1A ?? {}) },
@@ -575,6 +610,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     hsa: normalizeHsa(r.hsa, r.adjustments?.hsaDeduction ?? 0),
     adjustments: { ...base.adjustments, ...(r.adjustments ?? {}), hsaDeduction: 0 },
     amt: { ...base.amt, ...(r.amt ?? {}) },
+    qbiCarryforward: { ...base.qbiCarryforward, ...(r.qbiCarryforward ?? {}) },
     savings: { taxpayer: { ...emptySavings(), ...(r.savings?.taxpayer ?? {}) }, spouse: { ...emptySavings(), ...(r.savings?.spouse ?? {}) } },
     priorYear: { ...base.priorYear, ...(r.priorYear ?? {}) },
     payments: normalizePayments(r.payments)

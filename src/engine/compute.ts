@@ -6,6 +6,9 @@
  */
 import type { Dependent, HomeOffice, HsaAccount, Owner, Person, ScheduleCBusiness, TaxReturnInput } from './model.ts'
 import * as R from './rules2025.ts'
+import { qbiDeduction } from './qbi.ts'
+import { gainOf, holdingTermFromDates, isAggregated, parseDate, withDefaults } from './capital.ts'
+import type { QbiResult } from './qbi.ts'
 import type { FilingStatus } from './rules2025.ts'
 
 export type IssueLevel = 'error' | 'warning' | 'info'
@@ -26,6 +29,12 @@ export interface ScheduleCResult {
   /** Line 29. */ tentativeProfit: number
   homeOffice: HomeOfficeResult
   /** Line 31. */ netProfit: number
+}
+export interface Form5329Result {
+  owner: Owner
+  /** Part I */ line1: number; line2: number; exceptionCode: string; line3: number; line4: number
+  /** Part VII */ line42: number; line43: number; line44: number; line45: number; line46: number; line47: number; line48: number; line49: number
+  /** False when only the full 10% tax is owed: it then goes straight on Schedule 2 line 8. */ required: boolean
 }
 export interface RentalResult { id: string; address: string; income: number; expenses: number; net: number; personalUseWarning: boolean }
 export interface ScheduleSEResult { owner: Owner; netEarnings: number; socialSecurityTax: number; medicareTax: number; total: number }
@@ -48,8 +57,9 @@ export interface TaxReturnResult {
   scheduleD: { shortTerm: number; longTerm: number; net: number; allowedLoss: number; carryoverShort: number; carryoverLong: number; preferentialGain: number }
   scheduleSE: ScheduleSEResult[]
   /** total = Part II (line 21, Form 1040 line 23); amt is Part I (line 1040 line 17). */
-  schedule2: { amt: number; selfEmploymentTax: number; additionalMedicareTax: number; netInvestmentIncomeTax: number; earlyDistributionTax: number; hsaAdditionalTax: number; total: number }
+  schedule2: { amt: number; selfEmploymentTax: number; additionalMedicareTax: number; netInvestmentIncomeTax: number; earlyDistributionTax: number; hsaExcessTax: number; hsaAdditionalTax: number; total: number }
   scheduleE: { properties: RentalResult[]; gross: number; priorCarryover: number; magi: number; allowance: number; allowedLoss: number; disallowed: number; net: number }
+  form5329: Form5329Result[]
   form8889: { owner: Owner; coverage: string; months: number; line2: number; line3: number; line7: number; line8: number; line9: number; line12: number; line13: number; line14: number; line15: number; line16: number; line17b: number; excess: number }[]
   form6251: Form6251Result
   schedule3: { dependentCare: number; education: number; saversCredit: number; excessSocialSecurity: number }
@@ -67,7 +77,7 @@ export interface TaxReturnResult {
   form8863: { aotc: number; aotcRefundable: number; llc: number; nonrefundableAllowed: number }
   eic: { qualifyingChildren: number; earnedIncome: number; investmentIncome: number; credit: number; notEligibleBecause: string[] }
   schedule8812: { qualifyingChildren: number; otherDependents: number; creditBeforePhaseout: number; phaseoutReduction: number; nonrefundable: number; refundable: number }
-  qbi: { qualifiedBusinessIncome: number; deduction: number; taxableIncomeBeforeQbi: number; netCapitalGain: number }
+  qbi: QbiResult
   deduction: { standard: number; itemized: number; used: 'standard' | 'itemized' }
   summary: {
     totalIncome: number
@@ -376,8 +386,17 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   const line3a = r(sum(input.dividends.map((d) => Math.min(d.qualifiedDividends, d.ordinaryDividends))))
 
   // Schedule D
-  const stTx = sum(input.capitalTransactions.filter((t) => t.term === 'short').map((t) => t.proceeds - t.costBasis))
-  const ltTx = sum(input.capitalTransactions.filter((t) => t.term === 'long').map((t) => t.proceeds - t.costBasis))
+  const stTx = sum(input.capitalTransactions.filter((t) => t.term === 'short').map(gainOf))
+  const ltTx = sum(input.capitalTransactions.filter((t) => t.term === 'long').map(gainOf))
+  input.capitalTransactions.map(withDefaults).forEach((t, i) => {
+    const label = t.description.trim() || `Sale ${i + 1}`
+    const byDates = holdingTermFromDates(t.dateAcquired, t.dateSold)
+    if (byDates && byDates !== t.term) issues.push({ level: 'warning', step: 'income', message: `${label}: the dates show a ${byDates}-term holding period, but it is marked ${t.term}-term.` })
+    const sold = parseDate(t.dateSold)
+    if (sold && sold.getUTCFullYear() !== 2025) issues.push({ level: 'warning', step: 'income', message: `${label}: the sale date is not in 2025.` })
+    if ((t.adjustment || 0) !== 0 && !t.adjustmentCode.trim()) issues.push({ level: 'warning', step: 'income', message: `${label}: enter the Form 8949 code for the adjustment (for example W for a wash sale).` })
+    if (!isAggregated(t) && (!t.dateSold.trim() || !t.dateAcquired.trim())) issues.push({ level: 'warning', step: 'income', message: `${label}: Form 8949 needs the dates acquired and sold (VARIOUS or INHERITED are allowed for the acquired date).` })
+  })
   const capGainDistributions = sum(input.dividends.map((d) => d.capitalGainDistributions))
   const shortTerm = r(stTx - input.capitalLossCarryover.shortTerm)
   const longTerm = r(ltTx + capGainDistributions - input.capitalLossCarryover.longTerm)
@@ -458,10 +477,6 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   const line4b = r(sum(iraForms.map((d) => d.taxableAmount)))
   const line5a = r(sum(pensionForms.map((d) => d.grossDistribution)))
   const line5b = r(sum(pensionForms.map((d) => d.taxableAmount)))
-  const earlyDistributionBase = sum(retirement.filter((d) => d.code.trim().toUpperCase().includes('1')).map((d) => d.taxableAmount))
-  const earlyDistributionTax = r(earlyDistributionBase * R.EARLY_DISTRIBUTION_RATE)
-  if (earlyDistributionTax > 0) issues.push({ level: 'warning', step: 'income', message: `A 10% additional tax of $${earlyDistributionTax.toLocaleString()} applies to early distributions (code 1). If an exception applies (disability, first home, medical costs and others), Form 5329 can reduce it; that is not figured here.` })
-
   // Form 8889 — Health savings accounts (one per person with coverage)
   const hsaOwners = owners.filter((o) => input.hsa[o].coverage !== 'none')
   const hsaFamilyBoth = joint && input.hsa.taxpayer.coverage === 'family' && input.hsa.spouse.coverage === 'family'
@@ -495,6 +510,43 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   const hsaDeduction = sum(hsaResults.map((x) => x.line13))
   const hsaTaxable = sum(hsaResults.map((x) => x.line16))
   const hsaAdditionalTax = sum(hsaResults.map((x) => x.line17b))
+
+  // Form 5329 — Part I (early distributions) and Part VII (excess HSA contributions), one per person
+  const form5329: Form5329Result[] = owners.map((o) => {
+    const early = retirement.filter((d) => d.owner === o && d.code.trim().toUpperCase().includes('1'))
+    const line1 = r(sum(early.map((d) => pos(d.taxableAmount))))
+    const line2 = r(sum(early.map((d) => Math.min(pos(d.earlyExceptionAmount ?? 0), pos(d.taxableAmount)))))
+    const codes = [...new Set(early.filter((d) => (d.earlyExceptionAmount ?? 0) > 0).map((d) => (d.earlyExceptionCode ?? '').trim()).filter(Boolean))]
+    const line3 = pos(line1 - line2)
+    const line4 = r(line3 * R.EARLY_DISTRIBUTION_RATE)
+    const h: HsaAccount = input.hsa[o]
+    const x = hsaResults.find((y) => y.owner === o)
+    const line42 = r(pos(h.priorExcess ?? 0))
+    const line43 = line42 > 0 && x ? pos(x.line8 - x.line2 - x.line9) : 0
+    const line44 = line42 > 0 && x ? x.line16 : 0
+    const line45 = line43 + line44
+    const line46 = pos(line42 - line45)
+    const line47 = x && !h.excessWithdrawn ? x.excess : 0
+    const line48 = line46 + line47
+    const value = pos(h.yearEndValue ?? 0)
+    const line49 = r(Math.min(line48, value > 0 ? value : line48) * R.EXCESS_CONTRIBUTION_RATE)
+    return {
+      owner: o, line1, line2, exceptionCode: codes.length === 1 ? codes[0].padStart(2, '0') : codes.length > 1 ? '12' : '', line3, line4,
+      line42, line43, line44, line45, line46, line47, line48, line49,
+      required: line2 > 0 || line48 > 0
+    }
+  }).filter((f) => f.line1 > 0 || f.line48 > 0)
+  const earlyDistributionTax = sum(form5329.map((f) => f.line4))
+  const hsaExcessTax = sum(form5329.map((f) => f.line49))
+  form5329.forEach((f) => {
+    const name = (f.owner === 'spouse' ? input.spouse.firstName : input.taxpayer.firstName) || (f.owner === 'spouse' ? 'Your spouse' : 'You')
+    if (f.line4 > 0) issues.push({ level: 'warning', step: 'income', message: `${name}: a 10% additional tax of $${f.line4.toLocaleString()} applies to early retirement distributions (code 1).${f.line2 > 0 ? '' : ' If an exception applies (disability, first home, medical costs and others), enter it on the 1099-R.'}` })
+    if (f.line49 > 0) issues.push({ level: 'warning', step: 'deductions', message: `${name}: 6% excise tax of $${f.line49.toLocaleString()} on excess HSA contributions (Form 5329, Part VII).` })
+    if (f.line48 > 0 && !(input.hsa[f.owner].yearEndValue > 0)) issues.push({ level: 'info', step: 'deductions', message: `${name}: enter the HSA value on December 31, 2025. The 6% tax applies to the smaller of the excess or that value.` })
+  })
+  input.retirement.forEach((d, i) => {
+    if ((d.earlyExceptionAmount ?? 0) > 0 && !/^\d{1,2}$/.test((d.earlyExceptionCode ?? '').trim())) issues.push({ level: 'warning', step: 'income', message: `1099-R #${i + 1}: choose the Form 5329 exception that applies to the early distribution.` })
+  })
 
   // Schedule E Part I — rental real estate and royalties
   const rentalsIn = input.rentals.filter((p) => ownedBy(p.owner))
@@ -646,18 +698,36 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   if (s.carLoanInterest > 0) issues.push({ level: 'info', step: 'deductions', message: 'Car loan interest qualifies only for a new personal-use vehicle assembled in the U.S., bought after 2024. Keep the VIN for Schedule 1-A.' })
   const line13b = tips + overtime + carLoan + senior
 
-  // QBI deduction (Form 8995)
+  // QBI deduction (Form 8995 or 8995-A)
   const tiBeforeQbi = pos(agi - line12 - line13b)
-  const qbiAmount = pos(businessIncome - halfSeTax - seHealth)
-  let line13a = 0
   const netCapitalGainForQbi = line3a + preferentialGain
-  if (qbiAmount > 0) {
-    if (tiBeforeQbi > R.QBI_SIMPLE_THRESHOLD[fs]) {
-      issues.push({ level: 'warning', step: 'review', message: 'Your taxable income is above the Form 8995 threshold. The QBI deduction needs Form 8995-A (wage and property limits), which this app does not calculate, so it is set to $0.' })
-    } else {
-      line13a = r(Math.min(qbiAmount * R.QBI_RATE, pos(tiBeforeQbi - netCapitalGainForQbi) * R.QBI_RATE))
+  const positiveProfit = sum(scheduleCResults.map((b) => pos(b.netProfit)))
+  const qbiInputs = input.businesses.map((b) => {
+    const c = scheduleCResults.find((x) => x.id === b.id)
+    const profit = c?.netProfit ?? 0
+    // Deductions attributable to the business: its share of half the SE tax (by owner) and of SE health insurance.
+    const ownerSe = scheduleSE.find((x) => x.owner === b.owner)?.total ?? 0
+    const ownerProfit = sum(scheduleCResults.filter((x) => x.owner === b.owner).map((x) => pos(x.netProfit)))
+    const seShare = profit > 0 && ownerProfit > 0 ? (ownerSe / 2) * (profit / ownerProfit) : 0
+    const healthShare = profit > 0 && positiveProfit > 0 ? seHealth * (profit / positiveProfit) : 0
+    const person = b.owner === 'spouse' ? input.spouse : input.taxpayer
+    return {
+      id: b.id, name: b.name || 'Business', tin: b.ein || person.ssn, sstb: b.qbi.sstb,
+      qbi: r(profit - seShare - healthShare), w2Wages: pos(b.qbi.w2Wages), ubia: pos(b.qbi.ubia)
     }
+  })
+  const qbi = qbiDeduction({
+    fs, taxableIncomeBeforeQbi: tiBeforeQbi, netCapitalGain: netCapitalGainForQbi, businesses: qbiInputs,
+    priorLoss: input.qbiCarryforward.business, priorReitLoss: input.qbiCarryforward.reitPtp,
+    reitPtp: sum(input.dividends.map((d) => pos(d.section199ADividends)))
+  })
+  const line13a = qbi.deduction
+  if (qbi.form === '8995a') {
+    if (qbi.businesses.some((b) => b.sstb && b.excluded)) issues.push({ level: 'info', step: 'review', message: 'Specified service businesses get no QBI deduction at this taxable income (Form 8995-A, Schedule A).' })
+    if (qbi.businesses.some((b) => !b.excluded && b.line2 > 0 && b.line4 === 0 && b.line7 === 0)) issues.push({ level: 'warning', step: 'income', message: 'Your taxable income is above the QBI threshold, so the deduction depends on W-2 wages paid and property (UBIA) for each business. Enter them under the business if it had employees or property; otherwise the deduction may be limited or zero.' })
   }
+  if (qbi.lossCarryforward > 0) issues.push({ level: 'info', step: 'review', message: `Qualified business loss of $${qbi.lossCarryforward.toLocaleString()} carries forward to 2026 (Form 8995 line 16).` })
+  if (input.rentals.some((x) => x.rents > 0)) issues.push({ level: 'info', step: 'income', message: 'Rental income is not included in the QBI deduction. A rental that qualifies as a trade or business (for example under the Rev. Proc. 2019-38 safe harbor) needs to be added by hand.' })
   const line14 = line12 + line13a + line13b
   const line15 = pos(line11 - line14)
 
@@ -799,7 +869,7 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
   const addlMedicare = r(pos(totalMedicareWages - threshold) * R.ADDITIONAL_MEDICARE_RATE + pos(seEarnings - pos(threshold - totalMedicareWages)) * R.ADDITIONAL_MEDICARE_RATE)
   const netInvestmentIncome = pos(line2b + line3b + line7 + rentalNet)
   const niit = r(Math.min(netInvestmentIncome, pos(magi - threshold)) * R.NIIT_RATE)
-  const schedule2Total = seTax + addlMedicare + niit + earlyDistributionTax + hsaAdditionalTax
+  const schedule2Total = seTax + addlMedicare + niit + earlyDistributionTax + hsaExcessTax + hsaAdditionalTax
   const line23 = schedule2Total
   const line24 = line22 + line23
 
@@ -898,7 +968,7 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
     scheduleC: scheduleCResults,
     scheduleD: { shortTerm, longTerm, net: netCapital, allowedLoss: line7 < 0 ? -line7 : 0, carryoverShort, carryoverLong, preferentialGain },
     scheduleSE,
-    schedule2: { amt: line17, selfEmploymentTax: seTax, additionalMedicareTax: addlMedicare, netInvestmentIncomeTax: niit, earlyDistributionTax, hsaAdditionalTax, total: schedule2Total },
+    schedule2: { amt: line17, selfEmploymentTax: seTax, additionalMedicareTax: addlMedicare, netInvestmentIncomeTax: niit, earlyDistributionTax, hsaExcessTax, hsaAdditionalTax, total: schedule2Total },
     schedule3: { dependentCare: careAllowed, education: educationAllowed, saversCredit: saverAllowed, excessSocialSecurity: line31 },
     form2441: {
       qualifyingPersons: carePersons, expensesUsed: careExpensesUsed, rate: careRate, credit: careCredit,
@@ -907,6 +977,7 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
     },
     scheduleE: { properties: rentalResults, gross: r(sum(rentalResults.map((x) => x.net))), priorCarryover: r(pos(input.priorPassiveCarryover)), magi: r(magiPassive), allowance: r(passiveAllowance), allowedLoss: rentalAllowedLoss, disallowed: rentalDisallowed, net: rentalNet },
     form8889: hsaResults,
+    form5329,
     form6251: amtResult,
     form8880: { people: saverLines, line7: saverLine7, rate: saverRate, tentative: saverTentative, limit: saverLimit, credit: saverAllowed },
     form2210: penalty,
@@ -914,7 +985,7 @@ export function computeReturn(input: TaxReturnInput): TaxReturnResult {
     form8863: { aotc, aotcRefundable, llc, nonrefundableAllowed: educationAllowed },
     eic: { qualifyingChildren: eicChildren, earnedIncome, investmentIncome, credit: eic, notEligibleBecause: eic > 0 ? [] : eicReasons },
     schedule8812: { qualifyingChildren, otherDependents, creditBeforePhaseout, phaseoutReduction, nonrefundable, refundable },
-    qbi: { qualifiedBusinessIncome: r(qbiAmount), deduction: line13a, taxableIncomeBeforeQbi: tiBeforeQbi, netCapitalGain: netCapitalGainForQbi },
+    qbi,
     deduction: { standard, itemized: itemizedTotal, used },
     summary: {
       totalIncome: line9, agi, taxableIncome: line15, totalTax: line24, totalPayments: line33,
