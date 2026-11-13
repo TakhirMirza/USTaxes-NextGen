@@ -19,7 +19,7 @@ import './app.css'
 
 const STEPS = [
   { path: 'about', title: 'About you', blurb: 'Filing status and household' },
-  { path: 'income', title: 'Income', blurb: 'W-2, 1099, retirement, business, rentals' },
+  { path: 'income', title: 'Income', blurb: 'W-2, 1099, retirement, business, rentals, K-1' },
   { path: 'deductions', title: 'Deductions', blurb: 'HSA, adjustments, 2025 deductions, Schedule A' },
   { path: 'payments', title: 'Credits & payments', blurb: 'EIC, child, care, education, saver’s credits' },
   { path: 'review', title: 'Review', blurb: 'Form 1040, IRS forms, letter' }
@@ -125,7 +125,7 @@ function Workspace({ ret, set, result, current, preparer, meta, onExample, onSta
         </footer>
         <p className="disclaimer">
           USTaxes NextGen is an open-source preparation aid, not tax advice. It prints IRS forms to sign and mail; it does not e-file.
-          Not yet covered: like-kind exchanges, casualty losses, partnerships and S corporations (K-1), foreign income, and state returns.
+          Not yet covered: like-kind exchanges, casualty losses, estates and trusts (K-1 from Form 1041), foreign income, and state returns.
         </p>
       </main>
 

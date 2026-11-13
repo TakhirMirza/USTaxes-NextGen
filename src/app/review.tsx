@@ -186,7 +186,7 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
               <dl className="facts">
                 {result.schedule1.businessIncome !== 0 && <div><dt>Business income</dt><dd>{usd(result.schedule1.businessIncome)}</dd></div>}
                 {result.schedule1.otherGains !== 0 && <div><dt>Other gains or losses (Form 4797)</dt><dd>{usd(result.schedule1.otherGains)}</dd></div>}
-                {result.schedule1.rentalIncome !== 0 && <div><dt>Rental real estate (Schedule E)</dt><dd>{usd(result.schedule1.rentalIncome)}</dd></div>}
+                {result.schedule1.rentalIncome !== 0 && <div><dt>Rentals, partnerships and S corporations (Schedule E)</dt><dd>{usd(result.schedule1.rentalIncome)}</dd></div>}
                 {result.schedule1.unemployment > 0 && <div><dt>Unemployment</dt><dd>{usd(result.schedule1.unemployment)}</dd></div>}
                 {result.schedule1.hsaTaxable > 0 && <div><dt>Taxable HSA distributions</dt><dd>{usd(result.schedule1.hsaTaxable)}</dd></div>}
                 {result.schedule1.otherIncome > 0 && <div><dt>Other income</dt><dd>{usd(result.schedule1.otherIncome)}</dd></div>}
@@ -342,6 +342,15 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
               </dl>
             </details>
           ))}
+          {result.k1.rows.length > 0 && (
+            <details><summary>Schedule E, Part II <span>Partnerships and S corporations</span></summary>
+              <dl className="facts">
+                {result.k1.rows.map((x) => <div key={x.id}><dt>{x.name} ({x.kind === 'scorp' ? 'S' : 'P'}{x.passive ? ', passive' : ''})</dt><dd>{usd(x.h + x.k - x.g - x.i - x.j)}</dd></div>)}
+                <div><dt>Total (line 32)</dt><dd>{usd(result.k1.line32)}</dd></div>
+                {result.k1.disallowed > 0 && <div><dt>Passive loss carried to 2026</dt><dd>{usd(result.k1.disallowed)}</dd></div>}
+              </dl>
+            </details>
+          )}
           {result.form4797.sales.length > 0 && (
             <details><summary>Form 4797 <span>Sales of business property</span></summary>
               <dl className="facts">

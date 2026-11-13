@@ -237,6 +237,33 @@ export interface DepreciableAsset {
   vehicle: { businessMiles: number; commutingMiles: number; otherMiles: number; availableOffDuty: boolean; ownerUse: boolean; anotherVehicle: boolean; evidence: boolean; evidenceWritten: boolean }
 }
 
+/** Schedule K-1 from a partnership (Form 1065) or an S corporation (Form 1120-S). Box numbers are for the partnership K-1; S corporation boxes differ. */
+export interface K1 {
+  id: string
+  owner: Owner
+  kind: 'partnership' | 'scorp'
+  entityName: string
+  ein: string
+  /** You materially participated (nonpassive). */ materialParticipation: boolean
+  /** Your basis or amount at risk may be less than a loss (Form 7203 / 6198). */ basisLimited: boolean
+  /** Box 1 */ ordinary: number
+  /** Box 2 */ rentalRealEstate: number
+  /** Box 3 */ otherRental: number
+  /** Box 4c (partnership only) */ guaranteedPayments: number
+  /** Box 5 (S corp box 4) */ interest: number
+  /** Box 6a (S corp 5a) */ ordinaryDividends: number
+  /** Box 6b (S corp 5b) */ qualifiedDividends: number
+  /** Box 7 (S corp 6) */ royalties: number
+  /** Box 8 (S corp 7) */ shortTermGain: number
+  /** Box 9a (S corp 8a) */ longTermGain: number
+  /** Box 10 (S corp 9) */ section1231: number
+  /** Box 12 (S corp 11) */ section179: number
+  /** Box 14 code A (partnership only) */ seEarnings: number
+  /** Box 20 code Z (S corp box 17 code V): section 199A information. */
+  qbi: { income: number; w2Wages: number; ubia: number; sstb: boolean }
+  /** Passive loss from this activity disallowed in 2024. */ priorPassiveCarryover: number
+}
+
 /** Sale of business or rental property (Form 4797). */
 export interface PropertySale {
   id: string
@@ -443,6 +470,8 @@ export interface TaxReturnInput {
   section179Carryover: number
   /** Sales of business and rental property (Form 4797). */
   propertySales: PropertySale[]
+  /** Schedules K-1 from partnerships and S corporations. */
+  k1s: K1[]
   /** Net section 1231 losses from 2020–2024 not yet recaptured (Form 4797 line 8). */
   prior1231Losses: number
   hsa: { taxpayer: HsaAccount; spouse: HsaAccount }
@@ -535,6 +564,12 @@ export const emptyAsset = (propertyClass: PropertyClass = '5'): DepreciableAsset
   bonus: 'auto', acquiredBeforeJan20: false, priorSpecial: 0, manual: false, manualAmount: 0, listed: 'none',
   vehicle: { businessMiles: 0, commutingMiles: 0, otherMiles: 0, availableOffDuty: true, ownerUse: true, anotherVehicle: false, evidence: true, evidenceWritten: true }
 })
+export const emptyK1 = (owner: Owner = 'taxpayer'): K1 => ({
+  id: newId('k1'), owner, kind: 'partnership', entityName: '', ein: '', materialParticipation: true, basisLimited: false,
+  ordinary: 0, rentalRealEstate: 0, otherRental: 0, guaranteedPayments: 0, interest: 0, ordinaryDividends: 0, qualifiedDividends: 0,
+  royalties: 0, shortTermGain: 0, longTermGain: 0, section1231: 0, section179: 0, seEarnings: 0,
+  qbi: { income: 0, w2Wages: 0, ubia: 0, sstb: false }, priorPassiveCarryover: 0
+})
 export const emptySale = (): PropertySale => ({
   id: newId('sale'), description: '', kind: '1245', usedIn: 'business', dateAcquired: '', dateSold: '', salesPrice: 0, costBasis: 0, depreciation: 0, reportedOn1099: true
 })
@@ -591,6 +626,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   qbiCarryforward: { business: 0, reitPtp: 0 },
   section179Carryover: 0,
   propertySales: [],
+  k1s: [],
   prior1231Losses: 0,
   hsa: { taxpayer: emptyHsa(), spouse: emptyHsa() },
   amt: { isoBargainElement: 0, privateActivityBondInterest: 0, otherAdjustments: 0 },
@@ -697,6 +733,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     amt: { ...base.amt, ...(r.amt ?? {}) },
     qbiCarryforward: { ...base.qbiCarryforward, ...(r.qbiCarryforward ?? {}) },
     propertySales: arr(r.propertySales, emptySale),
+    k1s: arr(r.k1s, emptyK1).map((k) => ({ ...k, qbi: { ...emptyK1().qbi, ...(k.qbi ?? {}) } })),
     savings: { taxpayer: { ...emptySavings(), ...(r.savings?.taxpayer ?? {}) }, spouse: { ...emptySavings(), ...(r.savings?.spouse ?? {}) } },
     priorYear: { ...base.priorYear, ...(r.priorYear ?? {}) },
     payments: normalizePayments(r.payments)

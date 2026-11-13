@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import * as lib from 'pdf-lib'
 import { computeReturn } from '../engine/compute.ts'
-import { emptyAsset, emptySale, emptyBusiness, emptyDependent, emptyHomeOffice, emptyHsa, emptyProvider, emptyRental, emptyReturn, emptyStudent, emptyTransaction, empty1099Div, empty1099R, emptySocialSecurity, emptyW2 } from '../engine/model.ts'
+import { emptyAsset, emptyK1, emptySale, emptyBusiness, emptyDependent, emptyHomeOffice, emptyHsa, emptyProvider, emptyRental, emptyReturn, emptyStudent, emptyTransaction, empty1099Div, empty1099R, emptySocialSecurity, emptyW2 } from '../engine/model.ts'
 import type { CapitalTransaction, DepreciableAsset, PropertySale, TaxReturnInput } from '../engine/model.ts'
 import { buildPacket2025 } from './irs2025.ts'
 import { buildPdf, fillForm, findField } from './fill.ts'
@@ -371,4 +371,32 @@ test('a Form 4797 gain alone still brings in Schedule D', () => {
   }
   const ids = buildPacket2025(ret, computeReturn(ret)).forms.map((f) => f.id)
   assert.ok(ids.includes('sd') && ids.includes('4797'), ids.join(', '))
+})
+
+test('Schedule E page 2 prints K-1s, with and without rental properties', async () => {
+  const k1s = [
+    { ...emptyK1(), entityName: 'Alpha Partners LLC', ein: '123456789', ordinary: 30000, guaranteedPayments: 10000, seEarnings: 40000 },
+    { ...emptyK1('spouse'), entityName: 'Beta Inc', kind: 'scorp' as const, materialParticipation: false, ordinary: -8000, ein: '987654321' }
+  ]
+  const withRentals: TaxReturnInput = { ...busy(), k1s, rentals: [{ ...emptyRental(), address: '9 Elm St', rents: 20000, expenses: { ...emptyRental().expenses, taxes: 3000 } }] }
+  const res = computeReturn(withRentals)
+  const packet = buildPacket2025(withRentals, res)
+  const se = packet.forms.find((f) => f.id === 'se')!
+  assert.deepEqual(se.pages, [0, 1])
+  assert.equal(se.values['f2_4[0]'], 'P')
+  assert.equal(se.values['f2_7[0]'], 'S')
+  assert.equal(se.values['f2_78[0]'], res.schedule1.rentalIncome.toLocaleString('en-US'))
+  const { bytes, problems } = await buildPdf(lib, packet.forms, load)
+  assert.deepEqual(problems, [])
+  if (process.env.PDF_OUT9) await writeFile(process.env.PDF_OUT9, bytes)
+  const gains: TaxReturnInput = { ...busy(), capitalTransactions: [], dividends: [], k1s: [{ ...k1s[0], longTermGain: 3000, interest: 2000 }] }
+  const pg = buildPacket2025(gains, computeReturn(gains))
+  const sd = pg.forms.find((f) => f.id === 'sd')
+  assert.ok(sd, 'Schedule D for K-1 gains')
+  assert.equal(sd!.values['f1_40[0]'], '3,000')
+  assert.ok(Object.values(pg.forms.find((f) => f.id === 'sb')!.values).includes('Alpha Partners LLC (K-1)'))
+  const onlyK1: TaxReturnInput = { ...busy(), k1s, rentals: [] }
+  const p2 = buildPacket2025(onlyK1, computeReturn(onlyK1))
+  assert.deepEqual(p2.forms.find((f) => f.id === 'se')!.pages, [1])
+  assert.deepEqual((await buildPdf(lib, p2.forms, load)).problems, [])
 })

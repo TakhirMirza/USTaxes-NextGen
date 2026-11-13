@@ -29,6 +29,7 @@ export interface Form4797Result {
   /** Part I */ line2: number; line6: number; line7: number; line8: number; line9: number
   /** Part II */ line10: number; line11: number; line12: number; line13: number; line17: number; line18b: number
   /** Part III */ line30: number; line31: number; line32: number
+  /** Section 1231 gain or loss from Schedules K-1 (on line 2). */ k1Section1231: { name: string; amount: number }[]
   /** Long-term capital gain for Schedule D line 11. */ scheduleDGain: number
   /** Unrecaptured section 1250 gain for Schedule D line 19. */ unrecaptured1250: number
   /** Net gain from rental property (net investment income). */ rentalNet: number
@@ -36,7 +37,7 @@ export interface Form4797Result {
   issues: string[]
 }
 
-export function form4797(sales: PropertySale[], prior1231Losses: number): Form4797Result {
+export function form4797(sales: PropertySale[], prior1231Losses: number, k1Section1231: { name: string; amount: number }[] = []): Form4797Result {
   const issues: string[] = []
   const results: SaleResult[] = sales.map((x, i) => {
     const label = x.description.trim() || `Property sale ${i + 1}`
@@ -66,7 +67,7 @@ export function form4797(sales: PropertySale[], prior1231Losses: number): Form47
   })
   const sum = (xs: number[]): number => xs.reduce((a, b) => a + b, 0)
   const line1a = r(sum(sales.filter((x) => x.reportedOn1099).map((x) => x.salesPrice)))
-  const line2 = sum(results.filter((x) => x.part === 'I').map((x) => x.gain))
+  const line2 = sum(results.filter((x) => x.part === 'I').map((x) => x.gain)) + sum(k1Section1231.map((x) => x.amount))
   const partIII = results.filter((x) => x.part === 'III')
   const line30 = sum(partIII.map((x) => x.gain))
   const line31 = sum(partIII.map((x) => x.recapture))
@@ -84,7 +85,7 @@ export function form4797(sales: PropertySale[], prior1231Losses: number): Form47
   const unrecaptured1250 = Math.min(sum(results.map((x) => x.unrecaptured1250)), line9)
   const rentalNet = sum(results.filter((x) => x.usedIn === 'rental').map((x) => x.gain))
   return {
-    sales: results, line1a, line2, line6, line7, line8, line9, line10, line11, line12, line13, line17, line18b: line17,
+    sales: results, k1Section1231, line1a, line2, line6, line7, line8, line9, line10, line11, line12, line13, line17, line18b: line17,
     line30, line31, line32, scheduleDGain: line9, unrecaptured1250, rentalNet,
     remaining1231Losses: line7 > 0 ? pos(r(pos(prior1231Losses)) - line7) : r(pos(prior1231Losses)), issues
   }

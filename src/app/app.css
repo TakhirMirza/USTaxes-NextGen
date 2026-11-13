@@ -442,3 +442,4 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .asset > header h4 { margin: 0; font-size: 0.95rem; font-weight: 600; }
 .asset .why { margin: 10px 0 0; }
 .why + .grid { margin-top: 10px; }
+.k1-body > * + * { margin-top: 14px; }

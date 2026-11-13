@@ -11,6 +11,8 @@ import { gainOf, holdingTermFromDates, isAggregated, parseDate, withDefaults } f
 import { NONRES_FIRST_YEAR, assetDepreciation, form4562For, isPersonalProperty, midQuarterApplies, section179 } from './depreciation.ts'
 import type { AssetResult, Form4562Result, Section179Result } from './depreciation.ts'
 import { form4797 } from './sales.ts'
+import { k1Totals } from './k1.ts'
+import type { K1Totals } from './k1.ts'
 import type { Form4797Result } from './sales.ts'
 import type { QbiResult } from './qbi.ts'
 import type { FilingStatus } from './rules2025.ts'
@@ -76,6 +78,7 @@ export interface TaxReturnResult {
   scheduleE: { properties: RentalResult[]; gross: number; priorCarryover: number; magi: number; allowance: number; allowedLoss: number; disallowed: number; net: number }
   form5329: Form5329Result[]
   form4797: Form4797Result
+  k1: K1Totals
   /** Schedule D line 19: unrecaptured section 1250 gain. */ scheduleD19: number
   section179: Section179Result
   form4562: Form4562Result[]
@@ -499,9 +502,12 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
   // ── Income ────────────────────────────────────────────────────────────────
   const line1a = r(sum(w2s.map((w) => w.wages)))
   const line2a = r(sum(input.interest.map((i) => i.taxExemptInterest)))
-  const line2b = r(sum(input.interest.map((i) => i.interest)))
-  const line3b = r(sum(input.dividends.map((d) => d.ordinaryDividends)))
-  const line3a = r(sum(input.dividends.map((d) => Math.min(d.qualifiedDividends, d.ordinaryDividends))))
+  const k1In = (input.k1s ?? []).filter((k) => ownedBy(k.owner))
+  ;(input.k1s ?? []).forEach((k, i) => { if (!ownedBy(k.owner)) issues.push({ level: 'error', step: 'income', message: `K-1 #${i + 1} belongs to your spouse, but this is not a joint return. It is excluded.` }) })
+  const k1Portfolio = k1Totals(k1In, 0)
+  const line2b = r(sum(input.interest.map((i) => i.interest))) + k1Portfolio.interest
+  const line3b = r(sum(input.dividends.map((d) => d.ordinaryDividends))) + k1Portfolio.ordinaryDividends
+  const line3a = r(sum(input.dividends.map((d) => Math.min(d.qualifiedDividends, d.ordinaryDividends)))) + k1Portfolio.qualifiedDividends
 
   // Schedule D
   const stTx = sum(input.capitalTransactions.filter((t) => t.term === 'short').map(gainOf))
@@ -516,12 +522,12 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
     if (!isAggregated(t) && (!t.dateSold.trim() || !t.dateAcquired.trim())) issues.push({ level: 'warning', step: 'income', message: `${label}: Form 8949 needs the dates acquired and sold (VARIOUS or INHERITED are allowed for the acquired date).` })
   })
   const capGainDistributions = sum(input.dividends.map((d) => d.capitalGainDistributions))
-  const shortTerm = r(stTx - input.capitalLossCarryover.shortTerm)
-  const f4797 = form4797(input.propertySales ?? [], input.prior1231Losses ?? 0)
+  const shortTerm = r(stTx - input.capitalLossCarryover.shortTerm + k1Portfolio.shortTermGain)
+  const f4797 = form4797(input.propertySales ?? [], input.prior1231Losses ?? 0, k1Portfolio.section1231)
   f4797.issues.forEach((m) => issues.push({ level: 'warning', step: 'income', message: m }))
   if (f4797.unrecaptured1250 > 0) issues.push({ level: 'info', step: 'income', message: `Unrecaptured section 1250 gain of $${f4797.unrecaptured1250.toLocaleString()} (depreciation on buildings) is taxed at up to 25% using the Schedule D Tax Worksheet.` })
   if (f4797.line12 > 0) issues.push({ level: 'info', step: 'income', message: `$${f4797.line12.toLocaleString()} of the section 1231 gain is ordinary income because of 1231 losses in the last five years (Form 4797 line 12).` })
-  const longTerm = r(ltTx + capGainDistributions - input.capitalLossCarryover.longTerm + f4797.scheduleDGain)
+  const longTerm = r(ltTx + capGainDistributions - input.capitalLossCarryover.longTerm + f4797.scheduleDGain + k1Portfolio.longTermGain)
   const netCapital = shortTerm + longTerm
   const lossLimit = R.CAPITAL_LOSS_LIMIT[fs]
   const line7 = netCapital >= 0 ? netCapital : -Math.min(-netCapital, lossLimit)
@@ -565,7 +571,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
 
   // Schedule SE
   const scheduleSE: ScheduleSEResult[] = owners.map((owner) => {
-    const profit = sum(scheduleCResults.filter((b) => b.owner === owner).map((b) => b.netProfit))
+    const profit = sum(scheduleCResults.filter((b) => b.owner === owner).map((b) => b.netProfit)) + k1Portfolio.seEarnings[owner]
     const earnings = profit * R.SE_NET_EARNINGS_FACTOR
     if (earnings < R.SE_MINIMUM_NET_EARNINGS) return { owner, netEarnings: 0, socialSecurityTax: 0, medicareTax: 0, total: 0 }
     const wagesForSS = sum(w2s.filter((w) => w.owner === owner).map(ssWages))
@@ -712,7 +718,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
   const otherIncome = r(input.otherIncome)
   // MAGI for the $25,000 allowance: AGI without passive losses, taxable Social Security, IRA,
   // student loan interest, or the deductible half of SE tax.
-  const magiPassive = line1z + line2b + line3b + line4b + line5b + line7 + businessIncome + f4797.line18b + unemployment + otherIncome + hsaTaxable -
+  const magiPassive = line1z + line2b + line3b + line4b + line5b + line7 + businessIncome + f4797.line18b + k1Portfolio.line32 + unemployment + otherIncome + hsaTaxable -
     (Math.min(pos(input.adjustments.educatorExpenses), joint ? 600 : 300) + hsaDeduction)
   let rentalAllowedLoss = 0
   let rentalDisallowed = 0
@@ -726,10 +732,14 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
     if (fs === 'mfs') issues.push({ level: 'info', step: 'income', message: 'Married filing separately: the $25,000 rental loss allowance is $0 if you lived with your spouse at any time in 2025 ($12,500 if you lived apart all year — not figured here).' })
   }
   const rentalNet = rentalGross >= 0 ? r(rentalGross) : -rentalAllowedLoss
+  // Schedule E Part II — K-1 income. Rental income from Part I is passive income for the K-1 passive limit.
+  const k1 = k1Totals(k1In, pos(rentalNet))
+  k1.issues.forEach((m) => issues.push({ level: 'warning', step: 'income', message: m }))
+  const scheduleE41 = rentalNet + k1.line32
 
   // Schedule 1, Part I
   const otherGains = f4797.line18b
-  const additionalIncome = r(businessIncome + otherGains + rentalNet + unemployment + hsaTaxable + otherIncome)
+  const additionalIncome = r(businessIncome + otherGains + scheduleE41 + unemployment + hsaTaxable + otherIncome)
   const line8 = additionalIncome
 
   // Schedule 1, Part II (adjustments other than student loan interest)
@@ -862,8 +872,11 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
       qbi: r(profit - seShare - healthShare), w2Wages: pos(b.qbi.w2Wages), ubia: pos(b.qbi.ubia)
     }
   })
+  const k1Qbi = k1In.filter((k) => k.qbi.income !== 0).map((k) => ({
+    id: k.id, name: k.entityName.trim() || 'Schedule K-1', tin: k.ein, sstb: k.qbi.sstb, qbi: r(k.qbi.income), w2Wages: pos(k.qbi.w2Wages), ubia: pos(k.qbi.ubia)
+  }))
   const qbi = qbiDeduction({
-    fs, taxableIncomeBeforeQbi: tiBeforeQbi, netCapitalGain: netCapitalGainForQbi, businesses: qbiInputs,
+    fs, taxableIncomeBeforeQbi: tiBeforeQbi, netCapitalGain: netCapitalGainForQbi, businesses: [...qbiInputs, ...k1Qbi],
     priorLoss: input.qbiCarryforward.business, priorReitLoss: input.qbiCarryforward.reitPtp,
     reitPtp: sum(input.dividends.map((d) => pos(d.section199ADividends)))
   })
@@ -1017,7 +1030,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
   const seEarnings = sum(scheduleSE.map((x) => x.netEarnings))
   const addlMedicare = r(pos(totalMedicareWages - threshold) * R.ADDITIONAL_MEDICARE_RATE + pos(seEarnings - pos(threshold - totalMedicareWages)) * R.ADDITIONAL_MEDICARE_RATE)
   // Gains on business property used in an active trade are not investment income; rental property gains are.
-  const netInvestmentIncome = pos(line2b + line3b + line7 - Math.min(f4797.scheduleDGain, pos(line7)) + rentalNet + f4797.rentalNet)
+  const netInvestmentIncome = pos(line2b + line3b + line7 - Math.min(f4797.scheduleDGain, pos(line7)) + rentalNet + f4797.rentalNet + k1.passiveNet)
   const niit = r(Math.min(netInvestmentIncome, pos(magi - threshold)) * R.NIIT_RATE)
   const schedule2Total = seTax + addlMedicare + niit + earlyDistributionTax + hsaExcessTax + hsaAdditionalTax
   const line23 = schedule2Total
@@ -1107,7 +1120,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
       '25d': line25d, '26': line26, '27a': line27, '28': line28, '29': line29, '31': line31, '32': line32, '33': line33,
       '34': line34, '37': line37, '38': line38
     },
-    schedule1: { businessIncome: r(businessIncome), otherGains, rentalIncome: rentalNet, unemployment, hsaTaxable, otherIncome, additionalIncome, adjustments, totalAdjustments: line10 },
+    schedule1: { businessIncome: r(businessIncome), otherGains, rentalIncome: scheduleE41, unemployment, hsaTaxable, otherIncome, additionalIncome, adjustments, totalAdjustments: line10 },
     schedule1A: {
       magi, tipsCapped, tipOtExcess, tipOtReduction, tips, overtimeCapped, overtime,
       carCapped, carExcess, carReduction, carLoanInterest: carLoan,
@@ -1129,6 +1142,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
     form8889: hsaResults,
     form5329,
     form4797: f4797,
+    k1,
     scheduleD19,
     section179: s179,
     form4562: [

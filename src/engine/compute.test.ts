@@ -6,8 +6,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { computeReturn, qualifiedDividendsTax, regularTax, scheduleDTaxWorksheet, taxFromSchedule } from './compute.ts'
-import { emptyAsset, emptySale, emptyBusiness, emptyDependent, emptyHomeOffice, emptyHsa, emptyRental, emptyReturn, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099R, emptySocialSecurity, normalizeReturn } from './model.ts'
-import type { CapitalTransaction, DepreciableAsset, PropertySale, ScheduleCBusiness, TaxReturnInput } from './model.ts'
+import { emptyAsset, emptyK1, emptySale, emptyBusiness, emptyDependent, emptyHomeOffice, emptyHsa, emptyRental, emptyReturn, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099R, emptySocialSecurity, normalizeReturn } from './model.ts'
+import type { CapitalTransaction, DepreciableAsset, K1, PropertySale, ScheduleCBusiness, TaxReturnInput } from './model.ts'
 import { groups8949, holdingTermFromDates, lineFor, scheduleDLines } from './capital.ts'
 import { qbiDeduction } from './qbi.ts'
 import { assetDepreciation, macrsRate } from './depreciation.ts'
@@ -679,4 +679,25 @@ test('listed property: passenger auto limits, ADS at 50% or less, heavy SUV sect
   assert.deepEqual([suv.section179Elected, suv.bonus], [31300, 48700])
   const old = assetDepreciation(car({ placedInService: '02/01/2023', cost: 30000, businessPct: 100, bonus: 'none' }), o)
   assert.equal(old.macrs, 5760)
+})
+
+test('Schedules K-1: Schedule E Part II, passive limit, SE earnings, portfolio items and QBI', () => {
+  const k = (p: Partial<K1>): K1 => ({ ...emptyK1(), ...p })
+  const res = computeReturn(base({
+    w2s: [w2(60000, 7000)],
+    k1s: [
+      k({ entityName: 'Alpha LLC', ein: '123456789', ordinary: 30000, guaranteedPayments: 10000, seEarnings: 40000, interest: 500, longTermGain: 2000, section1231: 1000, qbi: { income: 30000, w2Wages: 0, ubia: 0, sstb: false } }),
+      k({ entityName: 'Beta Inc', kind: 'scorp', materialParticipation: false, ordinary: -8000 }),
+      k({ entityName: 'Gamma LP', materialParticipation: false, ordinary: 5000 })
+    ]
+  }))
+  const t = res.k1
+  assert.deepEqual([t.line29aH, t.line29aK, t.line29bG, t.line30, t.line31, t.line32, t.disallowed], [5000, 40000, 5000, 45000, 5000, 40000, 3000])
+  assert.equal(res.schedule1.rentalIncome, 40000)
+  assert.equal(res.scheduleSE[0].netEarnings, 36940)
+  assert.equal(res.f1040['2b'], 500)
+  assert.equal(res.form4797.line7, 1000)
+  assert.equal(res.scheduleD.longTerm, 3000)
+  assert.ok(res.qbi.businesses.some((b) => b.name === 'Alpha LLC' && b.line2 === 30000))
+  assert.ok(res.issues.some((i) => i.message.includes('$3,000 from K-1s')))
 })

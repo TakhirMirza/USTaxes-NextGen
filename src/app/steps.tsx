@@ -1,7 +1,7 @@
 import { ReactElement, useState } from 'react'
 import type { TaxReturnInput, Owner, BusinessExpenses, Person } from '../engine/model.ts'
-import { EXPENSE_LABELS, PROPERTY_CLASS_LABELS, RENTAL_EXPENSE_LABELS, emptyAsset, emptySale, RENTAL_TYPE_LABELS, emptyBusiness, emptyDependent, emptyProvider, emptyRental, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099Int, empty1099R, emptySocialSecurity } from '../engine/model.ts'
-import type { BasisReporting, CapitalTransaction, DepreciableAsset, PropertySale, HomeOffice, PropertyClass, HsaAccount, RentalExpenses, RentalType } from '../engine/model.ts'
+import { EXPENSE_LABELS, PROPERTY_CLASS_LABELS, RENTAL_EXPENSE_LABELS, emptyAsset, emptyK1, emptySale, RENTAL_TYPE_LABELS, emptyBusiness, emptyDependent, emptyProvider, emptyRental, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099Int, empty1099R, emptySocialSecurity } from '../engine/model.ts'
+import type { BasisReporting, CapitalTransaction, DepreciableAsset, K1, PropertySale, HomeOffice, PropertyClass, HsaAccount, RentalExpenses, RentalType } from '../engine/model.ts'
 import { boxFor, gainOf, holdingTermFromDates, isAggregated } from '../engine/capital.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import { careQualifyingPerson, ctcChild, eicChild } from '../engine/compute.ts'
@@ -12,7 +12,7 @@ import { Check, Choice, DigitsField, DocList, MoneyField, NumberField, Section, 
 export type Setter = (fn: (r: TaxReturnInput) => TaxReturnInput) => void
 export interface StepProps { ret: TaxReturnInput; set: Setter; result: TaxReturnResult }
 
-type ListKey = 'w2s' | 'interest' | 'dividends' | 'capitalTransactions' | 'businesses' | 'dependents' | 'retirement' | 'socialSecurity' | 'students' | 'rentals' | 'propertySales'
+type ListKey = 'w2s' | 'interest' | 'dividends' | 'capitalTransactions' | 'businesses' | 'dependents' | 'retirement' | 'socialSecurity' | 'students' | 'rentals' | 'propertySales' | 'k1s'
 function listOps<K extends ListKey>(set: Setter, key: K) {
   type Item = TaxReturnInput[K][number]
   return {
@@ -144,6 +144,7 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
   const div = listOps(set, 'dividends')
   const cap = listOps(set, 'capitalTransactions')
   const sales = listOps(set, 'propertySales')
+  const k1s = listOps(set, 'k1s')
   // Entering both dates sets the holding period for you.
   const saleDates = (x: CapitalTransaction, p: Partial<CapitalTransaction>): void => {
     const next = { ...x, ...p }
@@ -451,6 +452,69 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
         )}
       </Section>
 
+      <Section title="Partnerships and S corporations" intro="Schedule K-1 from Form 1065 or 1120-S. Enter the boxes that have amounts; box numbers follow the form you choose."
+        aside={ret.k1s.length > 0 ? <span className="pill">Schedule E Part II {usd(result.k1.line32)}</span> : undefined}>
+        <DocList items={ret.k1s} addLabel="Add a Schedule K-1" emptyText="No K-1s."
+          title={(x, i) => x.entityName.trim() || `K-1 ${i + 1}`}
+          onAdd={() => k1s.add(emptyK1())} onRemove={k1s.remove}
+          render={(x) => {
+            const row = result.k1.rows.find((y) => y.id === x.id)
+            const p = x.kind === 'partnership'
+            const box = (partnership: string, scorp: string): string => `Box ${p ? partnership : scorp}`
+            const money = (label: string, key: keyof K1, pBox: string, sBox: string, hint?: string): ReactElement => (
+              <MoneyField label={label} box={box(pBox, sBox)} hint={hint} allowNegative value={x[key] as number} onChange={(n) => k1s.patch(x.id, { [key]: n } as Partial<K1>)} />
+            )
+            return (
+              <div className="k1-body span-2">
+                <OwnerPicker ret={ret} value={x.owner} onChange={(o) => k1s.patch(x.id, { owner: o })} />
+                <Choice legend="Type of entity" columns={2} value={x.kind} onChange={(v) => k1s.patch(x.id, { kind: v as K1['kind'] })}
+                  options={[{ value: 'partnership', label: 'Partnership or LLC (Form 1065)' }, { value: 'scorp', label: 'S corporation (Form 1120-S)' }]} />
+                <div className="grid">
+                  <TextField label="Name of the entity" value={x.entityName} onChange={(v) => k1s.patch(x.id, { entityName: v })} />
+                  <DigitsField label="Employer ID number (EIN)" length={9} groups={[2, 7]} value={x.ein} onChange={(v) => k1s.patch(x.id, { ein: v })} />
+                  {money('Ordinary business income or loss', 'ordinary', '1', '1')}
+                  {money('Net rental real estate income or loss', 'rentalRealEstate', '2', '2')}
+                  {money('Other net rental income or loss', 'otherRental', '3', '3')}
+                  {p && money('Guaranteed payments', 'guaranteedPayments', '4c', '—')}
+                  {money('Interest income', 'interest', '5', '4')}
+                  {money('Ordinary dividends', 'ordinaryDividends', '6a', '5a')}
+                  {money('Qualified dividends', 'qualifiedDividends', '6b', '5b')}
+                  {money('Net short-term capital gain or loss', 'shortTermGain', '8', '7')}
+                  {money('Net long-term capital gain or loss', 'longTermGain', '9a', '8a')}
+                  {money('Net section 1231 gain or loss', 'section1231', '10', '9')}
+                  {money('Section 179 deduction', 'section179', '12', '11')}
+                  {money('Royalties', 'royalties', '7', '6', 'Enter under Rental property instead')}
+                  {p && money('Self-employment earnings', 'seEarnings', '14 code A', '—', 'Subject to self-employment tax')}
+                </div>
+                <div className="checks">
+                  <Check label="I materially participated in this business" hint="Otherwise it is a passive activity: losses only offset passive income" checked={x.materialParticipation} onChange={(v) => k1s.patch(x.id, { materialParticipation: v })} />
+                  <Check label="My basis or amount at risk may not cover a loss" hint="Form 7203 (S corporation) or Form 6198" checked={x.basisLimited} onChange={(v) => k1s.patch(x.id, { basisLimited: v })} />
+                </div>
+                <details className="more" open={x.qbi.income !== 0}>
+                  <summary>QBI information ({p ? 'box 20 code Z' : 'box 17 code V'} statement)</summary>
+                  <div className="grid">
+                    <MoneyField label="Qualified business income" allowNegative value={x.qbi.income} onChange={(n) => k1s.patch(x.id, { qbi: { ...x.qbi, income: n } })} />
+                    <MoneyField label="W-2 wages" value={x.qbi.w2Wages} onChange={(n) => k1s.patch(x.id, { qbi: { ...x.qbi, w2Wages: n } })} />
+                    <MoneyField label="UBIA of qualified property" value={x.qbi.ubia} onChange={(n) => k1s.patch(x.id, { qbi: { ...x.qbi, ubia: n } })} />
+                    <div className="span-2"><Check label="Specified service trade or business" checked={x.qbi.sstb} onChange={(v) => k1s.patch(x.id, { qbi: { ...x.qbi, sstb: v } })} /></div>
+                  </div>
+                </details>
+                {!x.materialParticipation && (
+                  <div className="grid" style={{ marginTop: 10 }}>
+                    <MoneyField label="Passive loss carried from 2024" hint="Unallowed loss from your 2024 Form 8582 worksheets" value={x.priorPassiveCarryover} onChange={(n) => k1s.patch(x.id, { priorPassiveCarryover: n })} />
+                  </div>
+                )}
+                {row && (
+                  <p className="why">
+                    On Schedule E: {usd(row.h + row.k - row.g - row.i - row.j)}{row.passive ? ' (passive)' : ''}
+                    {row.disallowed > 0 ? ` · ${usd(row.disallowed)} of passive loss carries to 2026` : ''}
+                  </p>
+                )}
+              </div>
+            )
+          }} />
+      </Section>
+
       <Section title="Sales of business or rental property" intro="Form 4797: equipment, vehicles, buildings or land used in a business or rental. Stocks go under Sales of stock."
         aside={ret.propertySales.length > 0 ? <span className="pill">Ordinary {usd(result.form4797.line18b)} · Capital {usd(result.form4797.scheduleDGain)}</span> : undefined}>
         <DocList items={ret.propertySales} addLabel="Add a property sale" emptyText="No business or rental property sold."
@@ -459,7 +523,7 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
           render={(x) => {
             const sr = result.form4797.sales.find((y) => y.id === x.id)
             return (
-              <div className="grid">
+              <>
                 <div className="span-2"><TextField label="Description" placeholder="Rental house at 4 Ash St, delivery van" value={x.description} onChange={(v) => sales.patch(x.id, { description: v })} /></div>
                 <div className="span-2">
                   <SelectField label="Kind of property" value={x.kind} onChange={(v) => sales.patch(x.id, { kind: v as PropertySale['kind'] })} options={[
@@ -486,7 +550,7 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
                     {!sr.longTerm ? ' · held a year or less, so it is ordinary' : ''}
                   </p>
                 )}
-              </div>
+              </>
             )
           }} />
         {ret.propertySales.length > 0 && (
