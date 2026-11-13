@@ -230,6 +230,26 @@ export interface DepreciableAsset {
   /** For assets placed in service before 2025: bonus and section 179 claimed in earlier years. */ priorSpecial: number
   /** Use an amount you already figured instead of MACRS. */ manual: boolean
   manualAmount: number
+  /** Listed property (Form 4562 Part V): 'auto' = car, truck or van of 6,000 lb or less (depreciation limits apply);
+   *  'heavy' = SUV or truck over 6,000 lb (section 179 capped); 'other' = other listed property. */
+  listed: 'none' | 'auto' | 'heavy' | 'other'
+  /** Vehicle use in 2025 (Form 4562 lines 30–36). */
+  vehicle: { businessMiles: number; commutingMiles: number; otherMiles: number; availableOffDuty: boolean; ownerUse: boolean; anotherVehicle: boolean; evidence: boolean; evidenceWritten: boolean }
+}
+
+/** Sale of business or rental property (Form 4797). */
+export interface PropertySale {
+  id: string
+  description: string
+  /** '1245' = equipment, vehicles, furniture; '1250' = buildings; 'land' = land or other property never depreciated. */
+  kind: '1245' | '1250' | 'land'
+  usedIn: 'business' | 'rental'
+  /** MM/DD/YYYY */ dateAcquired: string
+  /** MM/DD/YYYY */ dateSold: string
+  salesPrice: number
+  /** Cost or other basis plus improvements and expense of sale. */ costBasis: number
+  /** Depreciation allowed or allowable, including section 179 and bonus. */ depreciation: number
+  /** Reported to you on Form 1099-S or 1099-B (Form 4797 line 1a). */ reportedOn1099: boolean
 }
 
 export interface HomeOffice {
@@ -421,6 +441,10 @@ export interface TaxReturnInput {
   qbiCarryforward: { business: number; reitPtp: number }
   /** Section 179 deduction disallowed in 2024 (2024 Form 4562 line 13). */
   section179Carryover: number
+  /** Sales of business and rental property (Form 4797). */
+  propertySales: PropertySale[]
+  /** Net section 1231 losses from 2020–2024 not yet recaptured (Form 4797 line 8). */
+  prior1231Losses: number
   hsa: { taxpayer: HsaAccount; spouse: HsaAccount }
   /** Alternative minimum tax inputs (Form 6251) beyond what the return already knows. */
   amt: { isoBargainElement: number; privateActivityBondInterest: number; otherAdjustments: number }
@@ -508,7 +532,11 @@ export const emptyRental = (owner: Owner = 'taxpayer'): RentalProperty => ({
 })
 export const emptyAsset = (propertyClass: PropertyClass = '5'): DepreciableAsset => ({
   id: newId('asset'), description: '', placedInService: '', cost: 0, businessPct: 100, propertyClass, section179: 0,
-  bonus: 'auto', acquiredBeforeJan20: false, priorSpecial: 0, manual: false, manualAmount: 0
+  bonus: 'auto', acquiredBeforeJan20: false, priorSpecial: 0, manual: false, manualAmount: 0, listed: 'none',
+  vehicle: { businessMiles: 0, commutingMiles: 0, otherMiles: 0, availableOffDuty: true, ownerUse: true, anotherVehicle: false, evidence: true, evidenceWritten: true }
+})
+export const emptySale = (): PropertySale => ({
+  id: newId('sale'), description: '', kind: '1245', usedIn: 'business', dateAcquired: '', dateSold: '', salesPrice: 0, costBasis: 0, depreciation: 0, reportedOn1099: true
 })
 export const emptyHsa = (): HsaAccount => ({
   coverage: 'none', monthsCovered: 12, personalContributions: 0, employerContributions: 0, distributions: 0, qualifiedExpenses: 0, exceptionApplies: false,
@@ -562,6 +590,8 @@ export const emptyReturn = (): TaxReturnInput => ({
   priorPassiveCarryover: 0,
   qbiCarryforward: { business: 0, reitPtp: 0 },
   section179Carryover: 0,
+  propertySales: [],
+  prior1231Losses: 0,
   hsa: { taxpayer: emptyHsa(), spouse: emptyHsa() },
   amt: { isoBargainElement: 0, privateActivityBondInterest: 0, otherAdjustments: 0 },
   retirement: [],
@@ -600,6 +630,8 @@ const normalizePayments = (p: Partial<TaxReturnInput['payments']> | undefined): 
 }
 
 /** Older files had a single "HSA deduction" adjustment; treat it as the taxpayer's own self-only contribution. */
+const normalizeAsset = (a: DepreciableAsset): DepreciableAsset => ({ ...a, vehicle: { ...emptyAsset().vehicle, ...(a.vehicle ?? {}) } })
+
 const normalizeHsa = (h: Partial<TaxReturnInput['hsa']> | undefined, legacyDeduction: number): TaxReturnInput['hsa'] => {
   const out = { taxpayer: { ...emptyHsa(), ...(h?.taxpayer ?? {}) }, spouse: { ...emptyHsa(), ...(h?.spouse ?? {}) } }
   if (!h && legacyDeduction > 0) out.taxpayer = { ...out.taxpayer, coverage: 'self', personalContributions: legacyDeduction }
@@ -653,17 +685,18 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
         // Older files kept a home office amount among the expenses; move it to the "already figured" method.
         if (expenses.homeOffice > 0 && homeOffice.method === 'none') { homeOffice.method = 'amount'; homeOffice.amount = expenses.homeOffice }
         expenses.homeOffice = 0
-        return { ...emptyBusiness(), ...b, expenses, homeOffice, vehicle: { ...emptyVehicle(), ...(b?.vehicle ?? {}) }, qbi: { ...emptyBusiness().qbi, ...(b?.qbi ?? {}) }, assets: arr(b?.assets, emptyAsset) }
+        return { ...emptyBusiness(), ...b, expenses, homeOffice, vehicle: { ...emptyVehicle(), ...(b?.vehicle ?? {}) }, qbi: { ...emptyBusiness().qbi, ...(b?.qbi ?? {}) }, assets: arr(b?.assets, emptyAsset).map(normalizeAsset) }
       })
       : [],
     schedule1A: { ...base.schedule1A, ...(r.schedule1A ?? {}) },
     itemized: { ...base.itemized, ...(r.itemized ?? {}) },
-    rentals: Array.isArray(r.rentals) ? r.rentals.map((x) => ({ ...emptyRental(), ...x, expenses: { ...emptyRentalExpenses(), ...(x?.expenses ?? {}) }, assets: arr(x?.assets, emptyAsset) })) : [],
+    rentals: Array.isArray(r.rentals) ? r.rentals.map((x) => ({ ...emptyRental(), ...x, expenses: { ...emptyRentalExpenses(), ...(x?.expenses ?? {}) }, assets: arr(x?.assets, emptyAsset).map(normalizeAsset) })) : [],
     rentalForms1099: { ...base.rentalForms1099, ...(r.rentalForms1099 ?? {}) },
     hsa: normalizeHsa(r.hsa, r.adjustments?.hsaDeduction ?? 0),
     adjustments: { ...base.adjustments, ...(r.adjustments ?? {}), hsaDeduction: 0 },
     amt: { ...base.amt, ...(r.amt ?? {}) },
     qbiCarryforward: { ...base.qbiCarryforward, ...(r.qbiCarryforward ?? {}) },
+    propertySales: arr(r.propertySales, emptySale),
     savings: { taxpayer: { ...emptySavings(), ...(r.savings?.taxpayer ?? {}) }, spouse: { ...emptySavings(), ...(r.savings?.spouse ?? {}) } },
     priorYear: { ...base.priorYear, ...(r.priorYear ?? {}) },
     payments: normalizePayments(r.payments)

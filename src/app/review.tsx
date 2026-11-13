@@ -185,6 +185,7 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
             <details><summary>Schedule 1 <span>Additional income and adjustments</span></summary>
               <dl className="facts">
                 {result.schedule1.businessIncome !== 0 && <div><dt>Business income</dt><dd>{usd(result.schedule1.businessIncome)}</dd></div>}
+                {result.schedule1.otherGains !== 0 && <div><dt>Other gains or losses (Form 4797)</dt><dd>{usd(result.schedule1.otherGains)}</dd></div>}
                 {result.schedule1.rentalIncome !== 0 && <div><dt>Rental real estate (Schedule E)</dt><dd>{usd(result.schedule1.rentalIncome)}</dd></div>}
                 {result.schedule1.unemployment > 0 && <div><dt>Unemployment</dt><dd>{usd(result.schedule1.unemployment)}</dd></div>}
                 {result.schedule1.hsaTaxable > 0 && <div><dt>Taxable HSA distributions</dt><dd>{usd(result.schedule1.hsaTaxable)}</dd></div>}
@@ -335,11 +336,23 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
                 {f.line17 > 0 && <div><dt>Assets from earlier years (line 17)</dt><dd>{usd(f.line17)}</dd></div>}
                 {f.rows.map((x, i) => <div key={i}><dt>{x.period} {x.convention} {x.method}{x.placed ? ` · ${x.placed}` : ''}</dt><dd>{usd(x.deduction)}</dd></div>)}
                 {f.line16 > 0 && <div><dt>Entered by you (line 16)</dt><dd>{usd(f.line16)}</dd></div>}
+                {f.line28 > 0 && <div><dt>Listed property and vehicles (line 21)</dt><dd>{usd(f.line28)}</dd></div>}
                 {f.home && <div><dt>Home office, first used {f.home.placed} (line 19j; on Form 8829)</dt><dd>{usd(f.home.deduction)}</dd></div>}
                 <div><dt>Total (line 22)</dt><dd>{usd(f.line22)}</dd></div>
               </dl>
             </details>
           ))}
+          {result.form4797.sales.length > 0 && (
+            <details><summary>Form 4797 <span>Sales of business property</span></summary>
+              <dl className="facts">
+                {result.form4797.sales.map((x) => <div key={x.id}><dt>{x.description} (Part {x.part})</dt><dd>{usd(x.gain)}</dd></div>)}
+                <div><dt>Net section 1231 gain or loss (line 7)</dt><dd>{usd(result.form4797.line7)}</dd></div>
+                {result.form4797.scheduleDGain > 0 && <div><dt>Long-term capital gain (Schedule D line 11)</dt><dd>{usd(result.form4797.scheduleDGain)}</dd></div>}
+                <div><dt>Ordinary gain or loss (line 18b, Schedule 1 line 4)</dt><dd>{usd(result.form4797.line18b)}</dd></div>
+                {result.scheduleD19 > 0 && <div><dt>Unrecaptured section 1250 gain (Schedule D line 19)</dt><dd>{usd(result.scheduleD19)}</dd></div>}
+              </dl>
+            </details>
+          )}
           {result.section179.line13 > 0 && <p className="why">Section 179 carried to 2026: {usd(result.section179.line13)}.</p>}
           {result.form8889.map((h) => (
             <details key={`8889-${h.owner}`}><summary>Form 8889 <span>HSA — {h.owner === 'spouse' ? ret.spouse.firstName || 'Spouse' : ret.taxpayer.firstName || 'You'}</span></summary>

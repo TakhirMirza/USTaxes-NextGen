@@ -231,6 +231,7 @@ function schedule1(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
     values: {
       ...header(ret, 'f1_01[0]', 'f1_02[0]'),
       'f1_07[0]': amt(s.businessIncome),
+      'f1_08[0]': amt(s.otherGains), 'Page1[0].c1_1[0]': s.otherGains !== 0,
       'f1_09[0]': amt(s.rentalIncome),
       'f1_12[0]': amt(s.unemployment),
       'f1_18[0]': amt(s.hsaTaxable),
@@ -397,6 +398,7 @@ function scheduleD(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
     'Page1[0].c1_1[1]': true,
     'f1_21[0]': paren(ret.capitalLossCarryover.shortTerm),
     'f1_22[0]': amt(d.shortTerm, true),
+    'f1_39[0]': amt(res.form4797.scheduleDGain),
     'f1_41[0]': amt(capDist),
     'f1_42[0]': paren(ret.capitalLossCarryover.longTerm),
     'f1_43[0]': amt(d.longTerm, true),
@@ -417,7 +419,11 @@ function scheduleD(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
     const bothGains = d.longTerm > 0
     v['Page2[0].c2_1[0]'] = bothGains
     v['Page2[0].c2_1[1]'] = !bothGains
-    if (bothGains) v['Page2[0].c2_2[0]'] = true
+    if (bothGains) {
+      v['f2_3[0]'] = amt(res.scheduleD19)
+      v['Page2[0].c2_2[0]'] = res.scheduleD19 === 0
+      v['Page2[0].c2_2[1]'] = res.scheduleD19 > 0
+    }
   }
   if (line16 < 0) v['f2_4[0]'] = paren(res.f1040['7a'])
   if (line16 <= 0 || d.longTerm <= 0) {
@@ -457,6 +463,43 @@ function form8949(ret: TaxReturnInput): FormFill[] {
   return out
 }
 
+// ── Form 4797 ────────────────────────────────────────────────────────────────
+function form4797Forms(ret: TaxReturnInput, res: TaxReturnResult): FormFill[] {
+  const f = res.form4797
+  if (!f.sales.length) return []
+  const date = (x: string): string => x.trim()
+  const v: Record<string, FieldValue> = { ...header(ret, 'f1_1[0]', 'f1_2[0]'), 'f1_3[0]': amt(f.line1a) }
+  // Part I line 2 and Part II line 10: up to four rows each; columns (a)–(g).
+  const row = (first: number, x: TaxReturnResult['form4797']['sales'][number]): void => {
+    const k = (n: number): string => `f1_${first + n}[0]`
+    v[k(0)] = x.description; v[k(1)] = date(x.dateAcquired); v[k(2)] = date(x.dateSold); v[k(3)] = amt(x.salesPrice, true)
+    v[k(4)] = amt(x.depreciation); v[k(5)] = amt(x.costBasis, true); v[k(6)] = amt(x.gain, true)
+  }
+  f.sales.filter((x) => x.part === 'I').slice(0, 4).forEach((x, i) => row(6 + 7 * i, x))
+  f.sales.filter((x) => x.part === 'II').slice(0, 4).forEach((x, i) => row(41 + 7 * i, x))
+  Object.assign(v, {
+    'f1_37[0]': amt(f.line6), 'f1_38[0]': amt(f.line7, true), 'f1_39[0]': amt(f.line8), 'f1_40[0]': amt(f.line9),
+    'f1_69[0]': paren(f.line11), 'f1_70[0]': amt(f.line12), 'f1_71[0]': amt(f.line13), 'f1_75[0]': amt(f.line17, true), 'f1_77[0]': amt(f.line18b, true)
+  })
+  const partIII = f.sales.filter((x) => x.part === 'III')
+  const sheets: FormFill[] = []
+  for (let start = 0; start < Math.max(1, partIII.length); start += 4) {
+    const chunk = partIII.slice(start, start + 4)
+    const p2: Record<string, FieldValue> = start === 0 ? v : {}
+    chunk.forEach((x, col) => {
+      p2[`f2_${1 + 3 * col}[0]`] = x.description; p2[`f2_${2 + 3 * col}[0]`] = date(x.dateAcquired); p2[`f2_${3 + 3 * col}[0]`] = date(x.dateSold)
+      const line = (first: number, value: string): void => { p2[`f2_${first + col}[0]`] = value }
+      line(13, amt(x.salesPrice, true)); line(17, amt(x.costBasis, true)); line(21, amt(x.depreciation, true)); line(25, amt(x.adjustedBasis, true)); line(29, amt(x.gain, true))
+      if (x.kind === '1245') { line(33, amt(x.depreciation, true)); line(37, amt(x.recapture, true)) }
+      if (x.kind === '1250') { line(41, '0'); line(65, '0') }
+    })
+    if (start === 0) Object.assign(p2, { 'f2_97[0]': amt(f.line30), 'f2_98[0]': amt(f.line31), 'f2_99[0]': amt(f.line32) })
+    if (start > 0) sheets.push({ id: `4797-${start / 4 + 1}`, file: 'f4797.pdf', title: `Form 4797 (Part III, sheet ${start / 4 + 1})`, values: { ...header(ret, 'f1_1[0]', 'f1_2[0]'), ...p2 }, pages: [1] })
+  }
+  const pages = partIII.length ? [0, 1] : [0]
+  return [{ id: '4797', file: 'f4797.pdf', title: 'Form 4797', values: v, pages }, ...sheets]
+}
+
 // ── Form 8829 (one per business using the regular method) ──────────────────
 function form8829(ret: TaxReturnInput, res: TaxReturnResult, b: TaxReturnInput['businesses'][number]): FormFill | null {
   const c = res.scheduleC.find((x) => x.id === b.id)
@@ -494,7 +537,7 @@ function form4562(ret: TaxReturnInput, res: TaxReturnResult, f: TaxReturnResult[
     'f1_1[0]': namesOnReturn(ret), 'f1_2[0]': f.kind === 'business' ? `Schedule C: ${f.name}` : `Schedule E: ${f.name}`,
     'f1_3[0]': ssnDashed((owner === 'spouse' ? ret.spouse : ret.taxpayer).ssn)
   }
-  if (part1 === 'full') Object.assign(v, part1Values(res, f.elected))
+  if (part1 === 'full') Object.assign(v, part1Values(res, f.elected, f.line29))
   if (part1 === 'line12') v['f1_20[0]'] = amt(f.section179, true)
   Object.assign(v, { 'f1_22[0]': amt(f.line14), 'f1_24[0]': amt(f.line16), 'f1_25[0]': amt(f.line17) })
   let resi = 0
@@ -519,13 +562,42 @@ function form4562(ret: TaxReturnInput, res: TaxReturnResult, f: TaxReturnResult[
     const slot = [[86, 87, 91], [92, 93, 97]][nonres]
     if (slot) { v[`f1_${slot[0]}[0]`] = f.home.placed; v[`f1_${slot[1]}[0]`] = amt(f.home.basis, true); v[`f1_${slot[2]}[0]`] = amt(f.home.deduction, true) }
   }
+  // Part V — listed property
+  if (f.listed.length) {
+    v['f2_1[0]'] = amt(f.line28)
+    const vehicles = f.listed.filter((x) => x.vehicle)
+    const ev = vehicles[0]?.vehicle
+    if (ev) { v['c2_1[0]'] = ev.evidence; v['c2_1[1]'] = !ev.evidence; if (ev.evidence) { v['c2_2[0]'] = ev.evidenceWritten; v['c2_2[1]'] = !ev.evidenceWritten } }
+    v['f2_5[0]'] = amt(f.line25)
+    f.listed.filter((x) => x.qualified).slice(0, 3).forEach((x, i) => {
+      const k = (n: number): string => `f2_${6 + 9 * i + n}[0]`
+      Object.assign(v, { [k(0)]: x.description, [k(1)]: x.placed, [k(2)]: String(x.businessPct), [k(3)]: amt(x.cost, true), [k(4)]: amt(x.basis, true), [k(5)]: x.period, [k(6)]: x.method, [k(7)]: amt(x.deduction, true), [k(8)]: amt(x.section179) })
+    })
+    f.listed.filter((x) => !x.qualified).slice(0, 3).forEach((x, i) => {
+      const k = (n: number): string => `f2_${33 + 8 * i + n}[0]`
+      Object.assign(v, { [k(0)]: x.description, [k(1)]: x.placed, [k(2)]: String(x.businessPct), [k(3)]: amt(x.cost, true), [k(4)]: amt(x.basis, true), [k(5)]: x.period, [k(6)]: x.method.replace(/^S\/L\//, ''), [k(7)]: amt(x.deduction, true) })
+    })
+    v['f2_57[0]'] = amt(f.line28, true)
+    v['f2_58[0]'] = amt(f.line29)
+    vehicles.slice(0, 6).forEach((x, i) => {
+      const m = x.vehicle!
+      const total = m.businessMiles + m.commutingMiles + m.otherMiles
+      Object.assign(v, {
+        [`f2_${59 + i}[0]`]: amt(m.businessMiles, true), [`f2_${65 + i}[0]`]: amt(m.commutingMiles, true), [`f2_${71 + i}[0]`]: amt(m.otherMiles, true), [`f2_${77 + i}[0]`]: amt(total, true),
+        [`c2_${4 + i}[0]`]: m.availableOffDuty, [`c2_${4 + i}[1]`]: !m.availableOffDuty,
+        [`c2_${10 + i}[0]`]: m.ownerUse, [`c2_${10 + i}[1]`]: !m.ownerUse,
+        [`c2_${16 + i}[0]`]: m.anotherVehicle, [`c2_${16 + i}[1]`]: !m.anotherVehicle
+      })
+    })
+  }
   v['f2_2[0]'] = amt(f.line22, true)
   return { id: `4562-${f.id}`, file: 'f4562.pdf', title: `Form 4562 (${f.name})`, values: v, pages: [0, 1] }
 }
 
-function part1Values(res: TaxReturnResult, elected: { description: string; cost: number; elected: number }[]): Record<string, FieldValue> {
+function part1Values(res: TaxReturnResult, elected: { description: string; cost: number; elected: number }[], listed179 = 0): Record<string, FieldValue> {
   const s = res.section179
   const v: Record<string, FieldValue> = {
+    'f1_15[0]': amt(listed179),
     'f1_4[0]': amt(s.line1, true), 'f1_5[0]': amt(s.line2, true), 'f1_6[0]': amt(s.line3, true), 'f1_7[0]': amt(s.line4, true),
     'f1_8[0]': amt(s.line5, true), 'f1_16[0]': amt(s.line8, true), 'f1_17[0]': amt(s.line9, true), 'f1_18[0]': amt(s.line10),
     'f1_19[0]': amt(s.line11, true), 'f1_20[0]': amt(s.line12, true), 'f1_21[0]': amt(s.line13)
@@ -540,13 +612,13 @@ function part1Values(res: TaxReturnResult, elected: { description: string; cost:
 
 function forms4562(ret: TaxReturnInput, res: TaxReturnResult): FormFill[] {
   const needed = res.form4562.filter((f) => f.required)
-  const with179 = needed.filter((f) => f.elected.length > 0 || f.section179 > 0)
+  const with179 = needed.filter((f) => f.elected.length > 0 || f.section179 > 0 || f.line29 > 0)
   const out: FormFill[] = []
   if (with179.length > 1) {
     const all = with179.flatMap((f) => f.elected)
     out.push({
       id: '4562-summary', file: 'f4562.pdf', title: 'Form 4562 (Summary, Part I)', pages: [0],
-      values: { 'f1_1[0]': namesOnReturn(ret), 'f1_2[0]': 'Summary', 'f1_3[0]': ssnDashed(ret.taxpayer.ssn), ...part1Values(res, all) }
+      values: { 'f1_1[0]': namesOnReturn(ret), 'f1_2[0]': 'Summary', 'f1_3[0]': ssnDashed(ret.taxpayer.ssn), ...part1Values(res, all, with179.reduce((t, x) => t + x.line29, 0)) }
     })
   }
   for (const f of needed) {
@@ -593,7 +665,8 @@ function scheduleC(ret: TaxReturnInput, res: TaxReturnResult, b: TaxReturnInput[
   }
   if (line31 < 0) { v['Page1[0].c1_7[0]'] = b.allAtRisk; v['Page1[0].c1_7[1]'] = !b.allAtRisk }
   if (b.costOfGoodsSold > 0) v['f2_8[0]'] = amt(b.costOfGoodsSold)
-  if (e.carAndTruck > 0) {
+  // Part IV only when no Form 4562 is filed for the vehicle.
+  if (e.carAndTruck > 0 && !(b.assets ?? []).some((a) => a.listed === 'auto' || a.listed === 'heavy')) {
     const [mm, dd, yy] = b.vehicle.placedInService.split('/').map((x) => x.trim())
     Object.assign(v, {
       'f2_9[0]': mm ?? '', 'f2_10[0]': dd ?? '', 'f2_11[0]': yy ?? '',
@@ -1144,7 +1217,7 @@ function form1040V(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
 /** Every form this return needs, in IRS attachment-sequence order. */
 export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult, preparer?: PreparerInfo | null): FormPacket {
   const f = res.f1040
-  const onlyDistributions = ret.capitalTransactions.length === 0 &&
+  const onlyDistributions = ret.capitalTransactions.length === 0 && res.form4797.scheduleDGain === 0 &&
     ret.capitalLossCarryover.shortTerm === 0 && ret.capitalLossCarryover.longTerm === 0
   const needD = !onlyDistributions || f['7a'] < 0
   const forms: FormFill[] = [form1040(ret, res, needD, preparer)]
@@ -1156,7 +1229,8 @@ export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult, prepa
   if (res.scheduleB.required) forms.push(scheduleB(ret, res))
   const owners = ret.filingStatus === 'mfj' ? ['taxpayer', 'spouse'] : ['taxpayer']
   ret.businesses.filter((b) => owners.includes(b.owner)).forEach((b) => forms.push(scheduleC(ret, res, b)))
-  if (needD && (ret.capitalTransactions.length || f['7a'] !== 0)) forms.push(scheduleD(ret, res))
+  if (needD && (ret.capitalTransactions.length || f['7a'] !== 0 || res.form4797.scheduleDGain !== 0)) forms.push(scheduleD(ret, res))
+  forms.push(...form4797Forms(ret, res))
   forms.push(...form8949(ret))
   if (res.scheduleE.properties.length) forms.push(...scheduleE(ret, res))
   for (const owner of ['taxpayer', 'spouse'] as Owner[]) {
@@ -1186,6 +1260,8 @@ export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult, prepa
   if (ret.businesses.some((b) => b.homeOffice.method === 'amount' && b.homeOffice.amount > 0)) notIncluded.push('Your own Form 8829 or simplified-method worksheet for the home office amount you entered')
   if (res.form4562.some((f) => f.rows.filter((x) => x.propertyClass === '27.5').length > 2 || f.rows.filter((x) => x.propertyClass === '39').length + (f.home ? 1 : 0) > 2)) notIncluded.push('A statement listing buildings placed in service in 2025 beyond the two lines on Form 4562 lines 19i/19j')
   if (res.form4562.some((f) => f.elected.length > 2)) notIncluded.push('A statement listing section 179 property beyond the two lines on Form 4562 line 6')
+  if (res.form4797.sales.filter((x) => x.part === 'I').length > 4 || res.form4797.sales.filter((x) => x.part === 'II').length > 4) notIncluded.push('A statement listing Form 4797 line 2 or line 10 sales beyond the first four')
+  if (res.scheduleD19 > 0) notIncluded.push('Unrecaptured Section 1250 Gain Worksheet and Schedule D Tax Worksheet (keep with your records; the tax on line 16 uses them)')
   if (res.scheduleE.disallowed > 0 || res.scheduleE.priorCarryover > 0) notIncluded.push('Form 8582 (Passive Activity Loss Limitations)')
   return { forms, notIncluded }
 }

@@ -1,7 +1,7 @@
 import { ReactElement, useState } from 'react'
 import type { TaxReturnInput, Owner, BusinessExpenses, Person } from '../engine/model.ts'
-import { EXPENSE_LABELS, PROPERTY_CLASS_LABELS, RENTAL_EXPENSE_LABELS, emptyAsset, RENTAL_TYPE_LABELS, emptyBusiness, emptyDependent, emptyProvider, emptyRental, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099Int, empty1099R, emptySocialSecurity } from '../engine/model.ts'
-import type { BasisReporting, CapitalTransaction, DepreciableAsset, HomeOffice, PropertyClass, HsaAccount, RentalExpenses, RentalType } from '../engine/model.ts'
+import { EXPENSE_LABELS, PROPERTY_CLASS_LABELS, RENTAL_EXPENSE_LABELS, emptyAsset, emptySale, RENTAL_TYPE_LABELS, emptyBusiness, emptyDependent, emptyProvider, emptyRental, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099Int, empty1099R, emptySocialSecurity } from '../engine/model.ts'
+import type { BasisReporting, CapitalTransaction, DepreciableAsset, PropertySale, HomeOffice, PropertyClass, HsaAccount, RentalExpenses, RentalType } from '../engine/model.ts'
 import { boxFor, gainOf, holdingTermFromDates, isAggregated } from '../engine/capital.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import { careQualifyingPerson, ctcChild, eicChild } from '../engine/compute.ts'
@@ -12,7 +12,7 @@ import { Check, Choice, DigitsField, DocList, MoneyField, NumberField, Section, 
 export type Setter = (fn: (r: TaxReturnInput) => TaxReturnInput) => void
 export interface StepProps { ret: TaxReturnInput; set: Setter; result: TaxReturnResult }
 
-type ListKey = 'w2s' | 'interest' | 'dividends' | 'capitalTransactions' | 'businesses' | 'dependents' | 'retirement' | 'socialSecurity' | 'students' | 'rentals'
+type ListKey = 'w2s' | 'interest' | 'dividends' | 'capitalTransactions' | 'businesses' | 'dependents' | 'retirement' | 'socialSecurity' | 'students' | 'rentals' | 'propertySales'
 function listOps<K extends ListKey>(set: Setter, key: K) {
   type Item = TaxReturnInput[K][number]
   return {
@@ -143,6 +143,7 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
   const int = listOps(set, 'interest')
   const div = listOps(set, 'dividends')
   const cap = listOps(set, 'capitalTransactions')
+  const sales = listOps(set, 'propertySales')
   // Entering both dates sets the holding period for you.
   const saleDates = (x: CapitalTransaction, p: Partial<CapitalTransaction>): void => {
     const next = { ...x, ...p }
@@ -447,6 +448,51 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
             </details>
             {result.scheduleE.disallowed > 0 && <p className="note is-warn">{usd(result.scheduleE.disallowed)} of rental loss can’t be used this year (allowance {usd(result.scheduleE.allowance)} at your income). It carries over to 2026.</p>}
           </>
+        )}
+      </Section>
+
+      <Section title="Sales of business or rental property" intro="Form 4797: equipment, vehicles, buildings or land used in a business or rental. Stocks go under Sales of stock."
+        aside={ret.propertySales.length > 0 ? <span className="pill">Ordinary {usd(result.form4797.line18b)} · Capital {usd(result.form4797.scheduleDGain)}</span> : undefined}>
+        <DocList items={ret.propertySales} addLabel="Add a property sale" emptyText="No business or rental property sold."
+          title={(x, i) => x.description.trim() || `Property sale ${i + 1}`}
+          onAdd={() => sales.add(emptySale())} onRemove={sales.remove}
+          render={(x) => {
+            const sr = result.form4797.sales.find((y) => y.id === x.id)
+            return (
+              <div className="grid">
+                <div className="span-2"><TextField label="Description" placeholder="Rental house at 4 Ash St, delivery van" value={x.description} onChange={(v) => sales.patch(x.id, { description: v })} /></div>
+                <div className="span-2">
+                  <SelectField label="Kind of property" value={x.kind} onChange={(v) => sales.patch(x.id, { kind: v as PropertySale['kind'] })} options={[
+                    { value: '1245', label: 'Equipment, vehicle, furniture (section 1245)' },
+                    { value: '1250', label: 'Building or rental house (section 1250)' },
+                    { value: 'land', label: 'Land or other property never depreciated' }
+                  ]} />
+                </div>
+                <div className="span-2">
+                  <Choice legend="Used in" columns={2} value={x.usedIn} onChange={(v) => sales.patch(x.id, { usedIn: v as PropertySale['usedIn'] })}
+                    options={[{ value: 'business', label: 'A business' }, { value: 'rental', label: 'A rental' }]} />
+                </div>
+                <TextField label="Date acquired" placeholder="MM/DD/YYYY" value={x.dateAcquired} onChange={(v) => sales.patch(x.id, { dateAcquired: v.replace(/[^0-9/]/g, '').slice(0, 10) })} />
+                <TextField label="Date sold" placeholder="MM/DD/YYYY" value={x.dateSold} onChange={(v) => sales.patch(x.id, { dateSold: v.replace(/[^0-9/]/g, '').slice(0, 10) })} />
+                <MoneyField label="Sales price" box="1099-S box 2" value={x.salesPrice} onChange={(n) => sales.patch(x.id, { salesPrice: n })} />
+                <MoneyField label="Cost plus improvements and selling expenses" value={x.costBasis} onChange={(n) => sales.patch(x.id, { costBasis: n })} />
+                {x.kind !== 'land' && <MoneyField label="Depreciation taken" hint="All years, including section 179 and bonus" value={x.depreciation} onChange={(n) => sales.patch(x.id, { depreciation: n })} />}
+                <div className="span-2"><Check label="Reported to me on Form 1099-S or 1099-B" checked={x.reportedOn1099} onChange={(v) => sales.patch(x.id, { reportedOn1099: v })} /></div>
+                {sr && (
+                  <p className="why span-2">
+                    {sr.gain >= 0 ? 'Gain' : 'Loss'} {usd(Math.abs(sr.gain))}
+                    {sr.recapture > 0 ? ` · ${usd(sr.recapture)} is depreciation recapture, taxed as ordinary income` : ''}
+                    {sr.unrecaptured1250 > 0 ? ` · ${usd(sr.unrecaptured1250)} is unrecaptured 1250 gain, taxed at up to 25%` : ''}
+                    {!sr.longTerm ? ' · held a year or less, so it is ordinary' : ''}
+                  </p>
+                )}
+              </div>
+            )
+          }} />
+        {ret.propertySales.length > 0 && (
+          <div className="grid" style={{ marginTop: 12 }}>
+            <MoneyField label="Section 1231 losses from 2020–2024 not yet recaptured" hint="Form 4797 line 8; only if you had net 1231 losses then" value={ret.prior1231Losses} onChange={(n) => set((r) => ({ ...r, prior1231Losses: n }))} />
+          </div>
         )}
       </Section>
 
@@ -902,19 +948,42 @@ function AssetsEditor({ assets, results, allow179, total, defaultClass = '5', on
               {!thisYear && personal && a.placedInService.length === 10 && (
                 <MoneyField label="Bonus and section 179 taken in earlier years" hint="Reduces the basis left to depreciate" value={a.priorSpecial} onChange={(n) => patch(a.id, { priorSpecial: n })} />
               )}
+              {personal && (
+                <div className="span-2">
+                  <SelectField label="Listed property" value={a.listed ?? 'none'} onChange={(v) => patch(a.id, { listed: v as DepreciableAsset['listed'], propertyClass: v === 'auto' || v === 'heavy' ? '5' : a.propertyClass })} options={[
+                    { value: 'none', label: 'No' },
+                    { value: 'auto', label: 'Car, truck or van, 6,000 lb or less (depreciation limits apply)' },
+                    { value: 'heavy', label: 'SUV, truck or van over 6,000 lb' },
+                    { value: 'other', label: 'Other listed property' }
+                  ]} />
+                </div>
+              )}
+              {(a.listed === 'auto' || a.listed === 'heavy') && (
+                <>
+                  <NumberField label="Business miles in 2025" max={300000} value={a.vehicle.businessMiles} onChange={(n) => patch(a.id, { vehicle: { ...a.vehicle, businessMiles: n } })} />
+                  <NumberField label="Commuting miles" max={300000} value={a.vehicle.commutingMiles} onChange={(n) => patch(a.id, { vehicle: { ...a.vehicle, commutingMiles: n } })} />
+                  <NumberField label="Other personal miles" max={300000} value={a.vehicle.otherMiles} onChange={(n) => patch(a.id, { vehicle: { ...a.vehicle, otherMiles: n } })} />
+                  <div />
+                  <div className="span-2 checks">
+                    <Check label="Available for personal use off duty" checked={a.vehicle.availableOffDuty} onChange={(v) => patch(a.id, { vehicle: { ...a.vehicle, availableOffDuty: v } })} />
+                    <Check label="Another vehicle is available for personal use" checked={a.vehicle.anotherVehicle} onChange={(v) => patch(a.id, { vehicle: { ...a.vehicle, anotherVehicle: v } })} />
+                    <Check label="I have written records of the business use" checked={a.vehicle.evidence && a.vehicle.evidenceWritten} onChange={(v) => patch(a.id, { vehicle: { ...a.vehicle, evidence: v, evidenceWritten: v } })} />
+                  </div>
+                </>
+              )}
               <div className="span-2"><Check label="Enter the 2025 depreciation myself" hint="For assets on another method or convention" checked={a.manual} onChange={(v) => patch(a.id, { manual: v })} /></div>
               {a.manual && <MoneyField label="2025 depreciation" value={a.manualAmount} onChange={(n) => patch(a.id, { manualAmount: n })} />}
             </div>
             {res && !a.manual && (res.depreciation + res.section179Elected > 0) && (
               <p className="why">
-                2025: {res.section179Elected > 0 ? `section 179 ${usd(res.section179Elected)} · ` : ''}{res.bonus > 0 ? `bonus ${usd(res.bonus)} · ` : ''}MACRS {usd(res.macrs)} ({res.convention})
+                2025: {res.section179Elected > 0 ? `section 179 ${usd(res.section179Elected)} · ` : ''}{res.bonus > 0 ? `bonus ${usd(res.bonus)} · ` : ''}{res.listed !== 'none' && !res.qualifiedUse ? 'straight line (ADS)' : 'MACRS'} {usd(res.macrs)} ({res.convention}){res.autoLimit !== null ? ` · limited to ${usd(res.autoLimit)}` : ''}
               </p>
             )}
           </div>
         )
       })}
       <button type="button" className="add-button" onClick={() => onChange([...assets, emptyAsset(defaultClass)])}>+ Add an asset</button>
-      <p className="why">Vehicles: use car and truck expenses instead. Land is never depreciated.</p>
+      <p className="why">Depreciate a vehicle only if you deduct actual car costs, not the standard mileage rate. Land is never depreciated.</p>
     </details>
   )
 }

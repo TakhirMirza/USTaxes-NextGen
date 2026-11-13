@@ -10,6 +10,8 @@ import { qbiDeduction } from './qbi.ts'
 import { gainOf, holdingTermFromDates, isAggregated, parseDate, withDefaults } from './capital.ts'
 import { NONRES_FIRST_YEAR, assetDepreciation, form4562For, isPersonalProperty, midQuarterApplies, section179 } from './depreciation.ts'
 import type { AssetResult, Form4562Result, Section179Result } from './depreciation.ts'
+import { form4797 } from './sales.ts'
+import type { Form4797Result } from './sales.ts'
 import type { QbiResult } from './qbi.ts'
 import type { FilingStatus } from './rules2025.ts'
 
@@ -55,7 +57,7 @@ export interface ScheduleSEResult { owner: Owner; netEarnings: number; socialSec
 export interface TaxReturnResult {
   /** Form 1040 lines, keyed by line number. */
   f1040: Record<string, number>
-  schedule1: { businessIncome: number; rentalIncome: number; unemployment: number; hsaTaxable: number; otherIncome: number; additionalIncome: number; adjustments: Record<string, number>; totalAdjustments: number }
+  schedule1: { businessIncome: number; otherGains: number; rentalIncome: number; unemployment: number; hsaTaxable: number; otherIncome: number; additionalIncome: number; adjustments: Record<string, number>; totalAdjustments: number }
   schedule1A: {
     magi: number
     tipsCapped: number; tipOtExcess: number; tipOtReduction: number; tips: number
@@ -73,6 +75,8 @@ export interface TaxReturnResult {
   schedule2: { amt: number; selfEmploymentTax: number; additionalMedicareTax: number; netInvestmentIncomeTax: number; earlyDistributionTax: number; hsaExcessTax: number; hsaAdditionalTax: number; total: number }
   scheduleE: { properties: RentalResult[]; gross: number; priorCarryover: number; magi: number; allowance: number; allowedLoss: number; disallowed: number; net: number }
   form5329: Form5329Result[]
+  form4797: Form4797Result
+  /** Schedule D line 19: unrecaptured section 1250 gain. */ scheduleD19: number
   section179: Section179Result
   form4562: Form4562Result[]
   form8889: { owner: Owner; coverage: string; months: number; line2: number; line3: number; line7: number; line8: number; line9: number; line12: number; line13: number; line14: number; line15: number; line16: number; line17b: number; excess: number }[]
@@ -165,6 +169,56 @@ export function qualifiedDividendsTax(taxableIncome: number, qualifiedDividends:
   const l22 = regularTax(l5, fs)
   const l23 = l18 + l21 + l22
   return r(Math.min(l23, regularTax(l1, fs)))
+}
+
+/**
+ * Schedule D Tax Worksheet (2025 Instructions for Schedule D), used instead of the Qualified Dividends
+ * and Capital Gain Tax Worksheet when there is unrecaptured section 1250 gain (Schedule D line 19).
+ * No Form 4952 and no 28% rate gain here, so lines 3, 4 and Schedule D line 18 are zero.
+ */
+export function scheduleDTaxWorksheet(taxableIncome: number, qualifiedDividends: number, line15: number, line16: number, line19: number, fs: FilingStatus): number {
+  const l1 = pos(taxableIncome)
+  const l2 = pos(qualifiedDividends)
+  const l6 = l2
+  const l7 = pos(Math.min(line15, line16))
+  const l9 = l7
+  const l10 = l6 + l9
+  const l11 = pos(line19)
+  const l12 = Math.min(l9, l11)
+  const l13 = l10 - l12
+  const l14 = pos(l1 - l13)
+  const l15 = R.CAPITAL_GAIN_ZERO_TOP[fs]
+  const l16 = Math.min(l1, l15)
+  const l17 = Math.min(l14, l16)
+  const l18 = pos(l1 - l10)
+  const top24 = (R.BRACKETS[fs].find(([, rate]) => rate === 0.32) ?? [l1])[0]
+  const l19 = Math.min(l1, top24)
+  const l20 = Math.min(l14, l19)
+  const l21 = Math.max(l18, l20)
+  const l22 = l16 - l17
+  const l23 = Math.min(l1, l13)
+  const l24 = l22
+  const l25 = pos(l23 - l24)
+  const l26 = R.CAPITAL_GAIN_FIFTEEN_TOP[fs]
+  const l27 = Math.min(l1, l26)
+  const l28 = l21 + l22
+  const l29 = pos(l27 - l28)
+  const l30 = Math.min(l25, l29)
+  const l31 = l30 * 0.15
+  const l32 = l24 + l30
+  const l33 = pos(l23 - l32)
+  const l34 = l33 * 0.20
+  const l35 = Math.min(l9, pos(line19))
+  const l36 = l10 + l21
+  const l38 = pos(l36 - l1)
+  const l39 = pos(l35 - l38)
+  const l40 = l39 * 0.25
+  const l41 = l21 + l22 + l30 + l33 + l39
+  const l42 = pos(l1 - l41)
+  const l43 = l42 * 0.28
+  const l44 = regularTax(l21, fs)
+  const l45 = l31 + l34 + l40 + l43 + l44
+  return r(Math.min(l45, regularTax(l1, fs)))
 }
 
 /**
@@ -426,7 +480,9 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
     const who = b.name.trim() || `Business ${i + 1}`
     if (!/^\d{6}$/.test(b.businessCode)) issues.push({ level: 'warning', step: 'income', message: `${who}: enter the 6-digit principal business code from the Schedule C instructions (box B).` })
     if (b.required1099s === null) issues.push({ level: 'warning', step: 'income', message: `${who}: answer whether you made payments that require Forms 1099 (Schedule C, line I).` })
-    if (b.expenses.carAndTruck > 0 && (!b.vehicle.placedInService.trim() || b.vehicle.businessMiles <= 0)) issues.push({ level: 'warning', step: 'income', message: `${who}: car and truck expenses need the vehicle details (Schedule C, Part IV).` })
+    const depreciatesVehicle = (b.assets ?? []).some((a) => a.listed === 'auto' || a.listed === 'heavy')
+    if (depreciatesVehicle && b.expenses.carAndTruck > 0) issues.push({ level: 'info', step: 'income', message: `${who}: you depreciate a vehicle, so car and truck expenses must be actual costs (gas, insurance, repairs), not the standard mileage rate.` })
+    if (!depreciatesVehicle && b.expenses.carAndTruck > 0 && (!b.vehicle.placedInService.trim() || b.vehicle.businessMiles <= 0)) issues.push({ level: 'warning', step: 'income', message: `${who}: car and truck expenses need the vehicle details (Schedule C, Part IV).` })
     if (b.costOfGoodsSold > 0) issues.push({ level: 'info', step: 'income', message: `${who}: cost of goods sold is printed on Schedule C line 4 and 42. Fill in the inventory lines 33–41 on the printed form by hand.` })
     if (b.homeOffice.method === 'amount' && b.homeOffice.amount > 0) issues.push({ level: 'info', step: 'income', message: `${who}: you entered the home office deduction directly. Attach your own Form 8829 or simplified-method worksheet, or switch to a method the app figures.` })
     if (b.homeOffice.method === 'regular' && (b.homeOffice.mortgageInterest > 0 || b.homeOffice.realEstateTaxes > 0) && input.deductionChoice !== 'standard') issues.push({ level: 'info', step: 'deductions', message: `${who}: if you itemize, enter only the personal part of mortgage interest and real estate taxes on Schedule A; the business part is on Form 8829.` })
@@ -461,7 +517,11 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
   })
   const capGainDistributions = sum(input.dividends.map((d) => d.capitalGainDistributions))
   const shortTerm = r(stTx - input.capitalLossCarryover.shortTerm)
-  const longTerm = r(ltTx + capGainDistributions - input.capitalLossCarryover.longTerm)
+  const f4797 = form4797(input.propertySales ?? [], input.prior1231Losses ?? 0)
+  f4797.issues.forEach((m) => issues.push({ level: 'warning', step: 'income', message: m }))
+  if (f4797.unrecaptured1250 > 0) issues.push({ level: 'info', step: 'income', message: `Unrecaptured section 1250 gain of $${f4797.unrecaptured1250.toLocaleString()} (depreciation on buildings) is taxed at up to 25% using the Schedule D Tax Worksheet.` })
+  if (f4797.line12 > 0) issues.push({ level: 'info', step: 'income', message: `$${f4797.line12.toLocaleString()} of the section 1231 gain is ordinary income because of 1231 losses in the last five years (Form 4797 line 12).` })
+  const longTerm = r(ltTx + capGainDistributions - input.capitalLossCarryover.longTerm + f4797.scheduleDGain)
   const netCapital = shortTerm + longTerm
   const lossLimit = R.CAPITAL_LOSS_LIMIT[fs]
   const line7 = netCapital >= 0 ? netCapital : -Math.min(-netCapital, lossLimit)
@@ -652,7 +712,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
   const otherIncome = r(input.otherIncome)
   // MAGI for the $25,000 allowance: AGI without passive losses, taxable Social Security, IRA,
   // student loan interest, or the deductible half of SE tax.
-  const magiPassive = line1z + line2b + line3b + line4b + line5b + line7 + businessIncome + unemployment + otherIncome + hsaTaxable -
+  const magiPassive = line1z + line2b + line3b + line4b + line5b + line7 + businessIncome + f4797.line18b + unemployment + otherIncome + hsaTaxable -
     (Math.min(pos(input.adjustments.educatorExpenses), joint ? 600 : 300) + hsaDeduction)
   let rentalAllowedLoss = 0
   let rentalDisallowed = 0
@@ -668,7 +728,8 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
   const rentalNet = rentalGross >= 0 ? r(rentalGross) : -rentalAllowedLoss
 
   // Schedule 1, Part I
-  const additionalIncome = r(businessIncome + rentalNet + unemployment + hsaTaxable + otherIncome)
+  const otherGains = f4797.line18b
+  const additionalIncome = r(businessIncome + otherGains + rentalNet + unemployment + hsaTaxable + otherIncome)
   const line8 = additionalIncome
 
   // Schedule 1, Part II (adjustments other than student loan interest)
@@ -818,7 +879,10 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
 
   // ── Tax ───────────────────────────────────────────────────────────────────
   const usesWorksheet = line3a + preferentialGain > 0
-  const line16 = usesWorksheet ? qualifiedDividendsTax(line15, line3a, preferentialGain, fs) : regularTax(line15, fs)
+  const scheduleD19 = longTerm > 0 && netCapital > 0 ? f4797.unrecaptured1250 : 0
+  const line16 = scheduleD19 > 0
+    ? scheduleDTaxWorksheet(line15, line3a, longTerm, netCapital, scheduleD19, fs)
+    : usesWorksheet ? qualifiedDividendsTax(line15, line3a, preferentialGain, fs) : regularTax(line15, fs)
   // Form 6251 — Alternative minimum tax (Schedule 2 line 2 → Form 1040 line 17)
   const amtResult = alternativeMinimumTax({
     fs, line11b: line11, line14, seniorDeduction: senior, itemized: used === 'itemized', saltDeducted: taxes,
@@ -952,7 +1016,8 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
   const totalMedicareWages = sum(w2s.map(medicareWages))
   const seEarnings = sum(scheduleSE.map((x) => x.netEarnings))
   const addlMedicare = r(pos(totalMedicareWages - threshold) * R.ADDITIONAL_MEDICARE_RATE + pos(seEarnings - pos(threshold - totalMedicareWages)) * R.ADDITIONAL_MEDICARE_RATE)
-  const netInvestmentIncome = pos(line2b + line3b + line7 + rentalNet)
+  // Gains on business property used in an active trade are not investment income; rental property gains are.
+  const netInvestmentIncome = pos(line2b + line3b + line7 - Math.min(f4797.scheduleDGain, pos(line7)) + rentalNet + f4797.rentalNet)
   const niit = r(Math.min(netInvestmentIncome, pos(magi - threshold)) * R.NIIT_RATE)
   const schedule2Total = seTax + addlMedicare + niit + earlyDistributionTax + hsaExcessTax + hsaAdditionalTax
   const line23 = schedule2Total
@@ -1042,7 +1107,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
       '25d': line25d, '26': line26, '27a': line27, '28': line28, '29': line29, '31': line31, '32': line32, '33': line33,
       '34': line34, '37': line37, '38': line38
     },
-    schedule1: { businessIncome: r(businessIncome), rentalIncome: rentalNet, unemployment, hsaTaxable, otherIncome, additionalIncome, adjustments, totalAdjustments: line10 },
+    schedule1: { businessIncome: r(businessIncome), otherGains, rentalIncome: rentalNet, unemployment, hsaTaxable, otherIncome, additionalIncome, adjustments, totalAdjustments: line10 },
     schedule1A: {
       magi, tipsCapped, tipOtExcess, tipOtReduction, tips, overtimeCapped, overtime,
       carCapped, carExcess, carReduction, carLoanInterest: carLoan,
@@ -1063,14 +1128,16 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
     scheduleE: { properties: rentalResults, gross: r(sum(rentalResults.map((x) => x.net))), priorCarryover: r(pos(input.priorPassiveCarryover)), magi: r(magiPassive), allowance: r(passiveAllowance), allowedLoss: rentalAllowedLoss, disallowed: rentalDisallowed, net: rentalNet },
     form8889: hsaResults,
     form5329,
+    form4797: f4797,
+    scheduleD19,
     section179: s179,
     form4562: [
       ...scheduleCResults.map((c) => form4562For({
-        id: c.id, kind: 'business', name: c.name, assets: c.assets, section179Allowed: c.section179,
+        id: c.id, kind: 'business', name: c.name, assets: c.assets, section179Allowed: c.section179, source: input.businesses.find((b) => b.id === c.id)?.assets,
         home: c.homeOffice.firstUsedThisYear && c.homeOffice.lines['42'] > 0 && (c.homeOffice.lines['37'] ?? 0) > 0
           ? { month: c.homeOffice.firstUsedMonth, basis: c.homeOffice.lines['40'], deduction: c.homeOffice.lines['42'] } : null
       })),
-      ...rentalResults.map((p) => form4562For({ id: p.id, kind: 'rental', name: p.address, assets: p.assets, section179Allowed: 0 }))
+      ...rentalResults.map((p) => form4562For({ id: p.id, kind: 'rental', name: p.address, assets: p.assets, section179Allowed: 0, source: input.rentals.find((x) => x.id === p.id)?.assets }))
     ].filter((f) => f.line22 > 0 || f.required),
     form6251: amtResult,
     form8880: { people: saverLines, line7: saverLine7, rate: saverRate, tentative: saverTentative, limit: saverLimit, credit: saverAllowed },

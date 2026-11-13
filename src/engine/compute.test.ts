@@ -5,9 +5,9 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { computeReturn, regularTax, taxFromSchedule } from './compute.ts'
-import { emptyAsset, emptyBusiness, emptyDependent, emptyHomeOffice, emptyHsa, emptyRental, emptyReturn, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099R, emptySocialSecurity, normalizeReturn } from './model.ts'
-import type { CapitalTransaction, DepreciableAsset, ScheduleCBusiness, TaxReturnInput } from './model.ts'
+import { computeReturn, qualifiedDividendsTax, regularTax, scheduleDTaxWorksheet, taxFromSchedule } from './compute.ts'
+import { emptyAsset, emptySale, emptyBusiness, emptyDependent, emptyHomeOffice, emptyHsa, emptyRental, emptyReturn, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099R, emptySocialSecurity, normalizeReturn } from './model.ts'
+import type { CapitalTransaction, DepreciableAsset, PropertySale, ScheduleCBusiness, TaxReturnInput } from './model.ts'
 import { groups8949, holdingTermFromDates, lineFor, scheduleDLines } from './capital.ts'
 import { qbiDeduction } from './qbi.ts'
 import { assetDepreciation, macrsRate } from './depreciation.ts'
@@ -625,4 +625,58 @@ test('Form 5329: early distribution exception and 6% tax on excess HSA contribut
   const plain = computeReturn(base({ retirement: [{ ...empty1099R(), grossDistribution: 4000, taxableAmount: 4000, code: '1' }] }))
   assert.equal(plain.schedule2.earlyDistributionTax, 400)
   assert.equal(plain.form5329[0].required, false)
+})
+
+test('Form 4797: recapture, section 1231 gain, and unrecaptured 1250 gain at up to 25%', () => {
+  const sale = (p: Partial<PropertySale>): PropertySale => ({ ...emptySale(), dateAcquired: '01/10/2015', dateSold: '06/01/2025', ...p })
+  const ret = base({
+    w2s: [w2(100000, 15000)],
+    propertySales: [
+      sale({ description: 'Rental house', kind: '1250', usedIn: 'rental', salesPrice: 400000, costBasis: 300000, depreciation: 80000 }),
+      sale({ description: 'Press', kind: '1245', dateAcquired: '03/01/2020', salesPrice: 10000, costBasis: 20000, depreciation: 15000 }),
+      sale({ description: 'Printer', kind: '1245', dateAcquired: '12/01/2024', salesPrice: 2000, costBasis: 3000, depreciation: 0 })
+    ]
+  })
+  const res = computeReturn(ret)
+  const f = res.form4797
+  assert.deepEqual([f.line30, f.line31, f.line32, f.line7, f.line9, f.line10, f.line13, f.line18b], [185000, 5000, 180000, 180000, 180000, -1000, 5000, 4000])
+  assert.equal(f.unrecaptured1250, 80000)
+  assert.equal(res.scheduleD.longTerm, 180000)
+  assert.equal(res.f1040['11a'], 284000)
+  assert.equal(res.scheduleD19, 80000)
+  assert.equal(res.f1040['16'], 48227)
+  assert.equal(res.schedule2.netInvestmentIncomeTax, 3192)
+})
+
+test('Form 4797: 1231 loss is ordinary; prior 1231 losses recapture a gain as ordinary', () => {
+  const sale = (p: Partial<PropertySale>): PropertySale => ({ ...emptySale(), kind: 'land', dateAcquired: '01/10/2015', dateSold: '06/01/2025', ...p })
+  const loss = computeReturn(base({ w2s: [w2(80000, 9000)], propertySales: [sale({ salesPrice: 50000, costBasis: 70000 })] }))
+  assert.equal(loss.form4797.line11, -20000)
+  assert.equal(loss.schedule1.otherGains, -20000)
+  assert.equal(loss.f1040['11a'], 60000)
+  const gain = computeReturn(base({ w2s: [w2(80000, 9000)], prior1231Losses: 6000, propertySales: [sale({ salesPrice: 90000, costBasis: 70000 })] }))
+  assert.deepEqual([gain.form4797.line7, gain.form4797.line12, gain.form4797.line9], [20000, 6000, 14000])
+  assert.equal(gain.schedule1.otherGains, 6000)
+  assert.equal(gain.scheduleD.longTerm, 14000)
+})
+
+test('Schedule D Tax Worksheet matches the QDCG worksheet when there is no 1250 gain', () => {
+  for (const [ti, qd, g] of [[90000, 2000, 30000], [300000, 5000, 120000], [40000, 0, 10000], [700000, 10000, 200000]] as const) {
+    assert.equal(scheduleDTaxWorksheet(ti, qd, g, g, 0, 'single'), qualifiedDividendsTax(ti, qd, g, 'single'))
+  }
+})
+
+test('listed property: passenger auto limits, ADS at 50% or less, heavy SUV section 179 cap', () => {
+  const car = (p: Partial<DepreciableAsset>): DepreciableAsset => ({ ...emptyAsset('5'), listed: 'auto', description: 'Car', placedInService: '03/01/2025', cost: 40000, businessPct: 80, ...p })
+  const o = { midQuarter: false, allow179: true }
+  const withBonus = assetDepreciation(car({}), o)
+  assert.deepEqual([withBonus.autoLimit, withBonus.bonus, withBonus.macrs], [16160, 16160, 0])
+  const noBonus = assetDepreciation(car({ bonus: 'none' }), o)
+  assert.deepEqual([noBonus.autoLimit, noBonus.macrs], [9760, 6400])
+  const low = assetDepreciation(car({ businessPct: 40 }), o)
+  assert.deepEqual([low.qualifiedUse, low.bonus, low.macrs, low.methodConvention], [false, 0, 1600, 'S/L/HY'])
+  const suv = assetDepreciation({ ...emptyAsset('5'), listed: 'heavy', description: 'SUV', placedInService: '05/01/2025', cost: 80000, section179: 50000 }, o)
+  assert.deepEqual([suv.section179Elected, suv.bonus], [31300, 48700])
+  const old = assetDepreciation(car({ placedInService: '02/01/2023', cost: 30000, businessPct: 100, bonus: 'none' }), o)
+  assert.equal(old.macrs, 5760)
 })

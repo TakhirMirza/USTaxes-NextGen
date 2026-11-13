@@ -7,8 +7,8 @@ import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import * as lib from 'pdf-lib'
 import { computeReturn } from '../engine/compute.ts'
-import { emptyAsset, emptyBusiness, emptyDependent, emptyHomeOffice, emptyHsa, emptyProvider, emptyRental, emptyReturn, emptyStudent, emptyTransaction, empty1099Div, empty1099R, emptySocialSecurity, emptyW2 } from '../engine/model.ts'
-import type { CapitalTransaction, DepreciableAsset, TaxReturnInput } from '../engine/model.ts'
+import { emptyAsset, emptySale, emptyBusiness, emptyDependent, emptyHomeOffice, emptyHsa, emptyProvider, emptyRental, emptyReturn, emptyStudent, emptyTransaction, empty1099Div, empty1099R, emptySocialSecurity, emptyW2 } from '../engine/model.ts'
+import type { CapitalTransaction, DepreciableAsset, PropertySale, TaxReturnInput } from '../engine/model.ts'
 import { buildPacket2025 } from './irs2025.ts'
 import { buildPdf, fillForm, findField } from './fill.ts'
 import type { FillProblem } from './fill.ts'
@@ -322,4 +322,53 @@ test('Form 8829 and Form 4562 print with equipment, a home first used in 2025, a
   const { bytes, problems } = await buildPdf(lib, packet.forms, load)
   assert.deepEqual(problems, [])
   if (process.env.PDF_OUT7) await writeFile(process.env.PDF_OUT7, bytes)
+})
+
+test('Form 4797 and Form 4562 Part V print; Schedule D line 19 and Schedule 1 line 4 carry the results', async () => {
+  const sale = (p: Partial<PropertySale>): PropertySale => ({ ...emptySale(), dateAcquired: '01/10/2015', dateSold: '06/01/2025', ...p })
+  const ret: TaxReturnInput = {
+    ...busy(),
+    propertySales: [
+      sale({ description: 'Rental house, 4 Ash St', kind: '1250', usedIn: 'rental', salesPrice: 400000, costBasis: 300000, depreciation: 80000 }),
+      sale({ description: 'Studio lights', kind: '1245', dateAcquired: '03/01/2020', salesPrice: 6000, costBasis: 9000, depreciation: 7000 }),
+      sale({ description: 'Lot', kind: 'land', salesPrice: 30000, costBasis: 35000 }),
+      sale({ description: 'Tripod', kind: '1245', dateAcquired: '11/01/2024', salesPrice: 300, costBasis: 500 })
+    ],
+    businesses: [{
+      ...busy().businesses[0],
+      assets: [
+        { ...emptyAsset('5'), listed: 'auto', description: 'Sedan', placedInService: '04/02/2025', cost: 42000, businessPct: 75,
+          vehicle: { ...emptyAsset().vehicle, businessMiles: 9000, commutingMiles: 0, otherMiles: 3000 } },
+        { ...emptyAsset('5'), listed: 'auto', description: 'Old van', placedInService: '05/01/2023', cost: 30000, businessPct: 40, bonus: 'none',
+          vehicle: { ...emptyAsset().vehicle, businessMiles: 4000, commutingMiles: 1000, otherMiles: 5000 } }
+      ]
+    }]
+  }
+  const res = computeReturn(ret)
+  const packet = buildPacket2025(ret, res)
+  const f4797 = packet.forms.find((f) => f.id === '4797')!
+  assert.ok(f4797, packet.forms.map((f) => f.id).join(', '))
+  assert.equal(f4797.values['f2_99[0]'], res.form4797.line32.toLocaleString('en-US'))
+  const sd = packet.forms.find((f) => f.id === 'sd')!
+  assert.equal(sd.values['f2_3[0]'], '80,000')
+  assert.equal(sd.values['Page2[0].c2_2[1]'], true)
+  const s1 = packet.forms.find((f) => f.id === 's1')!
+  assert.equal(s1.values['f1_08[0]'], res.form4797.line18b.toLocaleString('en-US'))
+  const f4562 = packet.forms.find((f) => f.id === `4562-${ret.businesses[0].id}`)!
+  assert.equal(f4562.values['f2_6[0]'], 'Sedan')
+  assert.equal(f4562.values['f2_33[0]'], 'Old van')
+  assert.equal(f4562.values['f2_13[0]'], '0')
+  assert.equal(f4562.values['f2_5[0]'], '15,150')
+  const { bytes, problems } = await buildPdf(lib, packet.forms, load)
+  assert.deepEqual(problems, [])
+  if (process.env.PDF_OUT8) await writeFile(process.env.PDF_OUT8, bytes)
+})
+
+test('a Form 4797 gain alone still brings in Schedule D', () => {
+  const ret: TaxReturnInput = {
+    ...busy(), capitalTransactions: [], dividends: [],
+    propertySales: [{ ...emptySale(), description: 'Condo', kind: '1250', usedIn: 'rental', dateAcquired: '05/01/2016', dateSold: '07/15/2025', salesPrice: 350000, costBasis: 260000, depreciation: 70000 }]
+  }
+  const ids = buildPacket2025(ret, computeReturn(ret)).forms.map((f) => f.id)
+  assert.ok(ids.includes('sd') && ids.includes('4797'), ids.join(', '))
 })

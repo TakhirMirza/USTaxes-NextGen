@@ -14,7 +14,7 @@ the browser's local storage and can be downloaded as a JSON file.
 | Area | Supported |
 | --- | --- |
 | Filing status | Single, MFJ, MFS, head of household, qualifying surviving spouse |
-| Income | W-2 (boxes 1–6), 1099-INT, 1099-DIV, 1099-R (IRA, pensions), SSA-1099 with the taxable-benefits worksheet, stock and digital-asset sales (Schedule D and Form 8949: every box A–L, dates, wash-sale and other adjustments), self-employment (Schedule C) with home office (simplified method, or Form 8829 with home depreciation and carryovers), depreciation of equipment and buildings (Form 4562: MACRS half-year, mid-quarter and mid-month, 2025 bonus depreciation 100%/40%, section 179 with the business income limit), rental real estate and royalties (Schedule E) with the $25,000 passive-loss allowance, unemployment, other income |
+| Income | W-2 (boxes 1–6), 1099-INT, 1099-DIV, 1099-R (IRA, pensions), SSA-1099 with the taxable-benefits worksheet, stock and digital-asset sales (Schedule D and Form 8949: every box A–L, dates, wash-sale and other adjustments), self-employment (Schedule C) with home office (simplified method, or Form 8829 with home depreciation and carryovers), depreciation of equipment and buildings (Form 4562: MACRS half-year, mid-quarter and mid-month, 2025 bonus depreciation 100%/40%, section 179 with the business income limit, vehicles and other listed property with the passenger-auto limits), sales of business and rental property (Form 4797: section 1245 recapture, unrecaptured 1250 gain at up to 25% via the Schedule D Tax Worksheet, section 1231 netting and five-year lookback), rental real estate and royalties (Schedule E) with the $25,000 passive-loss allowance, unemployment, other income |
 | Adjustments (Schedule 1) | Half of SE tax, SE health insurance, HSA (Form 8889: prorated limits, catch-up, family split, taxable distributions and 20% tax), IRA, student loan interest (with phase-out), educator expenses |
 | New 2025 deductions (Schedule 1-A) | Tips, overtime, car loan interest, $6,000 senior deduction, with phase-outs |
 | Deductions | Standard (incl. 65+/blind and dependent rules) or itemized (Schedule A, $40,000 SALT cap with phase-down) |
@@ -27,7 +27,7 @@ the browser's local storage and can be downloaded as a JSON file.
 | Penalty | Estimated tax penalty (Form 2210 Part I and the 2025 Penalty Worksheet, 7%), with the 2024 safe harbor |
 
 **IRS forms (PDF):** the Review step fills the official 2025 IRS PDFs in the browser and downloads one
-print-ready file: Form 1040, Schedules 1, 1-A, 2, 3, A, B, C, D, E, SE, EIC, 8812, Forms 2441, 4562, 5329, 6251, 8829, 8863, 8880, 8889, 8949, 8995-A, 8959, 8960, 8995, and the
+print-ready file: Form 1040, Schedules 1, 1-A, 2, 3, A, B, C, D, E, SE, EIC, 8812, Forms 2441, 4562, 4797, 5329, 6251, 8829, 8863, 8880, 8889, 8949, 8995-A, 8959, 8960, 8995, and the
 1040-V payment voucher when tax is owed. The blank forms live in `public/forms/2025` (official IRS PDFs).
 
 ## For preparers and families
@@ -44,7 +44,7 @@ print-ready file: Form 1040, Schedules 1, 1-A, 2, 3, A, B, C, D, E, SE, EIC, 881
 
 **Try it:** the “Try an example” link fills in a made-up household so you can see every step.
 
-**Not yet supported:** listed property and vehicle depreciation (Form 4562 Part V), ADS, dispositions (Form 4797), Form 8582 detail, 8995-A Schedules A–D as separate pages,
+**Not yet supported:** like-kind exchanges (Form 8824), casualty losses (Form 4684), installment sales (Form 6252), AMT on unrecaptured 1250 gain, Form 8582 detail, 8995-A Schedules A–D as separate pages,
 K-1 income, state returns, e-file. The app flags these when they may apply.
 
 ## Project layout
