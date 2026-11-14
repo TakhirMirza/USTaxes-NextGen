@@ -498,3 +498,28 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .lines .explain-parts td { text-align: right; padding-left: 12px; }
 .explain-links { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 0 0; font-size: 0.92rem; }
 .explain-links a { color: var(--form-green); }
+
+/* ── Virginia ───────────────────────────────────────────── */
+.summary-state { display: flex; justify-content: space-between; gap: 12px; margin: 12px 0 0; padding: 10px 0 0; border-top: 2px solid var(--ink); font-size: 0.9rem; }
+.summary-state strong { font-weight: 800; }
+.va-result {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 24px; align-items: end;
+  margin: 0 0 28px; padding: 18px 20px; background: var(--form-green-tint); border-left: 6px solid var(--form-green);
+}
+.va-result.is-owed { background: var(--owed-tint); border-left-color: var(--owed); }
+.va-result-label { margin: 0; font-weight: 700; }
+.va-result-amount { margin: 2px 0 0; font-size: 2.4rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; color: var(--form-green); overflow-wrap: anywhere; }
+.va-result.is-owed .va-result-amount { color: var(--owed); }
+.va-result dl { margin: 0; }
+.va-result dl > div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px dotted var(--rule-strong); font-size: 0.9rem; }
+.va-result dt { color: var(--ink-soft); }
+.va-result dd { margin: 0; font-weight: 600; }
+.va-auto { list-style: none; margin: 16px 0 0; padding: 0; border-top: 1px solid var(--rule); }
+.va-auto li { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--rule); font-size: 0.92rem; }
+.va-auto span { color: var(--ink-soft); }
+.va-entries { margin-top: 22px; }
+.va-entries h3, .va-sub { margin: 24px 0 6px; font-size: 1rem; }
+.va-entries h3 { margin-top: 0; }
+@media (max-width: 640px) {
+  .va-result { grid-template-columns: 1fr; gap: 12px; }
+}

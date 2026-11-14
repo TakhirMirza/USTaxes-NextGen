@@ -39,7 +39,14 @@ export async function fillForm(lib: PdfLib, bytes: Uint8Array | ArrayBuffer, fil
       }
       field.setText(text || undefined)
     } else if (field instanceof lib.PDFCheckBox) {
-      if (value === true) field.check()
+      if (typeof value === 'string' && value) {
+        // A check box with several widgets that each have their own "on" state (for example checking / savings).
+        const on = lib.PDFName.of(value)
+        const widgets = field.acroField.getWidgets()
+        if (!widgets.some((w) => w.getOnValue() === on)) { problems.push({ form: fill.id, key, problem: `no "${value}" state` }); continue }
+        field.acroField.dict.set(lib.PDFName.of('V'), on)
+        widgets.forEach((w) => w.setAppearanceState(w.getOnValue() === on ? on : lib.PDFName.of('Off')))
+      } else if (value === true) field.check()
       else field.uncheck()
     } else {
       problems.push({ form: fill.id, key, problem: `unsupported field type ${field.constructor.name}` })
@@ -51,10 +58,10 @@ export async function fillForm(lib: PdfLib, bytes: Uint8Array | ArrayBuffer, fil
   return doc
 }
 
-export async function buildPdf(lib: PdfLib, forms: FormFill[], load: Loader): Promise<{ bytes: Uint8Array; problems: FillProblem[] }> {
+export async function buildPdf(lib: PdfLib, forms: FormFill[], load: Loader, title = '2025 Form 1040 — USTaxes NextGen'): Promise<{ bytes: Uint8Array; problems: FillProblem[] }> {
   const problems: FillProblem[] = []
   const out = await lib.PDFDocument.create()
-  out.setTitle('2025 Form 1040 — USTaxes NextGen')
+  out.setTitle(title)
   out.setCreator('USTaxes NextGen')
   for (const fill of forms) {
     const doc = await fillForm(lib, await load(fill.file), fill, problems)

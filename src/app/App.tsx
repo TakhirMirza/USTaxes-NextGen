@@ -7,6 +7,9 @@ import { AboutStep, DeductionsStep, IncomeStep, PaymentsStep } from './steps'
 import type { Setter } from './steps'
 import { ReviewStep } from './review'
 import { CompareStep } from './compare'
+import { VirginiaStep } from './virginia'
+import { computeVirginia } from '../engine/va2025.ts'
+import { preparerReady } from './store.ts'
 import { exampleReturn, hasEntries } from './example'
 import { usd } from './fields'
 import {
@@ -27,6 +30,7 @@ const STEPS = [
   { path: 'income', title: 'Income', blurb: 'W-2, 1099, retirement, business, rentals, K-1' },
   { path: 'deductions', title: 'Deductions', blurb: 'HSA, adjustments, 2025 deductions, Schedule A' },
   { path: 'payments', title: 'Credits & payments', blurb: 'EIC, child, care, education, saver’s credits' },
+  { path: 'virginia', title: 'Virginia', blurb: 'State return, Form 760' },
   { path: 'review', title: 'Review', blurb: 'Form 1040, IRS forms, letter' },
   { path: 'compare', title: 'What if', blurb: 'Compare scenarios side by side' }
 ] as const
@@ -45,7 +49,7 @@ function pickStorage(): { kv: KV; persistent: boolean } {
   }
 }
 
-function Summary({ result, open, onToggle }: { result: TaxReturnResult; open: boolean; onToggle: () => void }): ReactElement {
+function Summary({ ret, result, open, onToggle }: { ret: TaxReturnInput; result: TaxReturnResult; open: boolean; onToggle: () => void }): ReactElement {
   const s = result.summary
   const owes = s.amountOwed > 0
   const headline = owes ? 'You owe' : s.refund > 0 ? 'Your refund' : 'Balance'
@@ -75,9 +79,21 @@ function Summary({ result, open, onToggle }: { result: TaxReturnResult; open: bo
             <div key={label}><dt>{label}</dt><dd>{usd(value)}</dd></div>
           ))}
         </dl>
+        {ret.virginia.enabled && <VirginiaSummary ret={ret} result={result} />}
         <p className="summary-foot">Federal return, tax year 2025. Estimate only: check every number before you file.</p>
       </div>
     </aside>
+  )
+}
+
+function VirginiaSummary({ ret, result }: { ret: TaxReturnInput; result: TaxReturnResult }): ReactElement {
+  const va = useMemo(() => computeVirginia(ret, result), [ret, result])
+  const owes = va.lines['35'] > 0
+  return (
+    <p className="summary-state">
+      <span>{owes ? 'Virginia: you owe' : 'Virginia refund'}</span>
+      <strong>{usd(owes ? va.lines['35'] : va.lines['36'])}</strong>
+    </p>
   )
 }
 
@@ -124,6 +140,7 @@ function Workspace({ ret, set, result, current, preparer, meta, onExample, onSta
         {current === 'income' && <IncomeStep {...props} />}
         {current === 'deductions' && <DeductionsStep {...props} />}
         {current === 'payments' && <PaymentsStep {...props} />}
+        {current === 'virginia' && <VirginiaStep {...props} preparer={ret.usePaidPreparer && preparerReady(preparer) ? preparer : null} />}
         {current === 'review' && <ReviewStep {...props} preparer={preparer} status={meta.status} onStatus={onStatus} onGo={(s) => go(stepForIssue[s])} />}
         {current === 'compare' && <CompareStep {...props} onSaveAsReturn={onSaveAsReturn} />}
 
@@ -133,11 +150,11 @@ function Workspace({ ret, set, result, current, preparer, meta, onExample, onSta
         </footer>
         <p className="disclaimer">
           USTaxes NextGen is an open-source preparation aid, not tax advice. It prints IRS forms to sign and mail; it does not e-file.
-          Not yet covered: like-kind exchanges, casualty losses, estates and trusts (K-1 from Form 1041), foreign income, and state returns.
+          Not yet covered: like-kind exchanges, casualty losses, estates and trusts (K-1 from Form 1041), foreign income, and state returns other than Virginia.
         </p>
       </main>
 
-      <Summary result={result} open={summaryOpen} onToggle={() => setSummaryOpen((o) => !o)} />
+      <Summary ret={ret} result={result} open={summaryOpen} onToggle={() => setSummaryOpen((o) => !o)} />
     </div>
   )
 }

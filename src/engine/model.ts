@@ -456,6 +456,70 @@ export interface Scenario {
   /** Extra estimated tax payment. */ extraPayments: number
 }
 
+/** One coded line on Virginia Schedule ADJ (additions 2b–2c, subtractions 6b–6d, deductions 8a–8c). */
+export interface VaAdjEntry { id: string; code: string; amount: number; owner: Owner }
+
+/** Virginia Form 760 (full-year resident) inputs that the federal return does not already hold. */
+export interface VirginiaInput {
+  /** Prepare a Virginia resident return (Form 760). */
+  enabled: boolean
+  /** Three-digit locality code of the city or county you lived in on January 1, 2026. */
+  localityCode: string
+  /** MM/DD/YYYY. Printed on Form 760 and used for the age deduction. */
+  birthDate: Record<Owner, string>
+  /** Virginia income tax withheld: W-2 box 17, 1099-R box 14, 1099-G, VK-1. */
+  withholding: Record<Owner, number>
+  /** 2025 Virginia estimated payments (Form 760ES), not counting the 2024 overpayment applied. */
+  estimatedPayments: number
+  /** 2024 Virginia overpayment applied to 2025 estimated tax. */
+  priorOverpayment: number
+  /** Paid with an extension (Form 760IP). */
+  extensionPayments: number
+  /** Schedule ADJ line 1: interest on other states' bonds that is tax-exempt federally. */
+  otherStateBondInterest: number
+  /** Schedule ADJ line 4: interest on U.S. obligations (Treasury bills, notes, bonds, savings bonds; 1099-INT box 3). */
+  usObligationInterest: number
+  /** Form 760 line 6: state income tax refund included in federal AGI (Schedule 1 line 1). */
+  stateRefundInFagi: number
+  /** Schedule ADJ line 5: disability income subtraction (instead of an age deduction), up to $20,000 each. */
+  disability: Record<Owner, number>
+  /** Schedule ADJ line 2a: conformity additions other than bonus depreciation (bonus is figured automatically). */
+  otherConformityAddition: number
+  /** Schedule ADJ line 6a: conformity subtractions (for example, depreciation on assets that got federal bonus in earlier years). */
+  conformitySubtraction: number
+  additions: VaAdjEntry[]
+  subtractions: VaAdjEntry[]
+  deductions: VaAdjEntry[]
+  /** Commonwealth Savers (Virginia529) contributions in 2025, per account; deduction code 104 is figured from them. */
+  savers: { id: string; owner: Owner; account: string; contributed: number; carryforward: number }[]
+  /** Virginia itemized deductions from your own Virginia Schedule A line 19; null = estimate from the federal Schedule A. */
+  itemizedOverride: number | null
+  /** The state and local tax on federal Schedule A is general sales tax (not income tax). */
+  salesTaxElected: boolean
+  /** Family VAGI of dependents with income (Schedule ADJ line 10) for the Credit for Low-Income Individuals. */
+  dependentsVagi: number
+  /** Filing status 3: your spouse's federal AGI, used for the age deduction income test. */
+  spouseFagiIfSeparate: number
+  /** Spouse's share of Virginia AGI for the Spouse Tax Adjustment; null = split automatically. */
+  spouseVagiOverride: number | null
+  /** Line 24: credit for tax paid to another state (Schedule OSC line 21). */
+  otherStateCredit: number
+  /** Line 25: credits from Schedule CR, Section 5, Part 1, line 1A. */
+  scheduleCrCredits: number
+  /** Line 29: overpayment to apply to 2026 estimated tax. */
+  creditForward: number
+  /** Line 30: Commonwealth Savers and ABLE contributions from Schedule VAC Section I. */
+  vacSavers: number
+  /** Line 31: other voluntary contributions from Schedule VAC Section II. */
+  vacOther: number
+  /** Schedule ADJ line 18: addition to tax for underpaid estimated tax (Form 760C or 760F). */
+  additionToTax: number
+  /** Line 33: consumer's use tax on untaxed out-of-state purchases. */
+  useTax: number
+  /** Total 2024 Virginia tax after nonrefundable credits (for the 760C safe harbor). null = not entered. */
+  priorYearTax: number | null
+}
+
 export interface TaxReturnInput {
   version: 1
   filingStatus: FilingStatus
@@ -513,6 +577,8 @@ export interface TaxReturnInput {
   payments: { estimatedTaxPayments: number; estimatedByQuarter: [number, number, number, number]; otherWithholding: number }
   /** What-if scenarios kept with the return. */
   scenarios: Scenario[]
+  /** Virginia resident return (Form 760). */
+  virginia: VirginiaInput
 }
 
 let counter = 0
@@ -621,6 +687,30 @@ export const emptyStudent = (): Student => ({
 })
 export const emptyProvider = (): CareProvider => ({ id: newId('care'), name: '', address: '', tin: '', householdEmployee: false, amountPaid: 0 })
 
+export const emptyVaEntry = (code = ''): VaAdjEntry => ({ id: newId('vadj'), code, amount: 0, owner: 'taxpayer' })
+export const emptyVaSavers = (): VirginiaInput['savers'][number] => ({ id: newId('vacs'), owner: 'taxpayer', account: '', contributed: 0, carryforward: 0 })
+export const emptyVirginia = (): VirginiaInput => ({
+  enabled: false, localityCode: '', birthDate: { taxpayer: '', spouse: '' }, withholding: { taxpayer: 0, spouse: 0 },
+  estimatedPayments: 0, priorOverpayment: 0, extensionPayments: 0, otherStateBondInterest: 0, usObligationInterest: 0,
+  stateRefundInFagi: 0, disability: { taxpayer: 0, spouse: 0 }, otherConformityAddition: 0, conformitySubtraction: 0,
+  additions: [], subtractions: [], deductions: [], savers: [], itemizedOverride: null, salesTaxElected: false,
+  dependentsVagi: 0, spouseFagiIfSeparate: 0, spouseVagiOverride: null, otherStateCredit: 0, scheduleCrCredits: 0,
+  creditForward: 0, vacSavers: 0, vacOther: 0, additionToTax: 0, useTax: 0, priorYearTax: null
+})
+
+const normalizeVirginia = (v: Partial<VirginiaInput> | undefined): VirginiaInput => {
+  const base = emptyVirginia()
+  const entries = (x: unknown): VaAdjEntry[] => (Array.isArray(x) ? x.map((e) => ({ ...emptyVaEntry(), ...(e as object) })) : [])
+  return {
+    ...base, ...(v ?? {}),
+    birthDate: { ...base.birthDate, ...(v?.birthDate ?? {}) },
+    withholding: { ...base.withholding, ...(v?.withholding ?? {}) },
+    disability: { ...base.disability, ...(v?.disability ?? {}) },
+    additions: entries(v?.additions), subtractions: entries(v?.subtractions), deductions: entries(v?.deductions),
+    savers: Array.isArray(v?.savers) ? v.savers.map((x) => ({ ...emptyVaSavers(), ...x })) : []
+  }
+}
+
 export const emptySavings = (): RetirementSavings => ({ iraContributions: 0, electiveDeferrals: 0, distributions: 0 })
 
 export const emptyReturn = (): TaxReturnInput => ({
@@ -668,7 +758,8 @@ export const emptyReturn = (): TaxReturnInput => ({
   savings: { taxpayer: emptySavings(), spouse: emptySavings() },
   priorYear: { tax: null, agi: 0, noLiability: false },
   payments: { estimatedTaxPayments: 0, estimatedByQuarter: [0, 0, 0, 0], otherWithholding: 0 },
-  scenarios: []
+  scenarios: [],
+  virginia: emptyVirginia()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -770,6 +861,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     scenarios: Array.isArray(r.scenarios) ? r.scenarios.map((x) => ({
       id: newId('scn'), name: 'Scenario', filingStatus: '', deductionChoice: '', pretax401k: 0, ira: 0, hsa: 0, charity: 0,
       otherIncome: 0, selfEmployment: 0, longTermGain: 0, shortTermGain: 0, extraPayments: 0, ...(x as object)
-    })) : []
+    })) : [],
+    virginia: normalizeVirginia(r.virginia)
   })
 }
