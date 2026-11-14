@@ -509,6 +509,52 @@ function form4797Forms(ret: TaxReturnInput, res: TaxReturnResult): FormFill[] {
   return [{ id: '4797', file: 'f4797.pdf', title: 'Form 4797', values: v, pages }, ...sheets]
 }
 
+// ── Form 8582 ────────────────────────────────────────────────────────────────
+function form8582Fill(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
+  const f = res.form8582
+  const v: Record<string, FieldValue> = { 'f1_01[0]': namesOnReturn(ret), 'f1_02[0]': ssnDashed(ret.taxpayer.ssn) }
+  Object.assign(v, {
+    'f1_03[0]': amt(f.line1a), 'f1_04[0]': amt(f.line1b), 'f1_05[0]': amt(f.line1c), 'f1_06[0]': amt(f.line1d),
+    'f1_07[0]': amt(f.line2a), 'f1_08[0]': amt(f.line2b), 'f1_09[0]': amt(f.line2c), 'f1_10[0]': amt(f.line2d),
+    'f1_11[0]': amt(f.line3, true)
+  })
+  if (f.line3 < 0) {
+    if (f.line4 > 0) Object.assign(v, { 'f1_12[0]': amt(f.line4), 'f1_13[0]': amt(f.line5), 'f1_14[0]': amt(f.line6), 'f1_15[0]': amt(f.line7), 'f1_16[0]': amt(f.line8), 'f1_17[0]': amt(f.line9, true) })
+    Object.assign(v, { 'f1_18[0]': amt(f.line10, true), 'f1_19[0]': amt(f.line11, true) })
+  }
+  const two = (n: number): string => String(n).padStart(2, '0')
+  const table = (rows: typeof f.activities, first: number, page: 1 | 2, total: number): void => {
+    rows.slice(0, 5).forEach((x, i) => {
+      const k = (n: number): string => `f${page}_${two(first + 6 * i + n)}[0]`
+      Object.assign(v, { [k(0)]: x.name, [k(1)]: amt(x.a), [k(2)]: amt(x.b), [k(3)]: amt(x.c), [k(4)]: amt(x.d), [k(5)]: amt(x.e) })
+    })
+    const sumOf = (key: 'a' | 'b' | 'c' | 'd' | 'e'): number => rows.reduce((t, x) => t + x[key], 0)
+    ;(['a', 'b', 'c', 'd', 'e'] as const).forEach((key, n) => { v[`f${page}_${two(total + n)}[0]`] = amt(sumOf(key)) })
+  }
+  const rent = f.activities.filter((x) => x.group === 'rental')
+  const other = f.activities.filter((x) => x.group === 'other')
+  if (rent.length) table(rent, 20, 1, 50)
+  if (other.length) table(other, 1, 2, 31)
+  const ratio = (n: number): string => n.toFixed(2)
+  f.partVI.slice(0, 5).forEach((x, i) => {
+    const k = (n: number): string => `f2_${36 + 6 * i + n}[0]`
+    Object.assign(v, { [k(0)]: x.name, [k(1)]: x.reportedOn, [k(2)]: amt(x.loss, true), [k(3)]: ratio(x.ratio), [k(4)]: amt(x.allowance, true), [k(5)]: amt(x.net, true) })
+  })
+  if (f.partVI.length) Object.assign(v, { 'f2_66[0]': amt(f.partVI.reduce((t, x) => t + x.loss, 0), true), 'f2_68[0]': amt(f.line9, true), 'f2_69[0]': amt(f.partVI.reduce((t, x) => t + x.net, 0), true) })
+  f.partVII.slice(0, 5).forEach((x, i) => {
+    const k = (n: number): string => `f2_${70 + 5 * i + n}[0]`
+    Object.assign(v, { [k(0)]: x.name, [k(1)]: x.reportedOn, [k(2)]: amt(x.loss, true), [k(3)]: ratio(x.ratio), [k(4)]: amt(x.unallowed, true) })
+  })
+  if (f.partVII.length) Object.assign(v, { 'f2_95[0]': amt(f.partVII.reduce((t, x) => t + x.loss, 0), true), 'f2_97[0]': amt(f.unallowed, true) })
+  const losers = f.activities.filter((x) => x.e > 0 && f.line3 < 0)
+  losers.slice(0, 5).forEach((x, i) => {
+    const k = (n: number): number => 98 + 5 * i + n
+    Object.assign(v, { [`f2_${k(0)}[0]`]: x.name, [`f2_${k(1)}[0]`]: x.reportedOn, [`f2_${k(2)}[0]`]: amt(x.e, true), [`f2_${k(3)}[0]`]: amt(x.unallowed, true), [`f2_${k(4)}[0]`]: amt(x.e - x.unallowed, true) })
+  })
+  if (losers.length) Object.assign(v, { 'f2_123[0]': amt(losers.reduce((t, x) => t + x.e, 0), true), 'f2_124[0]': amt(f.unallowed, true), 'f2_125[0]': amt(losers.reduce((t, x) => t + x.e - x.unallowed, 0), true) })
+  return { id: '8582', file: 'f8582.pdf', title: 'Form 8582', values: v, pages: [0, 1] }
+}
+
 // ── Form 8829 (one per business using the regular method) ──────────────────
 function form8829(ret: TaxReturnInput, res: TaxReturnResult, b: TaxReturnInput['businesses'][number]): FormFill | null {
   const c = res.scheduleC.find((x) => x.id === b.id)
@@ -1117,19 +1163,9 @@ function scheduleE(ret: TaxReturnInput, res: TaxReturnResult): FormFill[] {
   const e = res.scheduleE
   const props = ret.rentals.filter((p) => ret.filingStatus === 'mfj' || p.owner === 'taxpayer')
   const results = e.properties
-  // Line 22: the allowed part of each loss (Form 8582 result), spread over loss properties.
-  const positive = results.filter((x) => x.net > 0).reduce((t, x) => t + x.net, 0)
-  const line25 = Math.max(0, positive - e.net)
-  const lossProps = results.filter((x) => x.net < 0)
-  const totalLoss = lossProps.reduce((t, x) => t - x.net, 0)
-  const line22 = new Map<string, number>()
-  let assigned = 0
-  lossProps.forEach((x, i) => {
-    const share = i === lossProps.length - 1 ? line25 - assigned : Math.round(line25 * (-x.net / (totalLoss || 1)))
-    line22.set(x.id, share)
-    assigned += share
-  })
-  if (!lossProps.length && line25 > 0 && results[0]) line22.set(results[0].id, line25)
+  const positive = e.line24
+  const line25 = e.line25
+  const line22 = new Map(results.filter((x) => x.line22 > 0).map((x) => [x.id, x.line22]))
   const sheets: FormFill[] = []
   for (let start = 0; start < Math.max(1, props.length); start += 3) {
     const chunk = props.slice(start, start + 3)
@@ -1290,6 +1326,7 @@ export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult, prepa
   if (res.schedule2.additionalMedicareTax > 0 || f['25c'] > 0) forms.push(form8959(ret, res))
   if (res.schedule2.netInvestmentIncomeTax > 0) forms.push(form8960(ret, res))
   forms.push(...forms4562(ret, res))
+  if (res.form8582.required) forms.push(form8582Fill(ret, res))
   ret.businesses.filter((b) => owners.includes(b.owner)).forEach((b) => { const x = form8829(ret, res, b); if (x) forms.push(x) })
   if (f['37'] > 0) forms.push(form1040V(ret, res))
 
@@ -1303,7 +1340,7 @@ export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult, prepa
   if (res.form4797.sales.filter((x) => x.part === 'I').length > 4 || res.form4797.sales.filter((x) => x.part === 'II').length > 4) notIncluded.push('A statement listing Form 4797 line 2 or line 10 sales beyond the first four')
   if (res.scheduleD19 > 0) notIncluded.push('Unrecaptured Section 1250 Gain Worksheet and Schedule D Tax Worksheet (keep with your records; the tax on line 16 uses them)')
   if (res.k1.rows.length > 4) notIncluded.push('Schedule E page 2 continuation for K-1s beyond the first four (the totals include them)')
-  if (res.k1.disallowed > 0 || ret.k1s.some((x) => x.priorPassiveCarryover > 0)) notIncluded.push('Form 8582 (Passive Activity Loss Limitations) for K-1 passive activities')
-  if (res.scheduleE.disallowed > 0 || res.scheduleE.priorCarryover > 0) notIncluded.push('Form 8582 (Passive Activity Loss Limitations)')
+  if (res.form8582.required && res.form8582.activities.filter((x) => x.group === 'rental').length > 5) notIncluded.push('Form 8582 Part IV continuation for more than five activities')
+  if (res.form8582.required && res.form8582.activities.filter((x) => x.group === 'other').length > 5) notIncluded.push('Form 8582 Part V continuation for more than five activities')
   return { forms, notIncluded }
 }

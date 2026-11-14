@@ -11,7 +11,9 @@ import { gainOf, holdingTermFromDates, isAggregated, parseDate, withDefaults } f
 import { NONRES_FIRST_YEAR, assetDepreciation, form4562For, isPersonalProperty, midQuarterApplies, section179 } from './depreciation.ts'
 import type { AssetResult, Form4562Result, Section179Result } from './depreciation.ts'
 import { form4797 } from './sales.ts'
-import { k1Totals } from './k1.ts'
+import { k1Activity, k1Totals } from './k1.ts'
+import { form8582 } from './passive.ts'
+import type { Form8582Result, PassiveActivity } from './passive.ts'
 import type { K1Totals } from './k1.ts'
 import type { Form4797Result } from './sales.ts'
 import type { QbiResult } from './qbi.ts'
@@ -53,7 +55,7 @@ export interface Form5329Result {
   /** Part VII */ line42: number; line43: number; line44: number; line45: number; line46: number; line47: number; line48: number; line49: number
   /** False when only the full 10% tax is owed: it then goes straight on Schedule 2 line 8. */ required: boolean
 }
-export interface RentalResult { id: string; address: string; income: number; expenses: number; net: number; personalUseWarning: boolean; assetDepreciation: number; assets: AssetResult[] }
+export interface RentalResult { id: string; address: string; income: number; expenses: number; net: number; personalUseWarning: boolean; assetDepreciation: number; assets: AssetResult[]; /** Line 22: deductible loss (positive). */ line22: number }
 export interface ScheduleSEResult { owner: Owner; netEarnings: number; socialSecurityTax: number; medicareTax: number; total: number }
 
 export interface TaxReturnResult {
@@ -75,7 +77,8 @@ export interface TaxReturnResult {
   scheduleSE: ScheduleSEResult[]
   /** total = Part II (line 21, Form 1040 line 23); amt is Part I (line 1040 line 17). */
   schedule2: { amt: number; selfEmploymentTax: number; additionalMedicareTax: number; netInvestmentIncomeTax: number; earlyDistributionTax: number; hsaExcessTax: number; hsaAdditionalTax: number; total: number }
-  scheduleE: { properties: RentalResult[]; gross: number; priorCarryover: number; magi: number; allowance: number; allowedLoss: number; disallowed: number; net: number }
+  scheduleE: { properties: RentalResult[]; gross: number; priorCarryover: number; magi: number; allowance: number; allowedLoss: number; disallowed: number; net: number; line24: number; line25: number }
+  form8582: Form8582Result
   form5329: Form5329Result[]
   form4797: Form4797Result
   k1: K1Totals
@@ -504,7 +507,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
   const line2a = r(sum(input.interest.map((i) => i.taxExemptInterest)))
   const k1In = (input.k1s ?? []).filter((k) => ownedBy(k.owner))
   ;(input.k1s ?? []).forEach((k, i) => { if (!ownedBy(k.owner)) issues.push({ level: 'error', step: 'income', message: `K-1 #${i + 1} belongs to your spouse, but this is not a joint return. It is excluded.` }) })
-  const k1Portfolio = k1Totals(k1In, 0)
+  const k1Portfolio = k1Totals(k1In)
   const line2b = r(sum(input.interest.map((i) => i.interest))) + k1Portfolio.interest
   const line3b = r(sum(input.dividends.map((d) => d.ordinaryDividends))) + k1Portfolio.ordinaryDividends
   const line3a = r(sum(input.dividends.map((d) => Math.min(d.qualifiedDividends, d.ordinaryDividends)))) + k1Portfolio.qualifiedDividends
@@ -708,32 +711,49 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
     const assetDepreciation = r(sum(assets.map((a) => a.depreciation)))
     const expenses = r(sum(Object.values(p.expenses))) + assetDepreciation
     const personalUseWarning = p.personalUseDays > Math.max(14, 0.1 * p.fairRentalDays)
-    return { id: p.id, address: p.address || 'Rental property', income, expenses, net: income - expenses, personalUseWarning, assetDepreciation, assets }
+    return { id: p.id, address: p.address || 'Rental property', income, expenses, net: income - expenses, personalUseWarning, assetDepreciation, assets, line22: 0 }
   })
   rentalResults.filter((x) => x.personalUseWarning).forEach((x) => issues.push({ level: 'warning', step: 'income', message: `${x.address}: personal use was more than 14 days or 10% of rental days, so it counts as a residence. Expenses must be split and limited (Pub. 527); this app does not do that split.` }))
   rentalsIn.filter((p) => p.fairRentalDays > 0 && p.fairRentalDays < 15).forEach((p) => issues.push({ level: 'info', step: 'income', message: `${p.address || 'A property'}: rented fewer than 15 days, so the rent is generally not taxable and expenses are not deductible. Check whether it belongs on Schedule E.` }))
   if (rentalsIn.length && input.rentalForms1099.required === null) issues.push({ level: 'warning', step: 'income', message: 'Answer whether your rentals required you to file Forms 1099 (Schedule E, line A).' })
-  const rentalGross = sum(rentalResults.map((x) => x.net)) - r(pos(input.priorPassiveCarryover))
   const unemployment = r(input.unemployment)
   const otherIncome = r(input.otherIncome)
+  // Form 8582 — passive activities: rentals (royalties and self-rentals are not passive) and K-1s
+  // in which you did not materially participate.
+  const passiveRental = (p: (typeof rentalsIn)[number]): boolean => p.type !== 'royalties' && p.type !== 'selfrental'
+  const activities: PassiveActivity[] = [
+    ...rentalsIn.filter(passiveRental).map((p) => ({
+      id: p.id, name: p.address || 'Rental property', group: (p.activeParticipation ? 'rental' : 'other') as PassiveActivity['group'],
+      net: rentalResults.find((x) => x.id === p.id)?.net ?? 0, prior: r(pos(p.priorUnallowed ?? 0)), reportedOn: 'Sch. E, line 22'
+    })),
+    ...k1In.filter((k) => !k.materialParticipation).map((k) => ({
+      id: k.id, name: k.entityName.trim() || 'Schedule K-1', group: (k.rentalActiveParticipation ? 'rental' : 'other') as PassiveActivity['group'],
+      net: k1Activity(k), prior: r(pos(k.priorPassiveCarryover)), reportedOn: 'Sch. E, line 28'
+    }))
+  ]
   // MAGI for the $25,000 allowance: AGI without passive losses, taxable Social Security, IRA,
   // student loan interest, or the deductible half of SE tax.
-  const magiPassive = line1z + line2b + line3b + line4b + line5b + line7 + businessIncome + f4797.line18b + k1Portfolio.line32 + unemployment + otherIncome + hsaTaxable -
-    (Math.min(pos(input.adjustments.educatorExpenses), joint ? 600 : 300) + hsaDeduction)
-  let rentalAllowedLoss = 0
-  let rentalDisallowed = 0
-  let passiveAllowance = 0
-  if (rentalGross < 0) {
-    const anyActive = rentalsIn.some((p) => p.activeParticipation)
-    passiveAllowance = fs === 'mfs' || !anyActive ? 0 : pos(R.PASSIVE_ALLOWANCE - pos(magiPassive - R.PASSIVE_PHASEOUT_START) * R.PASSIVE_PHASEOUT_RATE)
-    rentalAllowedLoss = Math.min(-rentalGross, r(passiveAllowance))
-    rentalDisallowed = -rentalGross - rentalAllowedLoss
-    if (rentalDisallowed > 0) issues.push({ level: 'info', step: 'income', message: `$${rentalDisallowed.toLocaleString()} of rental loss is not allowed this year (passive activity rules) and carries over to 2026. Keep Form 8582 for your records.` })
-    if (fs === 'mfs') issues.push({ level: 'info', step: 'income', message: 'Married filing separately: the $25,000 rental loss allowance is $0 if you lived with your spouse at any time in 2025 ($12,500 if you lived apart all year — not figured here).' })
-  }
-  const rentalNet = rentalGross >= 0 ? r(rentalGross) : -rentalAllowedLoss
-  // Schedule E Part II — K-1 income. Rental income from Part I is passive income for the K-1 passive limit.
-  const k1 = k1Totals(k1In, pos(rentalNet))
+  const passiveNetAll = sum(activities.map((x) => x.net))
+  const nonpassiveK1 = sum(k1In.filter((k) => k.materialParticipation).map((k) => k1Activity(k) + (k.kind === 'partnership' ? pos(k.guaranteedPayments) : 0))) +
+    sum(k1In.filter((k) => !k.materialParticipation && k.kind === 'partnership').map((k) => pos(k.guaranteedPayments)))
+  const nonpassiveRental = sum(rentalResults.filter((x) => !activities.some((a) => a.id === x.id)).map((x) => x.net))
+  const magiPassive = line1z + line2b + line3b + line4b + line5b + line7 + businessIncome + f4797.line18b + nonpassiveK1 + nonpassiveRental + pos(passiveNetAll) +
+    unemployment + otherIncome + hsaTaxable - (Math.min(pos(input.adjustments.educatorExpenses), joint ? 600 : 300) + hsaDeduction)
+  const f8582 = form8582(activities, fs, magiPassive)
+  const passiveBy = new Map(f8582.activities.map((x) => [x.id, x]))
+  // Schedule E Part I, line 22: the deductible loss of each property.
+  rentalResults.forEach((x) => {
+    const a = passiveBy.get(x.id)
+    x.line22 = a ? (a.b + a.c > 0 ? a.allowed : 0) : (x.net < 0 ? -x.net : 0)
+  })
+  const rentalLine24 = sum(rentalResults.map((x) => pos(x.net)))
+  const rentalLine25 = sum(rentalResults.map((x) => x.line22))
+  const rentalNet = rentalLine24 - rentalLine25
+  const rentalDisallowed = sum(rentalResults.map((x) => passiveBy.get(x.id)?.unallowed ?? 0))
+  if (f8582.unallowed > 0) issues.push({ level: 'info', step: 'income', message: `$${f8582.unallowed.toLocaleString()} of passive losses is not allowed this year and carries to 2026 (Form 8582).` })
+  if (fs === 'mfs' && f8582.line1d < 0) issues.push({ level: 'info', step: 'income', message: 'Married filing separately: the $25,000 rental loss allowance is $0 if you lived with your spouse at any time in 2025 ($12,500 if you lived apart all year — not figured here).' })
+  // Schedule E Part II — K-1 income
+  const k1 = k1Totals(k1In, new Map([...passiveBy].map(([id, a]) => [id, { allowed: a.allowed, unallowed: a.unallowed }])))
   k1.issues.forEach((m) => issues.push({ level: 'warning', step: 'income', message: m }))
   const scheduleE41 = rentalNet + k1.line32
 
@@ -1138,7 +1158,8 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
       line3: f2441.line3, line4: f2441.line4, line5: f2441.line5,
       partIII: care.employerBenefits > 0 ? { ...p3, line27: f2441.line27, line28: f2441.line28, line29: f2441.line29, line30: f2441.line30, line31: f2441.line31 } : null
     },
-    scheduleE: { properties: rentalResults, gross: r(sum(rentalResults.map((x) => x.net))), priorCarryover: r(pos(input.priorPassiveCarryover)), magi: r(magiPassive), allowance: r(passiveAllowance), allowedLoss: rentalAllowedLoss, disallowed: rentalDisallowed, net: rentalNet },
+    scheduleE: { properties: rentalResults, gross: r(sum(rentalResults.map((x) => x.net))), priorCarryover: r(sum(rentalsIn.map((p) => pos(p.priorUnallowed ?? 0)))), magi: r(magiPassive), allowance: f8582.line9, allowedLoss: rentalLine25, disallowed: rentalDisallowed, net: rentalNet, line24: rentalLine24, line25: rentalLine25 },
+    form8582: f8582,
     form8889: hsaResults,
     form5329,
     form4797: f4797,

@@ -351,6 +351,19 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
               </dl>
             </details>
           )}
+          {result.form8582.required && (
+            <details><summary>Form 8582 <span>Passive activity losses</span></summary>
+              <dl className="facts">
+                {result.form8582.activities.map((x) => (
+                  <div key={x.id}><dt>{x.name}{x.group === 'rental' ? ' (active participation)' : ''}</dt>
+                    <dd>{x.b + x.c > 0 ? `${usd(x.allowed)} allowed${x.unallowed > 0 ? `, ${usd(x.unallowed)} carried` : ''}` : usd(x.a)}</dd></div>
+                ))}
+                {result.form8582.line9 > 0 && <div><dt>Special allowance (line 9)</dt><dd>{usd(result.form8582.line9)}</dd></div>}
+                <div><dt>Total losses allowed (line 11)</dt><dd>{usd(result.form8582.line11)}</dd></div>
+                {result.form8582.unallowed > 0 && <div><dt>Carried to 2026</dt><dd>{usd(result.form8582.unallowed)}</dd></div>}
+              </dl>
+            </details>
+          )}
           {result.form4797.sales.length > 0 && (
             <details><summary>Form 4797 <span>Sales of business property</span></summary>
               <dl className="facts">

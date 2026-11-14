@@ -2,8 +2,7 @@
  * Schedule K-1 income from partnerships (Form 1065) and S corporations (Form 1120-S), tax year 2025.
  *
  * Ordinary business income, rental income and guaranteed payments go on Schedule E Part II (line 28).
- * Passive losses are allowed only up to passive income (a simplified Form 8582: no $25,000 allowance
- * for rental activities held through an entity). Portfolio items flow to their own lines: interest and
+ * Passive losses are limited on Form 8582 (passive.ts). Portfolio items flow to their own lines: interest and
  * dividends to Form 1040, capital gains to Schedule D lines 5 and 12, section 1231 gain or loss to
  * Form 4797 Part I, partnership self-employment earnings to Schedule SE, and QBI to Form 8995/8995-A.
  */
@@ -33,44 +32,43 @@ export interface K1Totals {
   issues: string[]
 }
 
-export function k1Totals(k1s: K1[], otherPassiveIncome: number): K1Totals {
+/** K-1 activity income or loss (boxes 1–3 less section 179), without guaranteed payments. */
+export const k1Activity = (x: K1): number => r(x.ordinary + x.rentalRealEstate + x.otherRental - pos(x.section179))
+
+/**
+ * @param passive allowed loss (current plus prior) per passive K-1 from Form 8582. Without it,
+ * passive losses are taken in full (used only for amounts that do not depend on the limit).
+ */
+export function k1Totals(k1s: K1[], passive?: Map<string, { allowed: number; unallowed: number }>): K1Totals {
   const issues: string[] = []
-  const prelim = k1s.map((x) => {
+  let disallowedTotal = 0
+  const rows: K1Result[] = k1s.map((x) => {
     const name = x.entityName.trim() || (x.kind === 'scorp' ? 'S corporation' : 'Partnership')
-    const passive = !x.materialParticipation
+    const isPassive = !x.materialParticipation
     const section179 = r(pos(x.section179))
-    // Guaranteed payments are always nonpassive (column k); the rest follows participation.
     const activity = r(x.ordinary + x.rentalRealEstate + x.otherRental)
     const gp = x.kind === 'partnership' ? r(pos(x.guaranteedPayments)) : 0
     if (x.basisLimited && activity - section179 < 0) issues.push(`${name}: a loss is limited to your basis and amount at risk (Form 7203 for S corporations, Form 6198). Enter only the allowed loss.`)
     if (x.royalties) issues.push(`${name}: report K-1 royalties as a royalty property under Rental property (Schedule E line 4).`)
     if (x.kind === 'scorp' && x.guaranteedPayments) issues.push(`${name}: S corporations do not pay guaranteed payments; shareholder pay is on a W-2.`)
-    return { x, name, passive, section179, activity, gp, priorCarry: r(pos(x.priorPassiveCarryover)) }
-  })
-  // Simplified Form 8582: passive losses (including carryovers) are allowed up to passive income.
-  const passiveIncome = sum(prelim.filter((p) => p.passive && p.activity > 0).map((p) => p.activity)) + pos(otherPassiveIncome)
-  const passiveLosses = sum(prelim.filter((p) => p.passive).map((p) => pos(-p.activity) + p.priorCarry))
-  const allowedTotal = Math.min(passiveLosses, passiveIncome)
-  let disallowedTotal = 0
-  const rows: K1Result[] = prelim.map((p) => {
-    const row: K1Result = { id: p.x.id, owner: p.x.owner, name: p.name, kind: p.x.kind, ein: p.x.ein, passive: p.passive, net: p.activity + p.gp - p.section179, g: 0, h: 0, i: 0, j: p.section179, k: 0, disallowed: 0 }
-    if (p.passive) {
-      if (p.activity > 0) row.h = p.activity
-      const loss = pos(-p.activity) + p.priorCarry
-      if (loss > 0) {
-        const allowed = passiveLosses > 0 ? r(allowedTotal * loss / passiveLosses) : 0
-        row.g = allowed
-        row.disallowed = loss - allowed
-        disallowedTotal += row.disallowed
-      }
-      row.k = p.gp
+    const row: K1Result = { id: x.id, owner: x.owner, name, kind: x.kind, ein: x.ein, passive: isPassive, net: activity + gp - section179, g: 0, h: 0, i: 0, j: 0, k: 0, disallowed: 0 }
+    if (isPassive) {
+      // Section 179 of a passive activity is part of its passive loss (Form 8582), so it goes through column (g).
+      const net = activity - section179
+      if (net > 0) row.h = net
+      const loss = pos(-net) + r(pos(x.priorPassiveCarryover))
+      const p = passive?.get(x.id)
+      row.g = p ? p.allowed : loss
+      row.disallowed = p ? p.unallowed : 0
+      disallowedTotal += row.disallowed
+      row.k = gp
     } else {
-      if (p.activity >= 0) row.k = p.activity + p.gp
-      else { row.i = -p.activity; row.k = p.gp }
+      row.j = section179
+      if (activity >= 0) row.k = activity + gp
+      else { row.i = -activity; row.k = gp }
     }
     return row
   })
-  if (disallowedTotal > 0) issues.push(`Passive losses of $${disallowedTotal.toLocaleString()} from K-1s are not allowed this year and carry to 2026 (Form 8582).`)
   const line29aH = sum(rows.map((x) => x.h))
   const line29aK = sum(rows.map((x) => x.k))
   const line29bG = sum(rows.map((x) => x.g))

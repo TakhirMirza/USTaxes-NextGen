@@ -262,6 +262,7 @@ export interface K1 {
   /** Box 20 code Z (S corp box 17 code V): section 199A information. */
   qbi: { income: number; w2Wages: number; ubia: number; sstb: boolean }
   /** Passive loss from this activity disallowed in 2024. */ priorPassiveCarryover: number
+  /** Passive rental real estate in which you actively participated (Form 8582 Part IV, $25,000 allowance). */ rentalActiveParticipation: boolean
 }
 
 /** Sale of business or rental property (Form 4797). */
@@ -382,6 +383,8 @@ export interface RentalProperty {
   expenses: RentalExpenses
   /** Buildings, improvements and appliances depreciated on Form 4562 (added to Schedule E line 18). */
   assets: DepreciableAsset[]
+  /** Loss from this property not allowed in earlier years (2024 Form 8582). */
+  priorUnallowed: number
 }
 
 export interface HsaAccount {
@@ -557,7 +560,7 @@ export const RENTAL_TYPE_LABELS: Record<RentalType, string> = {
 }
 export const emptyRental = (owner: Owner = 'taxpayer'): RentalProperty => ({
   id: newId('rent'), owner, address: '', type: 'single', fairRentalDays: 365, personalUseDays: 0, activeParticipation: true,
-  rents: 0, royalties: 0, expenses: emptyRentalExpenses(), assets: []
+  rents: 0, royalties: 0, expenses: emptyRentalExpenses(), assets: [], priorUnallowed: 0
 })
 export const emptyAsset = (propertyClass: PropertyClass = '5'): DepreciableAsset => ({
   id: newId('asset'), description: '', placedInService: '', cost: 0, businessPct: 100, propertyClass, section179: 0,
@@ -568,7 +571,7 @@ export const emptyK1 = (owner: Owner = 'taxpayer'): K1 => ({
   id: newId('k1'), owner, kind: 'partnership', entityName: '', ein: '', materialParticipation: true, basisLimited: false,
   ordinary: 0, rentalRealEstate: 0, otherRental: 0, guaranteedPayments: 0, interest: 0, ordinaryDividends: 0, qualifiedDividends: 0,
   royalties: 0, shortTermGain: 0, longTermGain: 0, section1231: 0, section179: 0, seEarnings: 0,
-  qbi: { income: 0, w2Wages: 0, ubia: 0, sstb: false }, priorPassiveCarryover: 0
+  qbi: { income: 0, w2Wages: 0, ubia: 0, sstb: false }, priorPassiveCarryover: 0, rentalActiveParticipation: false
 })
 export const emptySale = (): PropertySale => ({
   id: newId('sale'), description: '', kind: '1245', usedIn: 'business', dateAcquired: '', dateSold: '', salesPrice: 0, costBasis: 0, depreciation: 0, reportedOn1099: true
@@ -687,13 +690,20 @@ const dependent = (d: Partial<Dependent> & { qualifyingChild?: boolean }): Depen
   return merged
 }
 
+/** Older returns kept one rental carryover for all properties; it now belongs to a property (Form 8582 Part IV). */
+function migratePassiveCarryover(ret: TaxReturnInput): TaxReturnInput {
+  if (!(ret.priorPassiveCarryover > 0) || !ret.rentals.length || ret.rentals.some((p) => p.priorUnallowed > 0)) return ret
+  const target = ret.rentals.find((p) => p.activeParticipation) ?? ret.rentals[0]
+  return { ...ret, priorPassiveCarryover: 0, rentals: ret.rentals.map((p) => (p.id === target.id ? { ...p, priorUnallowed: ret.priorPassiveCarryover } : p)) }
+}
+
 export function normalizeReturn(raw: unknown): TaxReturnInput {
   const base = emptyReturn()
   if (!raw || typeof raw !== 'object') return base
   const r = raw as Partial<TaxReturnInput>
   const arr = <T>(v: unknown, make: () => T): T[] =>
     Array.isArray(v) ? v.map((item) => ({ ...make(), ...(item as object) })) : []
-  return {
+  return migratePassiveCarryover({
     ...base,
     ...r,
     filingStatus: (['single', 'mfj', 'mfs', 'hoh', 'qss'] as const).includes(r.filingStatus as FilingStatus) ? (r.filingStatus as FilingStatus) : 'single',
@@ -737,5 +747,5 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     savings: { taxpayer: { ...emptySavings(), ...(r.savings?.taxpayer ?? {}) }, spouse: { ...emptySavings(), ...(r.savings?.spouse ?? {}) } },
     priorYear: { ...base.priorYear, ...(r.priorYear ?? {}) },
     payments: normalizePayments(r.payments)
-  }
+  })
 }

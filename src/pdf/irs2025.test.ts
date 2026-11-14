@@ -400,3 +400,29 @@ test('Schedule E page 2 prints K-1s, with and without rental properties', async 
   assert.deepEqual(p2.forms.find((f) => f.id === 'se')!.pages, [1])
   assert.deepEqual((await buildPdf(lib, p2.forms, load)).problems, [])
 })
+
+test('Form 8582 prints Parts I–VIII and Schedule E line 22 matches the allowed loss', async () => {
+  const ret: TaxReturnInput = {
+    ...busy(),
+    w2s: [w2('taxpayer', 120000, 15000)],
+    rentals: [
+      { ...emptyRental(), id: 'A', address: '12 A St', rents: 10000, expenses: { ...emptyRental().expenses, repairs: 30000 }, priorUnallowed: 5000 },
+      { ...emptyRental(), id: 'B', address: '34 B St', rents: 9000, expenses: { ...emptyRental().expenses, taxes: 5000 } }
+    ],
+    k1s: [
+      { ...emptyK1(), id: 'K', entityName: 'Kappa LP', materialParticipation: false, ordinary: -6000 },
+      { ...emptyK1(), id: 'C', entityName: 'Chi LP', materialParticipation: false, ordinary: 2000 }
+    ]
+  }
+  const res = computeReturn(ret)
+  const packet = buildPacket2025(ret, res)
+  const f = packet.forms.find((x) => x.id === '8582')!
+  assert.ok(f, packet.forms.map((x) => x.id).join(', '))
+  assert.equal(f.values['f1_11[0]'], amt8582(res.form8582.line3))
+  const se = packet.forms.find((x) => x.id === 'se')!
+  assert.ok(Object.values(se.values).includes(res.scheduleE.properties.find((p) => p.id === "A")!.line22.toLocaleString("en-US")))
+  const { bytes, problems } = await buildPdf(lib, packet.forms, load)
+  assert.deepEqual(problems, [])
+  if (process.env.PDF_OUT10) await writeFile(process.env.PDF_OUT10, bytes)
+})
+const amt8582 = (n: number): string => (n < 0 ? `-${Math.abs(n).toLocaleString('en-US')}` : n.toLocaleString('en-US'))

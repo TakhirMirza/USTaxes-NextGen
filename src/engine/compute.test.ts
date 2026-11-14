@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { computeReturn, qualifiedDividendsTax, regularTax, scheduleDTaxWorksheet, taxFromSchedule } from './compute.ts'
 import { emptyAsset, emptyK1, emptySale, emptyBusiness, emptyDependent, emptyHomeOffice, emptyHsa, emptyRental, emptyReturn, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099R, emptySocialSecurity, normalizeReturn } from './model.ts'
-import type { CapitalTransaction, DepreciableAsset, K1, PropertySale, ScheduleCBusiness, TaxReturnInput } from './model.ts'
+import type { CapitalTransaction, DepreciableAsset, K1, PropertySale, RentalProperty, ScheduleCBusiness, TaxReturnInput } from './model.ts'
 import { groups8949, holdingTermFromDates, lineFor, scheduleDLines } from './capital.ts'
 import { qbiDeduction } from './qbi.ts'
 import { assetDepreciation, macrsRate } from './depreciation.ts'
@@ -699,5 +699,37 @@ test('Schedules K-1: Schedule E Part II, passive limit, SE earnings, portfolio i
   assert.equal(res.form4797.line7, 1000)
   assert.equal(res.scheduleD.longTerm, 3000)
   assert.ok(res.qbi.businesses.some((b) => b.name === 'Alpha LLC' && b.line2 === 30000))
-  assert.ok(res.issues.some((i) => i.message.includes('$3,000 from K-1s')))
+  assert.ok(res.issues.some((i) => i.message.includes('$3,000 of passive losses')))
+})
+
+test('Form 8582: special allowance, passive income, and the unallowed loss spread over activities', () => {
+  const rent = (p: Partial<RentalProperty>): RentalProperty => ({ ...emptyRental(), ...p })
+  const res = computeReturn(base({
+    w2s: [w2(120000, 15000)],
+    rentals: [
+      rent({ id: 'A', address: 'A St', rents: 10000, expenses: { ...emptyRental().expenses, repairs: 30000 }, priorUnallowed: 5000 }),
+      rent({ id: 'B', address: 'B St', rents: 9000, expenses: { ...emptyRental().expenses, taxes: 5000 } })
+    ],
+    k1s: [
+      { ...emptyK1(), id: 'K', entityName: 'Kappa LP', materialParticipation: false, ordinary: -6000 },
+      { ...emptyK1(), id: 'C', entityName: 'Chi LP', materialParticipation: false, ordinary: 2000 }
+    ]
+  }))
+  const f = res.form8582
+  assert.deepEqual([f.line1a, f.line1b, f.line1c, f.line1d, f.line2a, f.line2b, f.line2d, f.line3], [4000, 20000, 5000, -21000, 2000, 6000, -4000, -25000])
+  assert.deepEqual([f.line4, f.line5, f.line6, f.line7, f.line8, f.line9, f.line10, f.line11], [21000, 150000, 120000, 30000, 15000, 15000, 6000, 21000])
+  assert.deepEqual(f.partVII.map((x) => [x.id, x.unallowed]), [['A', 6250], ['K', 3750]])
+  const by = new Map(f.activities.map((x) => [x.id, x.allowed]))
+  assert.equal(by.get('A'), 18750)
+  assert.equal(by.get('K'), 2250)
+  assert.equal(res.scheduleE.line25, 18750)
+  assert.equal(res.scheduleE.net, -14750)
+  assert.equal(res.k1.line32, -250)
+  assert.equal(res.f1040['11a'], 105000)
+})
+
+test('older returns: the single rental carryover moves onto a property', () => {
+  const ret = normalizeReturn({ priorPassiveCarryover: 4000, rentals: [{ id: 'x', address: 'X', rents: 1000 }] })
+  assert.equal(ret.rentals[0].priorUnallowed, 4000)
+  assert.equal(ret.priorPassiveCarryover, 0)
 })

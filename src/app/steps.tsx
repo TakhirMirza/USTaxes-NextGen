@@ -429,7 +429,11 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
                 <div className="span-2 checks">
                   <Check label="I actively participate (I approve tenants, set rents, or approve repairs)" hint="Needed to deduct up to $25,000 of rental losses" checked={x.activeParticipation} onChange={(v) => rent.patch(x.id, { activeParticipation: v })} />
                 </div>
+                {x.type !== 'royalties' && x.type !== 'selfrental' && (
+                  <MoneyField label="Loss not allowed in earlier years" hint="This property’s unallowed loss from your 2024 Form 8582" value={x.priorUnallowed} onChange={(n) => rent.patch(x.id, { priorUnallowed: n })} />
+                )}
                 {rr && <p className={`span-2 result-line ${rr.net < 0 ? 'is-loss' : ''}`}>Net {rr.net < 0 ? 'loss' : 'income'} <strong>{usd(rr.net)}</strong></p>}
+                {rr && rr.line22 > 0 && rr.line22 !== -rr.net && <p className="why span-2">Deductible this year after the passive loss limit: {usd(rr.line22)} (Schedule E line 22).</p>}
               </>
             )
           }} />
@@ -441,13 +445,7 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
                 options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
               {ret.rentalForms1099.required && <div className="checks"><Check label="I filed (or will file) them" checked={ret.rentalForms1099.filed} onChange={(v) => set((r) => ({ ...r, rentalForms1099: { ...r.rentalForms1099, filed: v } }))} /></div>}
             </div>
-            <details className="more" open={ret.priorPassiveCarryover > 0}>
-              <summary>Rental losses carried over from 2024</summary>
-              <div className="grid">
-                <MoneyField label="Unallowed passive losses from 2024" hint="From your 2024 Form 8582" value={ret.priorPassiveCarryover} onChange={(n) => set((r) => ({ ...r, priorPassiveCarryover: n }))} />
-              </div>
-            </details>
-            {result.scheduleE.disallowed > 0 && <p className="note is-warn">{usd(result.scheduleE.disallowed)} of rental loss can’t be used this year (allowance {usd(result.scheduleE.allowance)} at your income). It carries over to 2026.</p>}
+            {result.scheduleE.disallowed > 0 && <p className="note is-warn">{usd(result.scheduleE.disallowed)} of rental loss can’t be used this year (special allowance {usd(result.scheduleE.allowance)} at your income, Form 8582). It carries over to 2026.</p>}
           </>
         )}
       </Section>
@@ -499,6 +497,9 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
                     <div className="span-2"><Check label="Specified service trade or business" checked={x.qbi.sstb} onChange={(v) => k1s.patch(x.id, { qbi: { ...x.qbi, sstb: v } })} /></div>
                   </div>
                 </details>
+                {!x.materialParticipation && (x.rentalRealEstate !== 0) && (
+                  <div className="checks"><Check label="Rental real estate in which I actively participate" hint="Counts toward the $25,000 special allowance (Form 8582 Part IV). Limited partners do not qualify." checked={x.rentalActiveParticipation} onChange={(v) => k1s.patch(x.id, { rentalActiveParticipation: v })} /></div>
+                )}
                 {!x.materialParticipation && (
                   <div className="grid" style={{ marginTop: 10 }}>
                     <MoneyField label="Passive loss carried from 2024" hint="Unallowed loss from your 2024 Form 8582 worksheets" value={x.priorPassiveCarryover} onChange={(n) => k1s.patch(x.id, { priorPassiveCarryover: n })} />
