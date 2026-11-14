@@ -168,3 +168,16 @@ test('older saved returns get Virginia defaults', () => {
   assert.deepEqual(r.virginia.additions, [])
   assert.equal(normalizeReturn({}).virginia.enabled, false)
 })
+
+test('birth dates typed without slashes still count, and a mismatch with the federal age is flagged', () => {
+  for (const bd of ['03/15/1955', '03-15-1955', '03151955', '3.15.1955']) {
+    const ret = base({ taxpayer: { ...person, age: 70, age65OrOlder: true }, w2s: [w2(40000)] }, { birthDate: { taxpayer: bd, spouse: '' } })
+    const v = va(ret)
+    assert.equal(v.age.kind.taxpayer, 'income', bd)
+    assert.equal(v.exemptions.countB, 1, bd)
+  }
+  const odd = va(base({ w2s: [w2(40000)] }, { birthDate: { taxpayer: '1955', spouse: '' } }))
+  assert.ok(odd.issues.some((i) => i.includes('cannot be read')))
+  const mismatch = va(base({ w2s: [w2(40000)] }, { birthDate: { taxpayer: '08/14/1959', spouse: '' } }))
+  assert.ok(mismatch.issues.some((i) => i.includes('does not match the age')))
+})

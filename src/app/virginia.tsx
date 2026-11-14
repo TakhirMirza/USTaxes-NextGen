@@ -157,7 +157,7 @@ export function VirginiaStep({ ret, set, result, preparer }: StepProps & { prepa
           {owners.map((o) => (
             <TextField key={o} label={o === 'taxpayer' ? `${names.taxpayer}’s birth date` : `${names.spouse}’s birth date`} placeholder="MM/DD/YYYY" autoComplete="off"
               hint={o === 'taxpayer' ? 'Printed on Form 760; sets the age deduction' : undefined}
-              value={v.birthDate[o]} onChange={(s) => per('birthDate', o, s)} />
+              value={v.birthDate[o]} onChange={(s) => per('birthDate', o, /^\d{8}$/.test(s.trim()) ? `${s.trim().slice(0, 2)}/${s.trim().slice(2, 4)}/${s.trim().slice(4)}` : s)} />
           ))}
         </div>
       </Section>

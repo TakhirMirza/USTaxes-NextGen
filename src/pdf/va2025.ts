@@ -8,6 +8,7 @@
 import type { Person, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { VaResult } from '../engine/va2025.ts'
+import { parseBirthDate } from '../engine/va2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
@@ -22,8 +23,8 @@ const money = (values: Record<string, FieldValue>, key: string, n: number, lossK
   if (lossKey) values[lossKey] = n < 0
 }
 const mmddyyyy = (v: string): string => {
-  const m = v.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
-  return m ? `${m[1].padStart(2, '0')}${m[2].padStart(2, '0')}${m[3]}` : digits(v).slice(0, 8)
+  const d = parseBirthDate(v)
+  return d ? `${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}${d.getUTCFullYear()}` : ''
 }
 /** "John Q" → ["John", "Q"]. */
 const firstAndInitial = (p: Person): [string, string] => {

@@ -153,9 +153,20 @@ export interface VaResult {
 
 export const vaStatus = (ret: TaxReturnInput): VaStatus => (ret.filingStatus === 'mfj' ? 2 : ret.filingStatus === 'mfs' ? 3 : 1)
 
+/** Birth date typed as MM/DD/YYYY, MM-DD-YYYY, MM.DD.YYYY or MMDDYYYY. */
+export function parseBirthDate(v: string | undefined): Date | null {
+  const t = (v ?? '').trim()
+  const m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(t) ?? /^(\d{2})(\d{2})(\d{4})$/.exec(t)
+  if (!m) return null
+  return parseDate(`${+m[1]}/${+m[2]}/${m[3]}`)
+}
+
+/** Age on December 31, 2025 from a birth date. */
+const ageAtYearEnd = (d: Date): number => 2025 - d.getUTCFullYear()
+
 /** Birth date → 'full' if on or before 1/1/1939, 'income' if 1/2/1939–1/1/1961, 'none' after. Falls back to the age entered. */
 function ageKind(birth: string, age: number, age65: boolean): { kind: 'full' | 'income' | 'none'; missing: boolean } {
-  const d = parseDate(birth)
+  const d = parseBirthDate(birth)
   if (d) {
     const t = d.getTime()
     if (t <= Date.UTC(1939, 0, 1)) return { kind: 'full', missing: false }
@@ -169,7 +180,7 @@ function ageKind(birth: string, age: number, age65: boolean): { kind: 'full' | '
 
 /** 65 or older on or before January 1, 2026. */
 function is65(birth: string, age: number, age65: boolean): boolean {
-  const d = parseDate(birth)
+  const d = parseBirthDate(birth)
   if (d) return d.getTime() <= Date.UTC(1961, 0, 2)
   return age >= 65 || age65
 }
@@ -202,7 +213,7 @@ export function vaSaversDeduction(ret: TaxReturnInput): { deduction: number; car
   let carry = 0
   for (const s of ret.virginia.savers) {
     const p = s.owner === 'spouse' ? ret.spouse : ret.taxpayer
-    const birth = parseDate(ret.virginia.birthDate[s.owner])
+    const birth = parseBirthDate(ret.virginia.birthDate[s.owner])
     const age70 = birth ? birth.getTime() <= Date.UTC(1955, 11, 31) : p.age >= 70
     const available = pos(s.contributed) + pos(s.carryforward)
     const allowed = age70 ? available : Math.min(VA_SAVERS_LIMIT, available)
@@ -507,6 +518,14 @@ function computePath(ret: TaxReturnInput, res: TaxReturnResult, opt: PathOptions
   const needed = adj['3'] > 0 || adj['7'] > 0 || adj['9'] > 0 || adj['17'] > 0 || adj['21'] > 0
 
   // ── Notes ──
+  for (const o of people) {
+    const raw = v.birthDate[o].trim()
+    const p = o === 'spouse' ? ret.spouse : ret.taxpayer
+    const who = o === 'spouse' ? 'your spouse’s' : 'your'
+    const d = parseBirthDate(raw)
+    if (raw && !d) issues.push(`Enter ${who} birth date as MM/DD/YYYY (for example 08/14/1959). As typed it cannot be read, so the age deduction and the 65-or-older exemption are left out.`)
+    if (d && p.age > 0 && Math.abs(ageAtYearEnd(d) - p.age) > 1) issues.push(`${o === 'spouse' ? 'Your spouse’s' : 'Your'} birth date (age ${ageAtYearEnd(d)} at the end of 2025) does not match the age on the About you step (${p.age}). The federal return uses that age for the standard deduction and credits: correct whichever is wrong.`)
+  }
   if (birthDateMissing) issues.push('Enter birth dates for anyone 65 or older: the age deduction and the 65-or-older exemption depend on them, and Form 760 asks for them.')
   if (!v.localityCode.trim()) issues.push('Enter your three-digit locality code (city or county where you lived on January 1, 2026; listed in the Form 760 instructions).')
   if (itemized.estimated) issues.push('Virginia itemized deductions are estimated from your federal Schedule A (no SALT cap, state income tax removed, medical expenses over 10% of AGI). Complete Virginia Schedule A and enter its line 19 to be exact, especially if your AGI is high enough for the Virginia overall limitation.')
