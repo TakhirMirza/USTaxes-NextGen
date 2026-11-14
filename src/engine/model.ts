@@ -524,6 +524,63 @@ export interface VirginiaInput {
   priorYearTax: number | null
 }
 
+export interface MdCodedEntry { id: string; code: string; amount: number }
+
+/** Maryland Form 502 (full-year resident) inputs that the federal return does not already hold. */
+export interface MarylandInput {
+  /** 4-digit political subdivision code (county 0100–2400, or a town in it). */
+  subdivisionCode: string
+  /** Name of the incorporated city or town, if any (blank = the county). */
+  subdivisionName: string
+  /** Maryland and local tax withheld (W-2 box 17, 1099 state boxes). */
+  withholding: number
+  /** 2025 estimated payments, 2024 overpayment applied and extension payment. */
+  estimatedPayments: number
+  stateRefundInFagi: number
+  /** Line 2: other states' municipal bond interest. */
+  otherStateBondInterest: number
+  /** Line 3: State retirement pickup (W-2 box 14). */
+  statePickup: number
+  additions: MdCodedEntry[]
+  /** Form 502SU line ab: interest on U.S. obligations. */
+  usObligationInterest: number
+  subtractions: MdCodedEntry[]
+  /** Totally disabled (pension exclusion). */
+  totallyDisabled: Record<Owner, boolean>
+  deductionMethod: 'auto' | 'standard' | 'itemized'
+  /** Gains excluded on Form 502CG (residence sold for $1.5 million or less, retirement accounts…). */
+  capitalGainExclusions: number
+  /** Dependent id → MM/DD/YYYY, for Form 502B. */
+  dependentBirthDates: Record<string, string>
+  /** Other nonrefundable credits from Form 502CR (line 24, besides the senior credit the app figures). */
+  otherCredits: number
+  /** Local credits from Form 502CR Part BB (line 31). */
+  localCredits: number
+  /** Refundable credits from Form 502CR Part CC (line 45, besides the child tax credit the app figures). */
+  refundableCredits: number
+  /** Lines 35–39: Chesapeake Bay, Developmental Disabilities, Cancer, Fair Campaign, Veterans Trust. */
+  contributions: [number, number, number, number, number]
+  /** Line 49: overpayment applied to 2026 estimated tax. */
+  creditForward: number
+}
+export const emptyMdEntry = (code = ''): MdCodedEntry => ({ id: newId('mdx'), code, amount: 0 })
+export const emptyMaryland = (): MarylandInput => ({
+  subdivisionCode: '', subdivisionName: '', withholding: 0, estimatedPayments: 0, stateRefundInFagi: 0, otherStateBondInterest: 0, statePickup: 0,
+  additions: [], usObligationInterest: 0, subtractions: [], totallyDisabled: { taxpayer: false, spouse: false }, deductionMethod: 'auto',
+  capitalGainExclusions: 0, dependentBirthDates: {}, otherCredits: 0, localCredits: 0, refundableCredits: 0, contributions: [0, 0, 0, 0, 0], creditForward: 0
+})
+const normalizeMaryland = (m: Partial<MarylandInput> | undefined): MarylandInput => {
+  const base = emptyMaryland()
+  const entries = (x: unknown): MdCodedEntry[] => (Array.isArray(x) ? x.map((e) => ({ ...emptyMdEntry(), ...(e as object) })) : [])
+  return {
+    ...base, ...(m ?? {}),
+    additions: entries(m?.additions), subtractions: entries(m?.subtractions),
+    totallyDisabled: { ...base.totallyDisabled, ...(m?.totallyDisabled ?? {}) },
+    dependentBirthDates: { ...(m?.dependentBirthDates ?? {}) },
+    contributions: Array.isArray(m?.contributions) && m.contributions.length === 5 ? (m.contributions.map((n) => Number(n) || 0) as MarylandInput['contributions']) : base.contributions
+  }
+}
+
 export interface StateGenericInput {
   /** State income tax withheld: W-2 box 17, 1099 state boxes. */
   withholding: number
@@ -601,6 +658,8 @@ export interface TaxReturnInput {
   stateGeneric: StateGenericInput
   /** Virginia resident return (Form 760). */
   virginia: VirginiaInput
+  /** Maryland resident return (Form 502). */
+  maryland: MarylandInput
 }
 
 let counter = 0
@@ -792,7 +851,8 @@ export const emptyReturn = (): TaxReturnInput => ({
   scenarios: [],
   residentState: '',
   stateGeneric: emptyStateGeneric(),
-  virginia: emptyVirginia()
+  virginia: emptyVirginia(),
+  maryland: emptyMaryland()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -898,6 +958,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     // Before the state picker, a Virginia return was switched on with virginia.enabled.
     residentState: typeof r.residentState === 'string' ? r.residentState.toUpperCase() : r.virginia?.enabled ? 'VA' : '',
     stateGeneric: { ...emptyStateGeneric(), ...(r.stateGeneric ?? {}) },
-    virginia: normalizeVirginia(r.virginia)
+    virginia: normalizeVirginia(r.virginia),
+    maryland: normalizeMaryland(r.maryland)
   })
 }

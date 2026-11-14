@@ -9,6 +9,7 @@ import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { Section, usd } from './fields'
 import type { StepProps } from './steps'
 import { VirginiaStep } from './virginia'
+import { MarylandStep } from './maryland'
 import { StateEstimateView } from './stateEstimate'
 
 const GROUPS: { label: string; support: StateInfo['support'] }[] = [
@@ -66,6 +67,7 @@ export function StateStep(props: StepProps & { preparer: PreparerInfo | null }):
       {info?.support === 'estimate' && <StateEstimateView {...props} />}
 
       {info?.code === 'VA' && <VirginiaStep {...props} />}
+      {info?.code === 'MD' && <MarylandStep {...props} />}
     </div>
   )
 }

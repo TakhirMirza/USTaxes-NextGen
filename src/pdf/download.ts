@@ -1,6 +1,8 @@
 import type { TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { VaResult } from '../engine/va2025.ts'
+import type { MdResult } from '../engine/md2025.ts'
+import { buildMarylandPacket } from './md2025.ts'
 import { buildPacket2025 } from './irs2025.ts'
 import type { FormFill, PreparerInfo } from './irs2025.ts'
 import { buildVirginiaPacket } from './va2025.ts'
@@ -35,4 +37,8 @@ export function downloadIrsForms(ret: TaxReturnInput, res: TaxReturnResult, prep
 
 export function downloadVirginiaForms(ret: TaxReturnInput, res: TaxReturnResult, va: VaResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildVirginiaPacket(ret, res, va, preparer).forms, '2025 Virginia Form 760 — USTaxes NextGen', `2025-Virginia-760-${slug(ret)}.pdf`)
+}
+
+export function downloadMarylandForms(ret: TaxReturnInput, res: TaxReturnResult, md: MdResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildMarylandPacket(ret, res, md, preparer).forms, '2025 Maryland Form 502 — USTaxes NextGen', `2025-Maryland-502-${slug(ret)}.pdf`)
 }

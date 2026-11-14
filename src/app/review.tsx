@@ -168,9 +168,10 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
         <p className="why">Before mailing: sign and date page 2 of Form 1040, attach Copy B of your W-2s (and any 1099-R with tax withheld), and send to the IRS address for your state listed in the Form 1040 instructions.</p>
       </Section>
 
-      {ret.residentState === 'VA' && (
-        <Section title="Virginia forms" intro="Form 760 and Schedule ADJ are prepared on the Virginia step from this federal return.">
-          <div className="actions"><a className="button is-quiet" href="#/state">Open the Virginia return</a></div>
+      {(ret.residentState === 'VA' || ret.residentState === 'MD') && (
+        <Section title={ret.residentState === 'VA' ? 'Virginia forms' : 'Maryland forms'}
+          intro={ret.residentState === 'VA' ? 'Form 760 and its schedules are prepared on the state step from this federal return.' : 'Form 502 and its schedules are prepared on the state step from this federal return.'}>
+          <div className="actions"><a className="button is-quiet" href="#/state">Open the {ret.residentState === 'VA' ? 'Virginia' : 'Maryland'} return</a></div>
         </Section>
       )}
 

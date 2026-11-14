@@ -45,7 +45,7 @@ export const STATES: readonly StateInfo[] = [
   S('KY', 'Kentucky', 'estimate', 'Form 740', 'Kentucky Department of Revenue'),
   S('LA', 'Louisiana', 'estimate', 'Form IT-540', 'Louisiana Department of Revenue'),
   S('ME', 'Maine', 'estimate', 'Form 1040ME', 'Maine Revenue Services'),
-  S('MD', 'Maryland', 'estimate', 'Form 502', 'Comptroller of Maryland', 'Maryland also has county income tax, figured on the same return.'),
+  S('MD', 'Maryland', 'supported', 'Form 502', 'Comptroller of Maryland', 'Maryland also has county income tax, figured on the same return.'),
   S('MA', 'Massachusetts', 'estimate', 'Form 1', 'Massachusetts Department of Revenue'),
   S('MI', 'Michigan', 'estimate', 'Form MI-1040', 'Michigan Department of Treasury', 'Some Michigan cities also have their own income tax return.'),
   S('MN', 'Minnesota', 'estimate', 'Form M1', 'Minnesota Department of Revenue'),
