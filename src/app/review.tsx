@@ -4,6 +4,7 @@ import type { Issue } from '../engine/compute.ts'
 import { normalizeReturn, emptyReturn } from '../engine/model.ts'
 import { buildPacket2025 } from '../pdf/irs2025.ts'
 import { groups8949 } from '../engine/capital.ts'
+import { explainLine } from '../engine/explain.ts'
 import { FILING_STATUS_LABELS } from '../engine/rules2025.ts'
 import { Check, DigitsField, Section, TextField, usd } from './fields'
 import { STATUS_LABELS, preparerReady } from './store.ts'
@@ -78,6 +79,7 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
   onGo: (step: Issue['step']) => void; preparer: PreparerProfile; status: ReturnStatus; onStatus: (s: ReturnStatus) => void
 }): ReactElement {
   const fileInput = useRef<HTMLInputElement>(null)
+  const [explained, setExplained] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [pdfState, setPdfState] = useState<{ busy: boolean; note: string }>({ busy: false, note: '' })
   const usePrep = ret.usePaidPreparer && preparerReady(preparer)
@@ -166,15 +168,44 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
         <p className="why">Before mailing: sign and date page 2 of Form 1040, attach Copy B of your W-2s (and any 1099-R with tax withheld), and send to the IRS address for your state listed in the Form 1040 instructions.</p>
       </Section>
 
-      <Section title="Form 1040" intro={`${FILING_STATUS_LABELS[ret.filingStatus]} · tax year 2025`}>
-        <table className="lines">
+      <Section title="Form 1040" intro={`${FILING_STATUS_LABELS[ret.filingStatus]} · tax year 2025. Select any line to see how it was figured.`}>
+        <table className="lines is-explainable">
           <tbody>
-            {LINES.filter(([line]) => ALWAYS.has(line) || f[line] !== 0).map(([line, label]) => (
-              <tr key={line} className={KEY_LINES.has(line) ? 'is-key' : ''}>
-                <th scope="row"><span className="line-no">{line}</span>{label}</th>
-                <td>{usd(f[line])}</td>
-              </tr>
-            ))}
+            {LINES.filter(([line]) => ALWAYS.has(line) || f[line] !== 0).map(([line, label]) => {
+              const isOpen = explained === line
+              const e = isOpen ? explainLine(line, ret, result) : null
+              return [
+                <tr key={line} className={`${KEY_LINES.has(line) ? 'is-key' : ''} ${isOpen ? 'is-open' : ''}`}>
+                  <th scope="row">
+                    <button type="button" className="line-button" aria-expanded={isOpen} aria-controls={`explain-${line}`} onClick={() => setExplained(isOpen ? null : line)}>
+                      <span className="line-no">{line}</span>{label}<span className="line-caret" aria-hidden="true">{isOpen ? '−' : '+'}</span>
+                    </button>
+                  </th>
+                  <td>{usd(f[line])}</td>
+                </tr>,
+                isOpen && e ? (
+                  <tr key={`${line}-x`} className="explain-row" id={`explain-${line}`}>
+                    <td colSpan={2}>
+                      <p className="explain-formula">{e.formula}</p>
+                      {e.parts.length > 0 && (
+                        <table className="explain-parts">
+                          <tbody>
+                            {e.parts.map((p, i) => (
+                              <tr key={i}><th scope="row">{p.sign ? `${p.sign} ` : ''}{p.label}</th><td>{usd(p.amount)}</td></tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                      {e.notes.map((n) => <p key={n} className="why">{n}</p>)}
+                      <p className="explain-links">
+                        {e.refs.map((r) => <a key={r.url} href={r.url} target="_blank" rel="noopener noreferrer">{r.label}</a>)}
+                        {e.step && <button type="button" className="link-button" onClick={() => onGo(e.step!)}>Change these entries</button>}
+                      </p>
+                    </td>
+                  </tr>
+                ) : null
+              ]
+            })}
           </tbody>
         </table>
       </Section>

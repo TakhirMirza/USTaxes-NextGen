@@ -45,6 +45,12 @@ See the in-app page *Privacy* for live checks, and [SECURITY.md](SECURITY.md) fo
 print-ready file: Form 1040, Schedules 1, 1-A, 2, 3, A, B, C, D, E, SE, EIC, 8812, Forms 2441, 4562, 4797, 5329, 8582, 6251, 8829, 8863, 8880, 8889, 8949, 8995-A, 8959, 8960, 8995, and the
 1040-V payment voucher when tax is owed. The blank forms live in `public/forms/2025` (official IRS PDFs).
 
+## Every line explained
+
+On the Review step, select any Form 1040 line to see how it was figured: the formula, each entry or
+schedule amount that went into it (they add up to the line), the brackets behind the tax on line 16,
+a link to the IRS instructions, and a button to the step where those entries are made.
+
 ## What if
 
 The last step compares the return with up to three scenarios side by side: extra 401(k), IRA or HSA
@@ -80,6 +86,7 @@ src/
     model.ts       Return data model and defaults
     compute.ts     TaxReturnInput → every Form 1040 line and schedule
     scenarios.ts   What-if changes applied to a copy of a return
+    explain.ts     Line-by-line explanations of Form 1040 (tested to add up)
     compute.test.ts  Hand-worked regression cases
   app/             React interface
     App.tsx        Storage mode, lock and auto-lock, routing, autosave, the step shell

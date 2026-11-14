@@ -483,3 +483,18 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .preset-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { border: 1.5px solid var(--rule-strong); background: var(--sheet); border-radius: 999px; padding: 7px 14px; font: inherit; font-size: 0.92rem; cursor: pointer; }
 .chip:hover { border-color: var(--ink); }
+
+/* ── Line explanations ────────────────────────────────────────────────────── */
+.lines.is-explainable > tbody > tr > th { padding: 0; }
+.line-button { all: unset; box-sizing: border-box; display: flex; align-items: baseline; width: 100%; padding: 9px 14px; cursor: pointer; }
+.line-button:hover { background: var(--form-green-tint); }
+.line-button:focus-visible { outline: 2px solid var(--form-green); outline-offset: -2px; }
+.line-caret { margin-left: auto; padding-left: 12px; color: var(--ink-soft); font-weight: 700; }
+.lines tr.is-open th, .lines tr.is-open td { border-bottom-color: transparent; background: var(--form-green-tint); }
+.explain-row td { text-align: left; font-weight: 400; white-space: normal; background: var(--form-green-tint); padding: 4px 14px 14px; }
+.explain-formula { margin: 0 0 10px; }
+.explain-parts { width: 100%; border-collapse: collapse; margin: 0 0 8px; font-variant-numeric: tabular-nums; }
+.lines .explain-parts th, .lines .explain-parts td { padding: 4px 0; border-bottom: 1px dashed var(--rule-strong); font-weight: 400; background: transparent; }
+.lines .explain-parts td { text-align: right; padding-left: 12px; }
+.explain-links { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 0 0; font-size: 0.92rem; }
+.explain-links a { color: var(--form-green); }

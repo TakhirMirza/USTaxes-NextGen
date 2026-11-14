@@ -10,6 +10,7 @@ import { emptyAsset, emptyK1, emptySale, emptyBusiness, emptyDependent, emptyHom
 import type { CapitalTransaction, DepreciableAsset, K1, PropertySale, RentalProperty, ScheduleCBusiness, TaxReturnInput } from './model.ts'
 import { groups8949, holdingTermFromDates, lineFor, scheduleDLines } from './capital.ts'
 import { qbiDeduction } from './qbi.ts'
+import { bracketBreakdown, explainLine } from './explain.ts'
 import { applyScenario, emptyScenario, isEmptyScenario, summarize } from './scenarios.ts'
 import { assetDepreciation, macrsRate } from './depreciation.ts'
 import type { QbiBusinessInput } from './qbi.ts'
@@ -752,4 +753,29 @@ test('what-if scenarios: 401(k), IRA, filing status and gains change the tax; th
   assert.equal(hoh.filingStatus, 'hoh')
   assert.ok(isEmptyScenario(emptyScenario()))
   assert.equal(normalizeReturn({ scenarios: [{ name: 'Max 401k', pretax401k: 5000 }] }).scenarios[0].ira, 0)
+})
+
+test('line explanations add up to the Form 1040 lines', () => {
+  const ret = normalizeReturn({
+    filingStatus: 'mfj',
+    taxpayer: { firstName: 'A', age: 40 }, spouse: { firstName: 'B', age: 38 },
+    w2s: [{ owner: 'taxpayer', employer: 'Acme', wages: 85000, federalWithholding: 9000 }, { owner: 'spouse', employer: 'Beta', wages: 40000, federalWithholding: 3000 }],
+    interest: [{ payer: 'Bank', interest: 2400 }],
+    dividends: [{ payer: 'Fund', ordinaryDividends: 3000, qualifiedDividends: 2500 }],
+    businesses: [{ ...emptyBusiness(), name: 'Side', grossReceipts: 20000 }],
+    capitalTransactions: [{ ...emptyTransaction(), term: 'long', proceeds: 12000, costBasis: 7000 }],
+    payments: { estimatedByQuarter: [500, 500, 500, 500] }
+  })
+  const res = computeReturn(ret)
+  const sumOf = (line: string): number => explainLine(line, ret, res)!.parts.reduce((t, p) => t + (p.sign === '−' ? -p.amount : p.amount), 0)
+  for (const line of ['1a', '1z', '2b', '3b', '8', '9', '10', '11a', '14', '15', '18', '22', '23', '24', '25d', '26', '33']) {
+    assert.equal(Math.round(sumOf(line)), res.f1040[line], `line ${line}`)
+  }
+  assert.equal(res.f1040['34'] > 0 ? Math.round(sumOf('34')) : Math.round(sumOf('37')), res.f1040['34'] || res.f1040['37'])
+  for (const line of ['1e', '2a', '3a', '4a', '4b', '5a', '5b', '6a', '6b', '7a', '12e', '13a', '13b', '16', '17', '19', '20', '27a', '28', '29', '31', '38']) {
+    const e = explainLine(line, ret, res)
+    assert.ok(e && e.formula && e.refs.length, `line ${line} has an explanation`)
+  }
+  const brackets = bracketBreakdown(100000, 'single')
+  assert.equal(Math.round(brackets.reduce((t, p) => t + p.amount, 0)), taxFromSchedule(100000, 'single'))
 })
