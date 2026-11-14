@@ -180,7 +180,11 @@ export const savePreparer = (kv: KV, p: PreparerProfile): boolean => safeSet(kv,
 export const preparerReady = (p: PreparerProfile): boolean => p.name.trim() !== '' && /^P\d{8}$/i.test(p.ptin.trim())
 
 /** In-memory storage for tests and for browsers that block localStorage. */
-export function memoryKV(): KV {
+export function memoryKV(): KV & { readonly length: number; key(i: number): string | null } {
   const m = new Map<string, string>()
-  return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => { m.set(k, v) }, removeItem: (k) => { m.delete(k) } }
+  return {
+    getItem: (k) => m.get(k) ?? null, setItem: (k, v) => { m.set(k, String(v)) }, removeItem: (k) => { m.delete(k) },
+    get length() { return m.size },
+    key: (i) => [...m.keys()][i] ?? null
+  }
 }

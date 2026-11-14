@@ -15,6 +15,10 @@ import {
 import type { KV, PreparerProfile, ReturnIndex, ReturnMeta } from './store.ts'
 import { restoreBackup } from './backup.ts'
 import { LetterPage, Masthead, PrivacyGate, ReturnsPage, SettingsPage } from './pages'
+import { LockScreen, PrivacyPage, SecurityContext, AUTOLOCK_KEY, DEFAULT_AUTOLOCK_MINUTES } from './security'
+import type { SecurityApi } from './security'
+import { createVault, eraseEverything, hasVault, unlockVault } from './vault.ts'
+import type { ListableKV, VaultKV } from './vault.ts'
 import './app.css'
 
 const STEPS = [
@@ -134,10 +138,9 @@ function Workspace({ ret, set, result, current, preparer, meta, onExample, onSta
   )
 }
 
-export default function App(): ReactElement {
+function ReturnsApp({ storage, registerFlush }: { storage: { kv: KV; persistent: boolean }; registerFlush: (flush: () => void) => void }): ReactElement {
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const storage = useMemo(pickStorage, [])
   const kv = storage.kv
 
   const [index, setIndex] = useState<ReturnIndex>(() => {
@@ -174,6 +177,7 @@ export default function App(): ReactElement {
   }
   const flushRef = useRef(flush)
   flushRef.current = flush
+  useEffect(() => { registerFlush(() => flushRef.current()) }, [registerFlush])
   useEffect(() => {
     if (!dirty.current) return
     const t = window.setTimeout(() => flushRef.current(), 300)
@@ -205,13 +209,13 @@ export default function App(): ReactElement {
     : null
   const gate = !privacyOk ? <PrivacyGate onAccept={() => { try { kv.setItem(KEYS.privacy, '1') } catch { /* ignore */ } setPrivacyOk(true) }} /> : null
 
-  if (pathname === '/returns' || pathname === '/settings') {
+  if (pathname === '/returns' || pathname === '/settings' || pathname === '/privacy') {
     return (
       <div className="app is-wide">
         {gate}
-        <Masthead current="" page={pathname === '/returns' ? 'returns' : 'settings'} onExample={onExample} />
+        <Masthead current="" page={pathname === '/returns' ? 'returns' : pathname === '/settings' ? 'settings' : 'privacy'} onExample={onExample} />
         {banner}
-        {pathname === '/returns'
+        {pathname === '/privacy' ? <PrivacyPage returnsCount={index.returns.length} /> : pathname === '/returns'
           ? <ReturnsPage kv={kv} index={index} onOpen={open} onNew={() => newReturn()}
               onDuplicate={(id) => { const d = duplicateReturn(kv, index, id); setIndex(d.index) }}
               onDelete={(id) => {
@@ -249,5 +253,100 @@ export default function App(): ReactElement {
       <Workspace ret={doc.data} set={set} result={result} current={step.path} preparer={preparer} meta={meta}
         onExample={onExample} onStatus={(status) => setIndex((prev) => updateMeta(kv, prev, meta.id, { status }))} />
     </>
+  )
+}
+
+type Mode =
+  | { kind: 'locked' }
+  | { kind: 'plain'; raw: ListableKV }
+  | { kind: 'memory'; kv: KV }
+  | { kind: 'vault'; raw: ListableKV; vault: VaultKV }
+
+function initialMode(): Mode {
+  const picked = pickStorage()
+  if (!picked.persistent) return { kind: 'memory', kv: picked.kv }
+  const raw = window.localStorage as ListableKV
+  return hasVault(raw) ? { kind: 'locked' } : { kind: 'plain', raw }
+}
+
+const readAutolock = (): number => {
+  try { const n = Number(window.localStorage.getItem(AUTOLOCK_KEY)); return n > 0 ? n : DEFAULT_AUTOLOCK_MINUTES } catch { return DEFAULT_AUTOLOCK_MINUTES }
+}
+
+/** Chooses the storage (plain, password-protected, or memory) and handles locking. */
+export default function App(): ReactElement {
+  const [mode, setMode] = useState<Mode>(initialMode)
+  const [autolock, setAutolock] = useState<number>(readAutolock)
+  const flushRef = useRef<() => void>(() => undefined)
+  const registerFlush = useMemo(() => (f: () => void) => { flushRef.current = f }, [])
+
+  const lock = (): void => {
+    if (mode.kind !== 'vault') return
+    flushRef.current()
+    // Reloading drops the key and every decrypted value from memory.
+    void mode.vault.flushed().then(() => window.location.reload())
+  }
+  const lockRef = useRef(lock)
+  lockRef.current = lock
+
+  // Lock after a period without activity.
+  useEffect(() => {
+    if (mode.kind !== 'vault') return
+    let last = Date.now()
+    const touch = (): void => { last = Date.now() }
+    const events = ['pointerdown', 'keydown', 'scroll', 'touchstart'] as const
+    events.forEach((e) => window.addEventListener(e, touch, { passive: true }))
+    const timer = window.setInterval(() => { if (Date.now() - last > autolock * 60000) lockRef.current() }, 15000)
+    const warn = (e: BeforeUnloadEvent): void => { if (mode.vault.pending > 0) e.preventDefault() }
+    window.addEventListener('beforeunload', warn)
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, touch))
+      window.clearInterval(timer)
+      window.removeEventListener('beforeunload', warn)
+    }
+  }, [mode, autolock])
+
+  const eraseAll = async (): Promise<void> => {
+    await eraseEverything(window.localStorage as ListableKV)
+    window.location.hash = '#/about'
+    window.location.reload()
+  }
+
+  if (mode.kind === 'locked') {
+    return (
+      <LockScreen
+        onUnlock={async (password) => {
+          const raw = window.localStorage as ListableKV
+          setMode({ kind: 'vault', raw, vault: await unlockVault(raw, password) })
+        }}
+        onErase={eraseAll} />
+    )
+  }
+
+  const api: SecurityApi = {
+    mode: mode.kind === 'vault' ? 'vault' : mode.kind === 'plain' ? 'plain' : 'memory',
+    raw: mode.kind === 'memory' ? null : mode.raw,
+    enable: async (password) => {
+      if (mode.kind !== 'plain') return
+      flushRef.current()
+      setMode({ kind: 'vault', raw: mode.raw, vault: await createVault(mode.raw, password) })
+    },
+    changePassword: async (password) => { if (mode.kind === 'vault') await mode.vault.changePassword(password) },
+    disable: async () => {
+      if (mode.kind !== 'vault') return
+      flushRef.current()
+      await mode.vault.disable()
+      setMode({ kind: 'plain', raw: mode.raw })
+    },
+    lock,
+    autolockMinutes: autolock,
+    setAutolockMinutes: (m) => { setAutolock(m); try { window.localStorage.setItem(AUTOLOCK_KEY, String(m)) } catch { /* ignore */ } },
+    eraseAll
+  }
+  const storage = mode.kind === 'memory' ? { kv: mode.kv, persistent: false } : { kv: mode.kind === 'vault' ? mode.vault : mode.raw, persistent: true }
+  return (
+    <SecurityContext.Provider value={api}>
+      <ReturnsApp key={mode.kind} storage={storage} registerFlush={registerFlush} />
+    </SecurityContext.Provider>
   )
 }

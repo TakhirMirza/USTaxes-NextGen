@@ -8,6 +8,7 @@ import { STATUS_LABELS, displayName, loadReturn, preparerReady } from './store.t
 import type { KV, PreparerProfile, ReturnIndex, ReturnMeta, ReturnStatus } from './store.ts'
 import { decryptBackup, encryptBackup, makeBackup, parseBackupText } from './backup.ts'
 import type { BackupFile, EncryptedBackup } from './backup.ts'
+import { SecuritySection, useSecurity } from './security'
 import { Check, DigitsField, Section, TextField, usd } from './fields'
 
 const saveFile = (name: string, text: string): void => {
@@ -22,8 +23,9 @@ const today = (): string => new Date().toISOString().slice(0, 10)
 
 // ── Masthead shared by every page ────────────────────────────────────────────
 export function Masthead({ current, status, page, onExample }: {
-  current: string; status?: ReturnStatus; page: 'return' | 'returns' | 'settings'; onExample: () => void
+  current: string; status?: ReturnStatus; page: 'return' | 'returns' | 'settings' | 'privacy'; onExample: () => void
 }): ReactElement {
+  const sec = useSecurity()
   return (
     <header className="masthead">
       <a className="brand" href="#/returns">
@@ -36,6 +38,8 @@ export function Masthead({ current, status, page, onExample }: {
           : <p className="masthead-note">2025 federal returns · private, runs in your browser</p>}
         <a className={`nav-link ${page === 'returns' ? 'is-active' : ''}`} href="#/returns">All returns</a>
         <a className={`nav-link ${page === 'settings' ? 'is-active' : ''}`} href="#/settings">Settings</a>
+        <a className={`nav-link ${page === 'privacy' ? 'is-active' : ''}`} href="#/privacy">Privacy</a>
+        {sec?.mode === 'vault' && <button type="button" className="link-button lock-button" onClick={sec.lock}>Lock</button>}
         <button type="button" className="link-button" onClick={onExample}>Try an example</button>
       </nav>
     </header>
@@ -50,7 +54,7 @@ export function PrivacyGate({ onAccept }: { onAccept: () => void }): ReactElemen
         <h1 id="gate-title">Before you start</h1>
         <ul>
           <li><strong>Your information stays on this device.</strong> Returns are saved in this browser only. Nothing is sent to a server, and no one else, including the people who run this site, can see it.</li>
-          <li><strong>On a shared or public computer,</strong> use a private window and delete your returns when you finish (All returns → Delete).</li>
+          <li><strong>On a shared computer,</strong> turn on password protection in Settings, or use a private window and delete everything when you finish.</li>
           <li><strong>Clearing browser data erases your returns.</strong> Download a backup from Settings to keep a copy; you can protect it with a password.</li>
           <li><strong>This is a preparation aid, not tax advice.</strong> It prints IRS forms for you to sign and mail; it does not e-file. Check every figure before you file.</li>
         </ul>
@@ -252,6 +256,7 @@ export function SettingsPage({ kv, index, preparer, onPreparer, onRestore }: {
         )}
         {note && <p className="note" role="status">{note}</p>}
       </Section>
+      <SecuritySection />
     </main>
   )
 }

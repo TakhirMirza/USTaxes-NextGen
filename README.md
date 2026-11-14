@@ -6,6 +6,21 @@ the browser's local storage and can be downloaded as a JSON file.
 
 **Live app:** https://takhirmirza.github.io/USTaxes-NextGen/
 
+## Privacy by design
+
+Tax returns hold Social Security numbers, income and bank details. USTaxes NextGen never sends them anywhere:
+
+- **No server, no account, no database.** The app is static files; returns live only in this browser's storage.
+- **No third parties.** No analytics, ads, cookies, external scripts or font services. The published build sets a
+  Content Security Policy that forbids the page from contacting any other site, and `no-referrer`.
+- **Optional password protection.** Returns stored in the browser can be encrypted (AES-256-GCM, key from
+  PBKDF2-SHA256 with 600,000 iterations, kept only in memory). The app locks after inactivity and on demand.
+- **Encrypted backups** with the same scheme.
+- **Works offline.** A service worker keeps the app and the blank IRS forms on the device.
+- **Delete everything** from the browser in one step (Settings).
+
+See the in-app page *Privacy* for live checks, and [SECURITY.md](SECURITY.md) for the threat model.
+
 > This is a preparation aid, not tax advice, and it does not e-file. Check every number against the
 > official IRS forms and instructions before you file.
 
@@ -57,8 +72,10 @@ src/
     compute.ts     TaxReturnInput → every Form 1040 line and schedule
     compute.test.ts  Hand-worked regression cases
   app/             React interface
-    App.tsx        Routing, autosave, the step shell
+    App.tsx        Storage mode, lock and auto-lock, routing, autosave, the step shell
     store.ts       Many returns + preparer profile in local storage (tested)
+    vault.ts       Password-encrypted storage, erase everything (tested)
+    security.tsx   Lock screen, password settings, the Privacy page
     backup.ts      Backup files and password encryption (tested)
     pages.tsx      All returns, Settings, privacy notice, client letter
     steps.tsx      About you, Income, Deductions, Credits & payments

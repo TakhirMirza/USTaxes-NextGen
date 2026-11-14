@@ -58,7 +58,9 @@ test('encrypted backup round trip; wrong password is rejected', async () => {
   const backup = makeBackup(kv, index, { ...loadPreparer(kv), name: 'Pat' })
   const enc = await encryptBackup(backup, 'correct horse battery', 1000)
   const text = JSON.stringify(enc)
-  assert.ok(!text.includes('Ann'))
+  // Quotes never occur in base64 ciphertext, so this cannot match by chance.
+  assert.ok(!text.includes('"firstName":"Ann"'))
+  assert.ok(JSON.stringify(backup).includes('"firstName":"Ann"'))
   const parsed = parseBackupText(text)
   assert.equal(parsed.kind, 'encrypted')
   if (parsed.kind !== 'encrypted') return

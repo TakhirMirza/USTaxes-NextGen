@@ -69,12 +69,14 @@ export function MoneyField({ label, hint, box, value, onChange, allowNegative }:
   )
 }
 
-export function TextField({ label, value, onChange, placeholder, hint }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; hint?: string }): ReactElement {
+export function TextField({ label, value, onChange, placeholder, hint, type = 'text', autoComplete }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string; hint?: string; type?: 'text' | 'password'; autoComplete?: string
+}): ReactElement {
   const id = useFieldId('t')
   return (
     <div className="field">
       <label htmlFor={id}><span>{label}</span></label>
-      <input id={id} type="text" value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+      <input id={id} type={type} autoComplete={autoComplete} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
       {hint && <small>{hint}</small>}
     </div>
   )
