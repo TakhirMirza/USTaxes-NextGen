@@ -581,6 +581,8 @@ export interface TaxReturnInput {
   payments: { estimatedTaxPayments: number; estimatedByQuarter: [number, number, number, number]; otherWithholding: number }
   /** What-if scenarios kept with the return. */
   scenarios: Scenario[]
+  /** State lived in all of 2025 (two-letter code), '' = not chosen yet. Decides which state return is prepared. */
+  residentState: string
   /** Virginia resident return (Form 760). */
   virginia: VirginiaInput
 }
@@ -772,6 +774,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   priorYear: { tax: null, agi: 0, noLiability: false },
   payments: { estimatedTaxPayments: 0, estimatedByQuarter: [0, 0, 0, 0], otherWithholding: 0 },
   scenarios: [],
+  residentState: '',
   virginia: emptyVirginia()
 })
 
@@ -875,6 +878,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       id: newId('scn'), name: 'Scenario', filingStatus: '', deductionChoice: '', pretax401k: 0, ira: 0, hsa: 0, charity: 0,
       otherIncome: 0, selfEmployment: 0, longTermGain: 0, shortTermGain: 0, extraPayments: 0, ...(x as object)
     })) : [],
+    // Before the state picker, a Virginia return was switched on with virginia.enabled.
+    residentState: typeof r.residentState === 'string' ? r.residentState.toUpperCase() : r.virginia?.enabled ? 'VA' : '',
     virginia: normalizeVirginia(r.virginia)
   })
 }

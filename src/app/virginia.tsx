@@ -120,7 +120,7 @@ export function VirginiaStep({ ret, set, result, preparer }: StepProps & { prepa
   const owners: Owner[] = joint ? ['taxpayer', 'spouse'] : ['taxpayer']
   const names: Record<Owner, string> = { taxpayer: firstName(ret.taxpayer, 'You'), spouse: firstName(ret.spouse, 'Spouse') }
   const locality = VA_LOCALITIES.find(([code]) => code === v.localityCode)
-  const packet = v.enabled ? buildVirginiaPacket(ret, result, va, preparer) : null
+  const packet = buildVirginiaPacket(ret, result, va, preparer)
 
   const makePdf = (): void => {
     setPdf({ busy: true, note: '' })
@@ -128,15 +128,6 @@ export function VirginiaStep({ ret, set, result, preparer }: StepProps & { prepa
       .then(({ downloadVirginiaForms }) => downloadVirginiaForms(ret, result, va, preparer))
       .then(({ pages, problems }) => setPdf({ busy: false, note: `Downloaded ${pages} pages.${problems ? ` ${problems} field(s) could not be filled; check the PDF before filing.` : ''}` }))
       .catch((e: unknown) => setPdf({ busy: false, note: `The PDF could not be created: ${e instanceof Error ? e.message : String(e)}` }))
-  }
-
-  if (!v.enabled) {
-    return (
-      <Section title="Virginia return" intro="Form 760, for people who lived in Virginia all of 2025. It starts from your federal return, so finish the federal steps first.">
-        <Check label="Prepare my Virginia resident return (Form 760)" checked={false} onChange={(on) => put({ enabled: on })}
-          hint="Part-year residents and nonresidents file Form 760PY or 763, which this app does not prepare yet." />
-      </Section>
-    )
   }
 
   const owes = va.lines['35'] > 0
@@ -159,7 +150,7 @@ export function VirginiaStep({ ret, set, result, preparer }: StepProps & { prepa
         </dl>
       </div>
 
-      <Section title="Virginia return" aside={<button type="button" className="link-button is-danger" onClick={() => put({ enabled: false })}>Don’t prepare</button>}
+      <Section title="Virginia return"
         intro={`Filing status ${va.status} (${va.status === 1 ? 'single' : va.status === 2 ? 'married filing jointly' : 'married filing separately'})${va.hoh ? ', federal head of household' : ''}, taken from your federal return.`}>
         <div className="grid">
           <SelectField label="City or county on January 1, 2026" value={v.localityCode}
@@ -376,8 +367,8 @@ export function VirginiaStep({ ret, set, result, preparer }: StepProps & { prepa
       </Section>
 
       <Section title="Virginia forms" intro="Filled in on this device from the official Virginia Tax PDFs.">
-        <ul className="form-list">{packet?.forms.map((f) => <li key={f.id}>{f.title}</li>)}</ul>
-        {packet && packet.notIncluded.length > 0 && (
+        <ul className="form-list">{packet.forms.map((f) => <li key={f.id}>{f.title}</li>)}</ul>
+        {packet.notIncluded.length > 0 && (
           <div className="note is-warn"><strong>Attach these yourself.</strong>
             <ul>{packet.notIncluded.map((n) => <li key={n}>{n}</li>)}</ul>
           </div>

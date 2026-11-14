@@ -7,7 +7,8 @@ import { AboutStep, DeductionsStep, IncomeStep, PaymentsStep } from './steps'
 import type { Setter } from './steps'
 import { ReviewStep } from './review'
 import { CompareStep } from './compare'
-import { VirginiaStep } from './virginia'
+import { StateStep } from './state'
+import { stateInfo } from '../engine/states.ts'
 import { computeVirginia } from '../engine/va2025.ts'
 import { preparerReady } from './store.ts'
 import { exampleReturn, hasEntries } from './example'
@@ -30,11 +31,19 @@ const STEPS = [
   { path: 'income', title: 'Income', blurb: 'W-2, 1099, retirement, business, rentals, K-1' },
   { path: 'deductions', title: 'Deductions', blurb: 'HSA, adjustments, 2025 deductions, Schedule A' },
   { path: 'payments', title: 'Credits & payments', blurb: 'EIC, child, care, education, saver’s credits' },
-  { path: 'virginia', title: 'Virginia', blurb: 'State return, Form 760' },
+  { path: 'state', title: 'State', blurb: 'State return' },
   { path: 'review', title: 'Review', blurb: 'Form 1040, IRS forms, letter' },
   { path: 'compare', title: 'What if', blurb: 'Compare scenarios side by side' }
 ] as const
 type StepPath = (typeof STEPS)[number]['path']
+
+/** The state step is named after the chosen state. */
+function stepLabel(s: (typeof STEPS)[number], ret: TaxReturnInput): { title: string; blurb: string } {
+  if (s.path !== 'state') return s
+  const info = stateInfo(ret.residentState)
+  if (!info) return s
+  return { title: info.name, blurb: info.support === 'no-tax' ? 'No state income tax' : info.support === 'supported' ? `State return, ${info.form}` : `${info.form}, not prepared yet` }
+}
 const stepForIssue: Record<Issue['step'], StepPath> = { about: 'about', income: 'income', deductions: 'deductions', credits: 'payments', review: 'review' }
 
 /** localStorage when the browser allows it; memory otherwise (private modes that block storage). */
@@ -79,7 +88,7 @@ function Summary({ ret, result, open, onToggle }: { ret: TaxReturnInput; result:
             <div key={label}><dt>{label}</dt><dd>{usd(value)}</dd></div>
           ))}
         </dl>
-        {ret.virginia.enabled && <VirginiaSummary ret={ret} result={result} />}
+        {ret.residentState === 'VA' && <VirginiaSummary ret={ret} result={result} />}
         <p className="summary-foot">Federal return, tax year 2025. Estimate only: check every number before you file.</p>
       </div>
     </aside>
@@ -122,7 +131,7 @@ function Workspace({ ret, set, result, current, preparer, meta, onExample, onSta
               <li key={s.path}>
                 <button type="button" className={`${s.path === current ? 'is-current' : ''} ${i < index ? 'is-done' : ''}`} aria-current={s.path === current ? 'step' : undefined} onClick={() => go(s.path)}>
                   <span className="step-no">{i + 1}</span>
-                  <span className="step-text"><strong>{s.title}</strong><small>{s.blurb}</small></span>
+                  <span className="step-text"><strong>{stepLabel(s, ret).title}</strong><small>{stepLabel(s, ret).blurb}</small></span>
                   {n > 0 && <span className="step-flag" title={`${n} item${n > 1 ? 's' : ''} to check`}>{n}</span>}
                 </button>
               </li>
@@ -134,19 +143,19 @@ function Workspace({ ret, set, result, current, preparer, meta, onExample, onSta
       <main className="main" id="main">
         <div className="main-head">
           <p className="step-count">Step {index + 1} of {STEPS.length}</p>
-          <h1>{step.title}</h1>
+          <h1>{stepLabel(step, ret).title}</h1>
         </div>
         {current === 'about' && <AboutStep {...props} />}
         {current === 'income' && <IncomeStep {...props} />}
         {current === 'deductions' && <DeductionsStep {...props} />}
         {current === 'payments' && <PaymentsStep {...props} />}
-        {current === 'virginia' && <VirginiaStep {...props} preparer={ret.usePaidPreparer && preparerReady(preparer) ? preparer : null} />}
+        {current === 'state' && <StateStep {...props} preparer={ret.usePaidPreparer && preparerReady(preparer) ? preparer : null} />}
         {current === 'review' && <ReviewStep {...props} preparer={preparer} status={meta.status} onStatus={onStatus} onGo={(s) => go(stepForIssue[s])} />}
         {current === 'compare' && <CompareStep {...props} onSaveAsReturn={onSaveAsReturn} />}
 
         <footer className="pager">
-          {index > 0 ? <button type="button" className="button is-quiet" onClick={() => go(STEPS[index - 1].path)}>Back to {STEPS[index - 1].title}</button> : <span />}
-          {index < STEPS.length - 1 && <button type="button" className="button" onClick={() => go(STEPS[index + 1].path)}>Continue to {STEPS[index + 1].title}</button>}
+          {index > 0 ? <button type="button" className="button is-quiet" onClick={() => go(STEPS[index - 1].path)}>Back to {stepLabel(STEPS[index - 1], ret).title}</button> : <span />}
+          {index < STEPS.length - 1 && <button type="button" className="button" onClick={() => go(STEPS[index + 1].path)}>Continue to {stepLabel(STEPS[index + 1], ret).title}</button>}
         </footer>
         <p className="disclaimer">
           USTaxes NextGen is an open-source preparation aid, not tax advice. It prints IRS forms to sign and mail; it does not e-file.
@@ -264,6 +273,7 @@ function ReturnsApp({ storage, registerFlush }: { storage: { kv: KV; persistent:
 
   if (pathname === '/letter') return <LetterPage ret={doc.data} result={result} preparer={preparer} usePreparer={doc.data.usePaidPreparer} />
 
+  if (pathname === '/virginia') return <Navigate to="/state" replace />
   const step = STEPS.find((s) => pathname === `/${s.path}`)
   if (!step) return <Navigate to={(pathname === '/' || pathname === '/start') && index.returns.length > 1 ? '/returns' : '/about'} replace />
   if (!meta) return <Navigate to="/returns" replace />
