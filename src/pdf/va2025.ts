@@ -255,12 +255,52 @@ export function form760c(ret: TaxReturnInput, va: VaResult): FormFill {
   return { id: 'va760c', file: 'va760c.pdf', title: 'Virginia Form 760C', values }
 }
 
+export function scheduleA(ret: TaxReturnInput, va: VaResult): FormFill {
+  const L = va.itemized.lines
+  const C = va.itemized.conformity
+  const W = va.itemized.worksheet
+  const values: Record<string, FieldValue> = {
+    'Your SSN': digits(ret.taxpayer.ssn), 'Your Name': vaNames(ret), 'Filing Status Claimed': String(va.itemized.status),
+    '1. Medical and Dental Expenses': amt(L['1']), '2. Adjusted Gross Income': amt(L['2'], true), '3. Multiply Line 2 by 10% (.10)': amt(L['3'], true),
+    '4. Subtract Line 3 from Line 1': amt(L['4'], true),
+    '5a. Fill in oval if claiming deduction for general sales taxes': va.itemized.salesTax,
+    '5a. State and Local Income Taxes or General Sales Taxes': amt(L['5a']), '5b. State and Local Real Estate Taxes': amt(L['5b']),
+    '5c. State and Local Personal Property Taxes': amt(L['5c']), '7. Add Lines 5a, 5b, 5c and 6': amt(L['7'], true),
+    '8a. Home Mortgage Interest & Points from Form 1098': amt(L['8a']), '8e. Add Lines 8a through 8c': amt(L['8e']),
+    '10. Add Lines 8e and 9': amt(L['10'], true), '11. Gifts by Cash or Check': amt(L['11']), '12. Other than by Cash or Check': amt(L['12']),
+    '14. Add Lines 11 through 13': amt(L['14'], true),
+    '16b. List Type & Amount of Other Losses 1': L['16b'] ? 'Other itemized deductions (federal Schedule A line 16)' : '',
+    '16b. Other Losses': amt(L['16b']), '16c. Add Lines 16a and 16b': amt(L['16c'], true),
+    '17. Add Lines 4, 7, 10, 14, 15 & 16c': amt(L['17'], true),
+    '18. Amount from Worksheet Part B, Line 15 or Line 5a and Line 6 Above': amt(L['18'], true),
+    '19. Virginia Itemized Deductions, Subtract Line 18 from Line 17': amt(L['19'], true),
+    '1. Federal Adjusted Gross Income from federal return': amt(C['1'], true), '2. Conformity additions to FAGI': amt(C['2']),
+    '3. Subtotal Add Lines 1 and 2': amt(C['3'], true), '4. Conformity subtractions from FAGI': amt(C['4']),
+    '5. Conformity FAGI Subtract Line 4 from Line 3': amt(C['5'], true)
+  }
+  if (W && W['3'] > 0) {
+    Object.assign(values, {
+      '1. Enter the total amount from Virginia Schedule A, Lines 4, 5a, 5b, 5c, 6, 10, 14, 15, and 16c': amt(W['1'], true),
+      '2. Enter total from Virginia Schedule A, Lines 4, 9 & 15 and 16a': amt(W['2'], true),
+      '3. Subtract Line 2 from Line 1': amt(W['3'], true), '4. Multiply Line 3 above by 80% (0.80)': amt(W['4'], true),
+      '5. Enter the total from Line 1 of Form 760, 760PY or 763 or amount from Line 5 of Conformity Worksheet': amt(W['5'], true),
+      '6. Enter Amount of Itemized Deduction Threshold': amt(W['6'], true), '7. Subtract Line 6 from Line 5': amt(W['7'], true),
+      '8. Multiply Line 7 above by 3% (0.03)': amt(W['8'], true), '9. Enter the smaller of Line 4 or Line 8': amt(W['9'], true),
+      '10. Enter the amount from Line 3 above': amt(W['10'], true), '11. Divide Line 9 by Line 10': W['11'].toFixed(3),
+      '12a. Subtract Line 9 from Line 1': amt(W['12a'], true), '13. Enter state and local income tax from Schedule A, Line 5a': amt(W['13'], true),
+      '14. Multiply Line 13 by Line 11': amt(W['14'], true), '15. Subtract Line 14 from Line 13': amt(W['15'], true)
+    })
+  }
+  return { id: 'va760sa', file: 'va760sa.pdf', title: 'Virginia Schedule A', values }
+}
+
 export function buildVirginiaPacket(ret: TaxReturnInput, res: TaxReturnResult, va: VaResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [form760(ret, res, va, preparer)]
   if (va.adj.needed) forms.push(scheduleAdj(ret, va))
+  if (va.itemized.used && !va.itemized.override) forms.push(scheduleA(ret, va))
   if (va.needs760c) forms.push(form760c(ret, va))
   const notIncluded: string[] = []
-  if (va.itemized.used) notIncluded.push('Virginia Schedule A (itemized deductions), line 19 goes on Form 760 line 10')
+  if (va.itemized.used && va.itemized.override) notIncluded.push('Your Virginia Schedule A (its line 19 is on Form 760 line 10)')
   if (va.adj.overflow.length) notIncluded.push('Schedule ADJS for coded additions, subtractions or deductions that do not fit on Schedule ADJ')
   if (va.lines['24'] > 0) notIncluded.push('Schedule OSC and a copy of the other state’s return (line 24)')
   if (va.lines['25'] > 0) notIncluded.push('Schedule CR (line 25)')

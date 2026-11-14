@@ -47,6 +47,16 @@ const LINES: [line: string, label: string][] = [
   ['35', 'Amount you owe'],
   ['36', 'Refund']
 ]
+const SCH_A: [line: string, label: string, always?: boolean][] = [
+  ['4', 'Medical and dental over 10% of AGI'],
+  ['7', 'Taxes: income or sales, property'],
+  ['10', 'Mortgage interest'],
+  ['14', 'Gifts to charity'],
+  ['16c', 'Other itemized deductions'],
+  ['17', 'Total itemized deductions', true],
+  ['18', 'Less state and local income tax', true],
+  ['19', 'Virginia itemized deductions', true]
+]
 const PERIODS = ['By May 1, 2025', 'By June 15, 2025', 'By Sept. 15, 2025', 'By Jan. 15, 2026']
 const ALWAYS = new Set(['1', '9', '15', '16', '18', '26'])
 const KEY = new Set(['9', '15', '18', '35', '36'])
@@ -213,17 +223,32 @@ export function VirginiaStep({ ret, set, result, preparer }: StepProps & { prepa
       <Section title="Deductions" intro={va.itemized.used ? 'You itemized on your federal return, so Virginia requires you to itemize too.' : `You took the federal standard deduction, so Virginia allows ${usd(va.lines['11'])}.`}>
         {va.itemized.used && (
           <>
-            <Check label="Enter the amount from my Virginia Schedule A (line 19)" checked={v.itemizedOverride !== null}
-              hint={v.itemizedOverride === null ? `Estimated now: ${usd(va.itemized.amount)} (medical ${usd(va.itemized.medical)}, taxes ${usd(va.itemized.taxes)}, interest, gifts and other ${usd(va.itemized.other)})` : undefined}
+            {!va.itemized.override && (
+              <table className="lines va-sch-a">
+                <tbody>
+                  {SCH_A.filter(([k, , always]) => always || (va.itemized.lines[k] ?? 0) !== 0).map(([k, label]) => (
+                    <tr key={k} className={k === '19' ? 'is-key' : ''}>
+                      <th scope="row"><span className="line-no">{k}</span>{label}</th>
+                      <td>{k === '18' ? `−${usd(va.itemized.lines[k])}` : usd(va.itemized.lines[k])}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {va.itemized.limited && va.itemized.worksheet && (
+              <p className="why">Reduced by {usd(va.itemized.worksheet['9'])}: 3% of income over {usd(va.itemized.worksheet['6'])}, at most 80% of the deductions that count. The income tax removed on line 18 is reduced in the same proportion ({(va.itemized.worksheet['11'] * 100).toFixed(1)}%).</p>
+            )}
+            {!va.itemized.override && (
+              <Check label="The state and local tax on my Schedule A is sales tax, not income tax" checked={v.salesTaxElected}
+                hint="Virginia removes state income tax (line 18) but allows sales tax, up to the SALT cap" onChange={(on) => put({ salesTaxElected: on })} />
+            )}
+            <Check label="Use my own Virginia Schedule A line 19 instead" checked={v.itemizedOverride !== null}
+              hint="Only if your Schedule A has items this app does not track: investment interest, gambling or casualty losses, foreign tax, charity carryovers"
               onChange={(on) => put({ itemizedOverride: on ? va.itemized.amount : null })} />
             {v.itemizedOverride !== null && (
               <div className="grid" style={{ marginTop: 12 }}>
                 <MoneyField label="Virginia Schedule A, line 19" value={v.itemizedOverride} onChange={(n) => put({ itemizedOverride: n })} />
               </div>
-            )}
-            {v.itemizedOverride === null && (
-              <Check label="The state and local tax on my Schedule A is sales tax, not income tax" checked={v.salesTaxElected}
-                hint="Virginia does not allow a deduction for state income tax" onChange={(on) => put({ salesTaxElected: on })} />
             )}
           </>
         )}

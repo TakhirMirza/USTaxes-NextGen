@@ -170,3 +170,24 @@ test('Form 760C is filled when an addition to tax is figured', async () => {
   const { bytes } = await buildPdf(lib, buildVirginiaPacket(ret, res, va).forms, load)
   if (process.env.WRITE_760C) await writeFile(process.env.WRITE_760C, bytes)
 })
+
+test('Virginia Schedule A is filled for itemizers, with the limited worksheet', async () => {
+  const r = emptyReturn()
+  const ret: TaxReturnInput = {
+    ...r, taxpayer: { ...r.taxpayer, firstName: 'Lee', lastName: 'Ng', ssn: '111111111' }, w2s: [w2('taxpayer', 450000)], deductionChoice: 'itemized',
+    itemized: { ...r.itemized, stateLocalIncomeOrSalesTax: 35000, realEstateTax: 15000, mortgageInterest: 20000, charityCash: 10000 },
+    virginia: { ...r.virginia, enabled: true, withholding: { taxpayer: 30000, spouse: 0 } }
+  }
+  const { packet, problems } = await filled(ret)
+  assert.deepEqual(problems, [])
+  const a = packet.forms.find((f) => f.id === 'va760sa')
+  assert.ok(a)
+  assert.equal(a.values['19. Virginia Itemized Deductions, Subtract Line 18 from Line 17'], '43021')
+  assert.equal(a.values['11. Divide Line 9 by Line 10'], '0.044')
+  assert.equal(packet.forms[0].values['10. Itemized Deductions'], '43021')
+  if (process.env.WRITE_SA) {
+    const res = computeReturn(ret)
+    const { bytes } = await buildPdf(lib, buildVirginiaPacket(ret, res, computeVirginia(ret, res)).forms, load)
+    await writeFile(process.env.WRITE_SA, bytes)
+  }
+})

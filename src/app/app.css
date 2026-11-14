@@ -527,3 +527,4 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .va-760c th, .va-760c td { text-align: right; }
 .va-760c th:first-child, .va-760c thead th:first-child { text-align: left; }
 .va-760c thead th { font-size: 0.8rem; color: var(--ink-soft); font-weight: 600; padding-bottom: 6px; }
+.va-sch-a { margin-bottom: 16px; }

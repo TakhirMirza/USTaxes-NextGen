@@ -209,3 +209,53 @@ test('Form 760C flows to Schedule ADJ line 18 and Form 760 line 32', () => {
   assert.equal(manual.lines['32'], 40)
   assert.equal(manual.needs760c, false)
 })
+
+test('Virginia Schedule A: 10% medical floor, no SALT cap on property taxes, state income tax removed', () => {
+  const v = va(base({
+    w2s: [w2(120000)], deductionChoice: 'itemized',
+    itemized: { ...emptyReturn().itemized, medical: 15000, stateLocalIncomeOrSalesTax: 9000, realEstateTax: 12000, personalPropertyTax: 800, mortgageInterest: 14000, charityCash: 3000, charityNonCash: 500 }
+  }))
+  const A = v.itemized.lines
+  assert.equal(v.itemized.used, true)
+  assert.equal(A['3'], 12000)
+  assert.equal(A['4'], 3000)
+  assert.equal(A['7'], 21800)
+  assert.equal(A['14'], 3500)
+  assert.equal(A['17'], 42300)
+  assert.equal(A['18'], 9000)
+  assert.equal(A['19'], 33300)
+  assert.equal(v.lines['10'], 33300)
+  assert.equal(v.lines['11'], 0)
+  assert.equal(v.itemized.worksheet, null)
+})
+
+test('Virginia Schedule A: limited itemized deduction worksheet above $332,700 (single)', () => {
+  const v = va(base({
+    w2s: [w2(450000)], deductionChoice: 'itemized',
+    itemized: { ...emptyReturn().itemized, stateLocalIncomeOrSalesTax: 35000, realEstateTax: 15000, mortgageInterest: 20000, charityCash: 10000 }
+  }))
+  const W = v.itemized.worksheet
+  assert.ok(W)
+  assert.equal(W['1'], 80000)
+  assert.equal(W['4'], 64000)
+  assert.equal(W['7'], 450000 - 332700)
+  assert.equal(W['8'], 3519)
+  assert.equal(W['9'], 3519)
+  assert.equal(W['11'], 0.044)
+  assert.equal(W['12a'], 76481)
+  assert.equal(W['14'], 1540)
+  assert.equal(W['15'], 33460)
+  assert.equal(v.itemized.lines['18'], 33460)
+  assert.equal(v.lines['10'], 76481 - 33460)
+  assert.equal(v.itemized.limited, true)
+})
+
+test('Virginia Schedule A: general sales tax is kept (up to the SALT cap) and nothing is removed on line 18', () => {
+  const v = va(base({
+    w2s: [w2(200000)], deductionChoice: 'itemized',
+    itemized: { ...emptyReturn().itemized, stateLocalIncomeOrSalesTax: 45000, mortgageInterest: 10000 }
+  }, { salesTaxElected: true }))
+  assert.equal(v.itemized.lines['5a'], 40000)
+  assert.equal(v.itemized.lines['18'], 0)
+  assert.equal(v.lines['10'], 50000)
+})

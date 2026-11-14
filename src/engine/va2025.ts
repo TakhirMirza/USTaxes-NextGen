@@ -148,7 +148,11 @@ export interface VaResult {
   age: VaAgeDeduction
   sta: VaSta | null
   lowIncome: VaLowIncome
-  itemized: { used: boolean; estimated: boolean; amount: number; medical: number; taxes: number; other: number }
+  /** Virginia Schedule A: lines 1–19, the conformity worksheet and, above the income threshold, the limited itemized deduction worksheet. */
+  itemized: {
+    used: boolean; override: boolean; amount: number; lines: Record<string, number>; worksheet: Record<string, number> | null
+    conformity: Record<string, number>; salesTax: boolean; status: number; limited: boolean
+  }
   belowThreshold: boolean
   /** 760C safe harbor: no addition to tax is due. */
   underpayment: { safe: boolean; reason: string; required: number }
@@ -247,20 +251,83 @@ const labelled = (table: Record<string, string>, e: VaAdjEntry): VaLine => ({
   code: e.code.trim(), label: table[e.code.trim()] ?? `Code ${e.code.trim()}`, amount: r(pos(e.amount)), auto: false, owner: e.owner
 })
 
-/** Virginia itemized deductions (Virginia Schedule A), estimated from the federal Schedule A when not entered. */
-function vaItemized(ret: TaxReturnInput, res: TaxReturnResult): VaResult['itemized'] {
+/** Virginia Schedule A: Pease-type limitation thresholds by federal filing status. */
+export const VA_ITEMIZED_THRESHOLD: Record<TaxReturnInput['filingStatus'], number> = { single: 332700, mfj: 399200, qss: 399200, hoh: 365950, mfs: 199600 }
+const SCHEDULE_A_STATUS: Record<TaxReturnInput['filingStatus'], number> = { single: 1, mfj: 2, mfs: 3, hoh: 4, qss: 5 }
+
+/**
+ * Virginia Schedule A (2025). Starts from the federal Schedule A entries with Virginia's rules: medical
+ * expenses over 10% of conformity FAGI, no SALT cap except on sales tax and in the limited computation,
+ * state and local income tax removed on line 18, and the overall (Pease) limitation for high incomes.
+ */
+function vaItemized(ret: TaxReturnInput, res: TaxReturnResult, conformityAdd: number, conformitySub: number): VaResult['itemized'] {
   const v = ret.virginia
   const used = res.deduction.used === 'itemized'
-  if (!used) return { used: false, estimated: false, amount: 0, medical: 0, taxes: 0, other: 0 }
-  if (v.itemizedOverride !== null) return { used: true, estimated: false, amount: r(pos(v.itemizedOverride)), medical: 0, taxes: 0, other: 0 }
+  const none = { used, override: false, amount: 0, lines: {}, worksheet: null, conformity: {}, salesTax: v.salesTaxElected, status: SCHEDULE_A_STATUS[ret.filingStatus], limited: false }
+  if (!used) return { ...none, used: false }
+  if (v.itemizedOverride !== null) return { ...none, override: true, amount: r(pos(v.itemizedOverride)) }
   const it = ret.itemized
-  const fagi = res.f1040['11a']
-  // Virginia keeps the 10% floor for medical expenses (it did not adopt the federal 7.5% floor).
-  const medical = r(pos(it.medical - 0.10 * pos(fagi)))
-  // No SALT cap for Virginia, but state and local income taxes are not deductible (sales tax is).
-  const taxes = r(pos(it.realEstateTax) + pos(it.personalPropertyTax) + (v.salesTaxElected ? pos(it.stateLocalIncomeOrSalesTax) : 0))
-  const other = r(res.scheduleA.interest + res.scheduleA.charity + res.scheduleA.other)
-  return { used: true, estimated: true, amount: medical + taxes + other, medical, taxes, other }
+  const fs = ret.filingStatus
+  const saltCap = res.scheduleA.saltCap
+  const conformity = { '1': r(res.f1040['11a']), '2': r(conformityAdd), '3': 0, '4': r(conformitySub), '5': 0 }
+  conformity['3'] = conformity['1'] + conformity['2']
+  conformity['5'] = conformity['3'] - conformity['4']
+  const L: Record<string, number> = {}
+  L['1'] = r(pos(it.medical))
+  L['2'] = pos(conformity['5'])
+  L['3'] = r(L['2'] * 0.10)
+  L['4'] = pos(L['1'] - L['3'])
+  const salt = r(pos(it.stateLocalIncomeOrSalesTax))
+  L['5a'] = v.salesTaxElected ? Math.min(salt, saltCap) : salt
+  L['5b'] = r(pos(it.realEstateTax))
+  L['5c'] = r(pos(it.personalPropertyTax))
+  L['6'] = 0
+  L['7'] = L['5a'] + L['5b'] + L['5c'] + L['6']
+  L['8a'] = r(pos(it.mortgageInterest))
+  L['8e'] = L['8a']
+  L['9'] = 0
+  L['10'] = L['8e'] + L['9']
+  L['11'] = r(pos(it.charityCash))
+  L['12'] = r(pos(res.scheduleA.charity - L['11']))
+  L['13'] = 0
+  L['14'] = L['11'] + L['12'] + L['13']
+  L['15'] = 0
+  L['16a'] = 0
+  L['16b'] = r(pos(res.scheduleA.other))
+  L['16c'] = L['16a'] + L['16b']
+  const full = L['4'] + L['7'] + L['10'] + L['14'] + L['15'] + L['16c']
+  const incomeTax = v.salesTaxElected ? 0 : L['5a']
+  let worksheet: Record<string, number> | null = null
+  L['17'] = full
+  L['18'] = incomeTax + L['6']
+  const threshold = VA_ITEMIZED_THRESHOLD[fs]
+  if (conformity['5'] > threshold) {
+    // Limited Itemized Deduction Worksheet: line 5a counts at no more than the SALT cap.
+    const capped5a = v.salesTaxElected ? L['5a'] : Math.min(L['5a'], saltCap)
+    const w: Record<string, number> = {}
+    w['1'] = L['4'] + capped5a + L['5b'] + L['5c'] + L['6'] + L['10'] + L['14'] + L['15'] + L['16c']
+    w['2'] = L['4'] + L['9'] + L['15'] + L['16a']
+    w['3'] = w['1'] - w['2']
+    if (w['3'] > 0) {
+      w['4'] = r(w['3'] * 0.8)
+      w['5'] = conformity['5']
+      w['6'] = threshold
+      w['7'] = w['5'] - w['6']
+      w['8'] = r(w['7'] * 0.03)
+      w['9'] = Math.min(w['4'], w['8'])
+      w['10'] = w['3']
+      w['11'] = Math.round((w['9'] / w['10']) * 1000) / 1000
+      w['12a'] = w['1'] - w['9']
+      w['13'] = v.salesTaxElected ? 0 : capped5a
+      w['14'] = r(w['13'] * w['11'])
+      w['15'] = w['13'] - w['14']
+      L['17'] = w['12a']
+      L['18'] = w['15'] + L['6']
+    }
+    worksheet = w
+  }
+  L['19'] = pos(L['17'] - L['18'])
+  return { used: true, override: false, amount: L['19'], lines: L, worksheet, conformity, salesTax: v.salesTaxElected, status: SCHEDULE_A_STATUS[fs], limited: !!worksheet && L['17'] < full }
 }
 
 /** Taxpayer's and spouse's shares of federal AGI, for the Spouse Tax Adjustment. Joint items are split in half. */
@@ -367,7 +434,7 @@ function computePath(ret: TaxReturnInput, res: TaxReturnResult, opt: PathOptions
   lines['9'] = lines['3'] - lines['8']
 
   // ── Deductions and exemptions ──
-  const itemized = vaItemized(ret, res)
+  const itemized = vaItemized(ret, res, adj['2a'], adj['6a'])
   lines['10'] = itemized.amount
   let standard = itemized.used ? 0 : VA_STANDARD_DEDUCTION[status]
   if (!itemized.used && ret.canBeClaimedAsDependent) standard = Math.min(standard, r(pos(res.eic.earnedIncome)))
@@ -539,7 +606,8 @@ function computePath(ret: TaxReturnInput, res: TaxReturnResult, opt: PathOptions
   }
   if (birthDateMissing) issues.push('Enter birth dates for anyone 65 or older: the age deduction and the 65-or-older exemption depend on them, and Form 760 asks for them.')
   if (!v.localityCode.trim()) issues.push('Enter your three-digit locality code (city or county where you lived on January 1, 2026; listed in the Form 760 instructions).')
-  if (itemized.estimated) issues.push('Virginia itemized deductions are estimated from your federal Schedule A (no SALT cap, state income tax removed, medical expenses over 10% of AGI). Complete Virginia Schedule A and enter its line 19 to be exact, especially if your AGI is high enough for the Virginia overall limitation.')
+  if (itemized.used && !itemized.override && ret.itemized.other > 0) issues.push('Other itemized deductions from your federal Schedule A are on Virginia Schedule A line 16b. If they include investment interest, gambling losses or a disaster casualty loss, they belong on lines 9, 16a or 15 instead, which changes the Virginia overall limitation; enter your own Schedule A line 19 in that case.')
+  if (itemized.limited) issues.push(`Your income is over the Virginia threshold, so itemized deductions are reduced by ${(itemized.worksheet?.['9'] ?? 0).toLocaleString('en-US')} (Limited Itemized Deduction Worksheet).`)
   if (bonusAddition > 0) issues.push(`Virginia does not allow bonus depreciation: ${bonusAddition.toLocaleString('en-US')} is added back on Schedule ADJ line 2a. Keep a record so you can subtract the extra Virginia depreciation in later years.`)
   const priorBonus = [...ret.businesses.flatMap((b) => b.assets ?? []), ...ret.rentals.flatMap((p) => p.assets ?? [])]
     .some((a) => a.priorSpecial > 0 && (parseDate(a.placedInService)?.getUTCFullYear() ?? 2025) < 2025)
