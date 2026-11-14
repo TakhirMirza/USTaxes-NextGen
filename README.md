@@ -40,7 +40,7 @@ See the in-app page *Privacy* for live checks, and [SECURITY.md](SECURITY.md) fo
 | Credits | Saver's Credit (Form 8880), Earned Income Credit (Schedule EIC), Child Tax Credit $2,200 / credit for other dependents / refundable ACTC (Schedule 8812), child and dependent care (Form 2441), American Opportunity and Lifetime Learning (Form 8863) |
 | Payments | Withholding, Additional Medicare withholding, excess Social Security, quarterly estimated payments |
 | Penalty | Estimated tax penalty (Form 2210 Part I and the 2025 Penalty Worksheet, 7%), with the 2024 safe harbor |
-| Virginia (Form 760) | Full-year residents: Schedule ADJ additions, subtractions and deductions (bonus depreciation add-back, unemployment, child care and Commonwealth Savers figured automatically), age deduction worksheet, exemptions, standard or Virginia itemized deductions, Spouse Tax Adjustment worksheet, credit for low-income individuals or Virginia EIC (whichever helps more), 760C safe-harbor check; fills the official Form 760 and Schedule ADJ PDFs |
+| Virginia (Form 760) | Full-year residents: Schedule ADJ additions, subtractions and deductions (bonus depreciation add-back, unemployment, child care and Commonwealth Savers figured automatically), age deduction worksheet, exemptions, standard or Virginia itemized deductions, Spouse Tax Adjustment worksheet, credit for low-income individuals or Virginia EIC (whichever helps more), Form 760C addition to tax for underpaid estimated tax (quarterly installments, overpayments applied to earlier shortfalls, Exception 1, 9% a year); fills the official Form 760, Schedule ADJ and Form 760C PDFs |
 
 **IRS forms (PDF):** the Review step fills the official 2025 IRS PDFs in the browser and downloads one
 print-ready file: Form 1040, Schedules 1, 1-A, 2, 3, A, B, C, D, E, SE, EIC, 8812, Forms 2441, 4562, 4797, 5329, 8582, 6251, 8829, 8863, 8880, 8889, 8949, 8995-A, 8959, 8960, 8995, and the
@@ -76,7 +76,7 @@ return to work on in full.
 **Try it:** the “Try an example” link fills in a made-up household so you can see every step.
 
 **Not yet supported:** like-kind exchanges (Form 8824), casualty losses (Form 4684), installment sales (Form 6252), AMT on unrecaptured 1250 gain, Form 8582 detail, 8995-A Schedules A–D as separate pages,
-K-1s from estates and trusts, Form 8582 Part IX and real estate professional status, state returns other than Virginia resident Form 760 (no 760PY, 763, Schedule OSC, CR or 760C computation yet), e-file. The app flags these when they may apply.
+K-1s from estates and trusts, Form 8582 Part IX and real estate professional status, state returns other than Virginia resident Form 760 (no 760PY, 763, Schedule OSC or CR computation, 760C exceptions 2–4 yet), e-file. The app flags these when they may apply.
 
 ## Project layout
 

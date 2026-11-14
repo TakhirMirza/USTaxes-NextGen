@@ -469,8 +469,10 @@ export interface VirginiaInput {
   birthDate: Record<Owner, string>
   /** Virginia income tax withheld: W-2 box 17, 1099-R box 14, 1099-G, VK-1. */
   withholding: Record<Owner, number>
-  /** 2025 Virginia estimated payments (Form 760ES), not counting the 2024 overpayment applied. */
+  /** 2025 Virginia estimated payments (Form 760ES), not counting the 2024 overpayment applied. Sum of estimatedByPeriod. */
   estimatedPayments: number
+  /** Estimated payments made by May 1, June 15 and Sept. 15, 2025 and Jan. 15, 2026 (Form 760C line 10). */
+  estimatedByPeriod: [number, number, number, number]
   /** 2024 Virginia overpayment applied to 2025 estimated tax. */
   priorOverpayment: number
   /** Paid with an extension (Form 760IP). */
@@ -512,8 +514,10 @@ export interface VirginiaInput {
   vacSavers: number
   /** Line 31: other voluntary contributions from Schedule VAC Section II. */
   vacOther: number
-  /** Schedule ADJ line 18: addition to tax for underpaid estimated tax (Form 760C or 760F). */
+  /** Schedule ADJ line 18: addition to tax you figured yourself (Form 760F, or exceptions 2–4 of Form 760C). Used only when additionToTaxManual. */
   additionToTax: number
+  /** Use additionToTax instead of the Form 760C the app figures. */
+  additionToTaxManual: boolean
   /** Line 33: consumer's use tax on untaxed out-of-state purchases. */
   useTax: number
   /** Total 2024 Virginia tax after nonrefundable credits (for the 760C safe harbor). null = not entered. */
@@ -691,18 +695,27 @@ export const emptyVaEntry = (code = ''): VaAdjEntry => ({ id: newId('vadj'), cod
 export const emptyVaSavers = (): VirginiaInput['savers'][number] => ({ id: newId('vacs'), owner: 'taxpayer', account: '', contributed: 0, carryforward: 0 })
 export const emptyVirginia = (): VirginiaInput => ({
   enabled: false, localityCode: '', birthDate: { taxpayer: '', spouse: '' }, withholding: { taxpayer: 0, spouse: 0 },
-  estimatedPayments: 0, priorOverpayment: 0, extensionPayments: 0, otherStateBondInterest: 0, usObligationInterest: 0,
+  estimatedPayments: 0, estimatedByPeriod: [0, 0, 0, 0], priorOverpayment: 0, extensionPayments: 0, otherStateBondInterest: 0, usObligationInterest: 0,
   stateRefundInFagi: 0, disability: { taxpayer: 0, spouse: 0 }, otherConformityAddition: 0, conformitySubtraction: 0,
   additions: [], subtractions: [], deductions: [], savers: [], itemizedOverride: null, salesTaxElected: false,
   dependentsVagi: 0, spouseFagiIfSeparate: 0, spouseVagiOverride: null, otherStateCredit: 0, scheduleCrCredits: 0,
-  creditForward: 0, vacSavers: 0, vacOther: 0, additionToTax: 0, useTax: 0, priorYearTax: null
+  creditForward: 0, vacSavers: 0, vacOther: 0, additionToTax: 0, additionToTaxManual: false, useTax: 0, priorYearTax: null
 })
 
 const normalizeVirginia = (v: Partial<VirginiaInput> | undefined): VirginiaInput => {
   const base = emptyVirginia()
   const entries = (x: unknown): VaAdjEntry[] => (Array.isArray(x) ? x.map((e) => ({ ...emptyVaEntry(), ...(e as object) })) : [])
+  const periods = Array.isArray(v?.estimatedByPeriod) && v.estimatedByPeriod.length === 4
+    ? (v.estimatedByPeriod.map((n) => Number(n) || 0) as [number, number, number, number]) : null
+  // Older files kept only a yearly total: spread it over the four due dates.
+  const total = Number(v?.estimatedPayments) || 0
+  const estimatedByPeriod: [number, number, number, number] = periods && periods.some((n) => n > 0) ? periods
+    : total > 0 ? [total / 4, total / 4, total / 4, total / 4] : [0, 0, 0, 0]
+  // A manual addition to tax from before Form 760C was figured stays manual.
+  const additionToTaxManual = typeof v?.additionToTaxManual === 'boolean' ? v.additionToTaxManual : (Number(v?.additionToTax) || 0) > 0
   return {
     ...base, ...(v ?? {}),
+    estimatedByPeriod, estimatedPayments: estimatedByPeriod.reduce((a, b) => a + b, 0), additionToTaxManual,
     birthDate: { ...base.birthDate, ...(v?.birthDate ?? {}) },
     withholding: { ...base.withholding, ...(v?.withholding ?? {}) },
     disability: { ...base.disability, ...(v?.disability ?? {}) },

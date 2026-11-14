@@ -146,9 +146,27 @@ test('the Virginia PDF builds and the savings oval is filled', async () => {
 
 test('a single filer without Virginia adjustments gets Form 760 only', async () => {
   const r = emptyReturn()
-  const ret: TaxReturnInput = { ...r, taxpayer: { ...r.taxpayer, firstName: 'Lee', lastName: 'Ng', ssn: '111111111' }, w2s: [w2('taxpayer', 48000)], virginia: { ...r.virginia, enabled: true } }
+  const ret: TaxReturnInput = { ...r, taxpayer: { ...r.taxpayer, firstName: 'Lee', lastName: 'Ng', ssn: '111111111' }, w2s: [w2('taxpayer', 48000)], virginia: { ...r.virginia, enabled: true, withholding: { taxpayer: 2000, spouse: 0 } } }
   const { packet, problems } = await filled(ret)
   assert.deepEqual(packet.forms.map((f) => f.id), ['va760'])
   assert.deepEqual(problems, [])
   assert.equal(packet.forms[0].values['Spouse SSN'], '')
+})
+
+test('Form 760C is filled when an addition to tax is figured', async () => {
+  const r = emptyReturn()
+  const ret: TaxReturnInput = {
+    ...r, taxpayer: { ...r.taxpayer, firstName: 'Lee', lastName: 'Ng', ssn: '111111111' }, w2s: [w2('taxpayer', 90000)],
+    virginia: { ...r.virginia, enabled: true, estimatedByPeriod: [0, 0, 0, 2000] }
+  }
+  const { va, packet, problems } = await filled(ret)
+  assert.deepEqual(problems, [])
+  assert.deepEqual(packet.forms.map((f) => f.id), ['va760', 'va760adj', 'va760c'])
+  const c = packet.forms[2].values
+  assert.equal(c['Line  14 A'], String(Math.round(va.form760c.columns[0].underpayment)))
+  assert.equal(packet.forms[0].values['Fill in oval if 760C or 760F is enclosed'], true)
+  assert.equal(packet.forms[1].values['18. Addition to Tax'], String(va.adj.lines['18']))
+  const res = computeReturn(ret)
+  const { bytes } = await buildPdf(lib, buildVirginiaPacket(ret, res, va).forms, load)
+  if (process.env.WRITE_760C) await writeFile(process.env.WRITE_760C, bytes)
 })

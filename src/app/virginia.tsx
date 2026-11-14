@@ -47,6 +47,7 @@ const LINES: [line: string, label: string][] = [
   ['35', 'Amount you owe'],
   ['36', 'Refund']
 ]
+const PERIODS = ['By May 1, 2025', 'By June 15, 2025', 'By Sept. 15, 2025', 'By Jan. 15, 2026']
 const ALWAYS = new Set(['1', '9', '15', '16', '18', '26'])
 const KEY = new Set(['9', '15', '18', '35', '36'])
 
@@ -167,9 +168,20 @@ export function VirginiaStep({ ret, set, result, preparer }: StepProps & { prepa
           {owners.map((o) => (
             <MoneyField key={o} label={owners.length > 1 ? `${names[o]}’s Virginia withholding` : 'Virginia income tax withheld'} value={v.withholding[o]} onChange={(n) => per('withholding', o, n)} />
           ))}
-          <MoneyField label="2025 estimated payments" hint="Form 760ES payments made for 2025" value={v.estimatedPayments} onChange={(n) => put({ estimatedPayments: n })} />
           <MoneyField label="2024 overpayment applied to 2025" value={v.priorOverpayment} onChange={(n) => put({ priorOverpayment: n })} />
           <MoneyField label="Paid with an extension" hint="Form 760IP" value={v.extensionPayments} onChange={(n) => put({ extensionPayments: n })} />
+        </div>
+        <h3 className="va-sub">2025 estimated payments (Form 760ES)</h3>
+        <p className="why">By date paid: a payment made late belongs to the next date. The dates decide whether an addition to tax is due (Form 760C).</p>
+        <div className="grid is-four">
+          {PERIODS.map((label, i) => (
+            <MoneyField key={label} label={label} value={v.estimatedByPeriod[i]}
+              onChange={(n) => set((r) => {
+                const q = [...r.virginia.estimatedByPeriod] as VirginiaInput['estimatedByPeriod']
+                q[i] = n
+                return { ...r, virginia: { ...r.virginia, estimatedByPeriod: q, estimatedPayments: q.reduce((a, b) => a + b, 0) } }
+              })} />
+          ))}
         </div>
       </Section>
 
@@ -282,9 +294,47 @@ export function VirginiaStep({ ret, set, result, preparer }: StepProps & { prepa
           <MoneyField label="Commonwealth Savers / ABLE contributions" hint="Schedule VAC Section I" value={v.vacSavers} onChange={(n) => put({ vacSavers: n })} />
           <MoneyField label="Other voluntary contributions" hint="Schedule VAC Section II" value={v.vacOther} onChange={(n) => put({ vacOther: n })} />
           <MoneyField label="Consumer’s use tax" hint="Untaxed online and out-of-state purchases" value={v.useTax} onChange={(n) => put({ useTax: n })} />
-          <MoneyField label="Addition to tax (Form 760C)" hint="Underpaid estimated tax" value={v.additionToTax} onChange={(n) => put({ additionToTax: n })} />
-          <MoneyField label="Your 2024 Virginia tax" hint="After credits; for the 760C safe harbor" value={v.priorYearTax ?? 0} onChange={(n) => put({ priorYearTax: n || null })} />
         </div>
+      </Section>
+
+      <Section title="Underpaid estimated tax (Form 760C)" aside={<span className="pill">{usd(va.lines['32'])}</span>}
+        intro="Virginia charges 9% a year on each quarter’s shortfall from its due date until it is paid. Withholding counts as paid evenly through the year.">
+        <div className="grid">
+          <MoneyField label="Your 2024 Virginia tax" hint="Form 760 line 18 for 2024, less credits. Keeping pace with it voids the addition."
+            value={v.priorYearTax ?? 0} onChange={(n) => put({ priorYearTax: n || (v.priorYearTax === 0 ? 0 : null) })} />
+        </div>
+        <div className="checks">
+          <Check label="I owed no Virginia tax for 2024" checked={v.priorYearTax === 0} onChange={(on) => put({ priorYearTax: on ? 0 : null })} />
+          <Check label="Enter the addition to tax myself" hint="Farmers, fishermen and merchant seamen (Form 760F), or Form 760C exceptions 2–4 (annualized income)"
+            checked={v.additionToTaxManual} onChange={(on) => put({ additionToTaxManual: on, additionToTax: on ? va.lines['32'] : 0 })} />
+        </div>
+        {v.additionToTaxManual ? (
+          <div className="grid" style={{ marginTop: 12 }}>
+            <MoneyField label="Addition to tax" hint="Schedule ADJ line 18" value={v.additionToTax} onChange={(n) => put({ additionToTax: n })} />
+          </div>
+        ) : (
+          <>
+            <p className="why">{va.underpayment.safe ? `No addition to tax: ${va.underpayment.reason.charAt(0).toLowerCase()}${va.underpayment.reason.slice(1)}` : `Required each quarter: ${usd(va.form760c.columns[0].required)} (the smaller of 90% of your 2025 tax and 100% of your 2024 tax, divided by four).`}</p>
+            {!va.underpayment.safe && (
+              <table className="lines va-760c">
+                <thead>
+                  <tr><th scope="col">Due</th><th scope="col">Required</th><th scope="col">Paid on time</th><th scope="col">Short</th><th scope="col">Addition</th></tr>
+                </thead>
+                <tbody>
+                  {va.form760c.columns.map((c, i) => (
+                    <tr key={c.due}>
+                      <th scope="row">{PERIODS[i]}</th>
+                      <td>{usd(c.required)}</td>
+                      <td>{usd(c.line13)}</td>
+                      <td>{c.exceptionMet ? 'Exception 1' : usd(c.underpayment)}</td>
+                      <td>{usd(c.addition, { cents: true })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
       </Section>
 
       {va.issues.length > 0 && (

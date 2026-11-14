@@ -168,16 +168,105 @@ export function scheduleAdj(ret: TaxReturnInput, va: VaResult): FormFill {
   return { id: 'va760adj', file: 'va760adj.pdf', title: 'Virginia Schedule ADJ', values }
 }
 
+const COLS7 = ['May 1 20257', 'June 15 20257', 'Sept 15 20257', 'Jan 15 20267'] as const
+const COLS8 = ['May 1 20258', 'June 15 20258', 'Sept 15 20258', 'Jan 15 20268'] as const
+const COLS9 = ['May 1 20259', 'June 15 20259', 'Sept 15 20259', 'Jan 15 20269'] as const
+const COLS10 = ['May 1 202510', 'June 15 202510', 'Sept 15 202510', 'Jan 15 202610'] as const
+const COLS11 = ['May 1 202511', 'June 15 202511', 'Sept 15 202511', 'Jan 15 202611'] as const
+const COLS13 = ['May 1 202513', 'June 15 202513', 'Sept 15 202513', 'Jan 15 202613'] as const
+const COLS15 = ['A May 1 202515', 'B June 15 202515', 'C Sept 15 202515', 'D Jan 15 202615'] as const
+const LINE24 = ['Line 24', 'B June 15 202520 Amount of Underpayment From Line 14 Part I', 'C Sept 15 202520 Amount of Underpayment From Line 14 Part I', 'D Jan 15 202620 Amount of Underpayment From Line 14 Part I'] as const
+const LINE21 = ['Line 21 A', 'B June 15 202520 Amount ofLine 21 B', 'Line 21 C', 'Line 21 D'] as const
+const ABCD = ['A', 'B', 'C', 'D'] as const
+const cents = (n: number): string => (Math.round(n * 100) / 100).toFixed(2)
+const signed = (n: number): string => {
+  const v = Math.round(n)
+  return v === 0 ? '0' : v < 0 ? `(${Math.abs(v)})` : String(v)
+}
+const isoToUs = (iso: string): string => `${iso.slice(5, 7)}/${iso.slice(8, 10)}/${iso.slice(0, 4)}`
+
+export function form760c(ret: TaxReturnInput, va: VaResult): FormFill {
+  const c = va.form760c
+  const values: Record<string, FieldValue> = {
+    'First Name Middle Initial and Last Name of Both If Joint  OR  Name of Estate or Trust': vaNames(ret),
+    'Your Social Security Number or FEIN': digits(ret.taxpayer.ssn),
+    'Spouses Social Security Number': va.status === 2 ? digits(ret.spouse.ssn) : '',
+    '1 2025 Income Tax Liability After Spouse Tax Adjustment and Tax Credits If 150 or less you are not required to file Form 760C 1': amt(c.line1, true),
+    '2 Enter 90 of the Amount Shown on Line 1 2': amt(c.line2, true),
+    '3 2024 Income Tax Liability After Spouse Tax Adjustment and Tax Credits 3': c.line3 === null ? '' : amt(c.line3, true),
+    '4 Enter the Amount From Line 2 or Line 3 Whichever Is Less 4': amt(c.line4, true),
+    '5 Enter the Number of Installment Periods for Which You Were Liable to Make Payments 5': String(c.line5)
+  }
+  const long = (prefix: string, rest: string): string => `${prefix}${rest}`
+  c.columns.forEach((col, i) => {
+    values[long(COLS7[i], ' Tax Liability Divide the amount on Line 4 by the number of installments reported on Line 5 and enter the result in the appropriate columns')] = amt(col.required, true)
+    values[long(COLS8[i], ' Enter the Income Tax Withheld for Each Installment Period')] = amt(col.withheld)
+    values[long(COLS9[i], ' Enter the Overpayment Credit From Your 2024 Income Tax Return')] = amt(col.overpaymentCredit)
+    values[long(COLS10[i], ' Enter the Amount of Any Timely Payment Made for Each Installment Period in the Appropriate Column Do not enter any late payments')] = amt(col.estimated)
+    values[long(COLS11[i], ' Underpayment or Overpayment Subtract Lines 8 9 and 10 From Line 7 See instructions for overpayment')] = signed(col.line11)
+    values[long(COLS13[i], ' Enter the Total Timely Payments Made as of Each Installment Due Date From Lines 8 9 10 and 12 For ex in Column A enter all payments made by May 1 2025')] = amt(col.line13, true)
+    values[`Line  14 ${ABCD[i]}`] = amt(col.underpayment, true)
+    values[long(COLS15[i], ' Total Amount Paid and Withheld From January 1 2025 Through the Installment Date Indicated')] = amt(col.paidToDate, true)
+    values[['25', '50', '75', '100'][i]] = col.exception1 === null ? '' : amt(col.exception1, true)
+    if (col.exceptionMet) {
+      values[`Line 20 ${ABCD[i]}`] = 'Exception 1'
+      values[LINE24[i]] = '0'
+    } else if (col.underpayment > 0 || col.pieces.length) {
+      values[`Line 20 ${ABCD[i]}`] = amt(col.underpayment, true)
+      if (col.pieces.length === 1) {
+        values[LINE21[i]] = isoToUs(col.pieces[0].paid)
+        values[`Line 22 ${ABCD[i]}`] = String(col.pieces[0].days)
+        values[`Line 23 ${ABCD[i]}`] = (col.pieces[0].days * 0.00025).toFixed(5)
+      } else if (col.pieces.length > 1) {
+        values[LINE21[i]] = 'See stmt'
+      }
+      values[LINE24[i]] = cents(col.addition)
+    }
+  })
+  // Line 12 and the Late Payment/Overpayment Table: overpayments applied to earlier underpayments.
+  const late = new Map<string, number[]>()
+  c.columns.forEach((col, i) => col.pieces.filter((p) => p.paid !== '2026-05-01').forEach((p) => {
+    const row = late.get(p.paid) ?? [0, 0, 0, 0]
+    row[i] += p.amount
+    late.set(p.paid, row)
+  }))
+  const rows12 = [
+    { m: '12a', amount: 'Amount', cols: ['May 1 2025Row7', 'June 15 2025Row7', 'Sept 15 2025Row7', 'Jan 15 2026Row7'] },
+    { m: '12b', amount: 'Amount_2', cols: ['May 1 2025', 'June 15 2025', 'Sept 15 2025', 'Jan 15 2026'] },
+    { m: '12c', amount: 'Amount_3', cols: ['May 1 2025_2', 'June 15 2025_2', 'Sept 15 2025_2', 'Jan 15 2026_2'] },
+    { m: '12d', amount: 'Amount_4', cols: ['May 1 2025_3', 'June 15 2025_3', 'Sept 15 2025_3', 'Jan 15 2026_3'] }
+  ]
+  const table = [['Date of Payment', 'Payment Amount'], ['Date of Payment_2', 'Payment Amount_2'], ['Date of Payment_3', 'Payment Amount_3'], ['Date of Payment_4', 'Payment Amount_4']]
+  ;[...late.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(0, 4).forEach(([date, amounts], k) => {
+    const row = rows12[k]
+    const total = amounts.reduce((a, b) => a + b, 0)
+    values[`${row.m} Month`] = date.slice(5, 7)
+    values[`${row.m} Day`] = date.slice(8, 10)
+    values[`${row.m} Year`] = date.slice(2, 4)
+    values[row.amount] = amt(total, true)
+    amounts.forEach((a, i) => { if (a > 0) values[row.cols[i]] = amt(a, true) })
+    values[table[k][0]] = isoToUs(date)
+    values[table[k][1]] = amt(total, true)
+  })
+  values['100 of 2024 Tax'] = c.line3 === null ? '' : amt(c.line3, true)
+  const [dollars, centsPart] = cents(c.addition).split('.')
+  values['Line 25 Dollars'] = dollars
+  values['Line 25 Cents'] = centsPart
+  return { id: 'va760c', file: 'va760c.pdf', title: 'Virginia Form 760C', values }
+}
+
 export function buildVirginiaPacket(ret: TaxReturnInput, res: TaxReturnResult, va: VaResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [form760(ret, res, va, preparer)]
   if (va.adj.needed) forms.push(scheduleAdj(ret, va))
+  if (va.needs760c) forms.push(form760c(ret, va))
   const notIncluded: string[] = []
   if (va.itemized.used) notIncluded.push('Virginia Schedule A (itemized deductions), line 19 goes on Form 760 line 10')
   if (va.adj.overflow.length) notIncluded.push('Schedule ADJS for coded additions, subtractions or deductions that do not fit on Schedule ADJ')
   if (va.lines['24'] > 0) notIncluded.push('Schedule OSC and a copy of the other state’s return (line 24)')
   if (va.lines['25'] > 0) notIncluded.push('Schedule CR (line 25)')
   if (va.lines['30'] + va.lines['31'] > 0) notIncluded.push('Schedule VAC (lines 30–31)')
-  if (va.lines['32'] > 0) notIncluded.push('Form 760C or 760F (addition to tax, line 32)')
+  if (va.lines['32'] > 0 && !va.needs760c) notIncluded.push('Form 760C or 760F showing the addition to tax you entered (line 32)')
+  if (va.needs760c && va.form760c.columns.some((c) => c.pieces.length > 1)) notIncluded.push('A statement for Form 760C lines 21–23: an underpayment was paid off in parts on different dates (each part, its date, days and amount are on the Virginia step)')
   if (va.status === 2 && va.lines['17'] > 0) notIncluded.push('Spouse Tax Adjustment worksheet (keep with your records)')
   if (ret.dependents.length > 2 && va.lowIncome.eligible) notIncluded.push('Dependents after the second for the Schedule ADJ line 10 table')
   return { forms, notIncluded }

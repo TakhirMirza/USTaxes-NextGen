@@ -523,3 +523,7 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 @media (max-width: 640px) {
   .va-result { grid-template-columns: 1fr; gap: 12px; }
 }
+.grid.is-four { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.va-760c th, .va-760c td { text-align: right; }
+.va-760c th:first-child, .va-760c thead th:first-child { text-align: left; }
+.va-760c thead th { font-size: 0.8rem; color: var(--ink-soft); font-weight: 600; padding-bottom: 6px; }

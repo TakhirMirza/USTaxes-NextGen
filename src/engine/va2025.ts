@@ -11,6 +11,10 @@ import type { TaxReturnInput, Owner, VaAdjEntry } from './model.ts'
 import type { TaxReturnResult } from './compute.ts'
 import { assetDepreciation, midQuarterApplies } from './depreciation.ts'
 import { parseDate } from './capital.ts'
+import { compute760c } from './va760c.ts'
+import type { Va760cResult } from './va760c.ts'
+
+const usdPlain = (n: number): string => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 // ── 2025 parameters ──────────────────────────────────────────────────────────
 export const VA_STANDARD_DEDUCTION = { 1: 8750, 2: 17500, 3: 8750 } as const
@@ -148,6 +152,10 @@ export interface VaResult {
   belowThreshold: boolean
   /** 760C safe harbor: no addition to tax is due. */
   underpayment: { safe: boolean; reason: string; required: number }
+  /** Form 760C, figured whether or not it is needed. */
+  form760c: Va760cResult
+  /** Form 760C goes with the return (an addition to tax was figured). */
+  needs760c: boolean
   issues: string[]
 }
 
@@ -431,7 +439,7 @@ function computePath(ret: TaxReturnInput, res: TaxReturnResult, opt: PathOptions
   // ── Payments ──
   lines['19a'] = r(pos(v.withholding.taxpayer))
   lines['19b'] = status === 2 ? r(pos(v.withholding.spouse)) : 0
-  lines['20'] = r(pos(v.estimatedPayments))
+  lines['20'] = r(pos(v.estimatedByPeriod.some((n) => n > 0) ? v.estimatedByPeriod.reduce((a, b) => a + b, 0) : v.estimatedPayments))
   lines['21'] = r(pos(v.priorOverpayment))
   lines['22'] = r(pos(v.extensionPayments))
   lines['24'] = r(pos(v.otherStateCredit))
@@ -485,12 +493,24 @@ function computePath(ret: TaxReturnInput, res: TaxReturnResult, opt: PathOptions
   adj['17'] = li.line17
   lines['23'] = li.line17
 
-  // ── ADJ lines 18–21 and Form 760 lines 26–36 ──
-  adj['18'] = r(pos(v.additionToTax))
-  adj['21'] = adj['18']
+  // ── Form 760 lines 26–28 ──
   lines['26'] = ['19a', '19b', '20', '21', '22', '23', '24', '25'].reduce((s, k) => s + lines[k], 0)
   lines['27'] = pos(lines['18'] - lines['26'])
   lines['28'] = pos(lines['26'] - lines['18'])
+
+  // ── Form 760C: addition to tax for underpaid estimated tax (Schedule ADJ line 18) ──
+  const taxAfterNonref = pos(lines['18'] - (li.option === 'nonrefundable' ? li.line17 : 0) - lines['24'] - lines['25'])
+  const est = v.estimatedByPeriod.some((n) => n > 0) ? v.estimatedByPeriod : [v.estimatedPayments, 0, 0, 0] as [number, number, number, number]
+  const form760c = compute760c({ tax: taxAfterNonref, priorYearTax: v.priorYearTax, withholding: lines['19a'] + lines['19b'], priorOverpayment: lines['21'], estimated: est })
+  let underpayment: VaResult['underpayment']
+  if (lines['27'] <= 150) underpayment = { safe: true, reason: 'You owe $150 or less with your return.', required: form760c.line4 }
+  else if (form760c.notRequired || form760c.addition === 0) underpayment = { safe: true, reason: form760c.reason || 'Withholding and estimated payments covered each installment on time.', required: form760c.line4 }
+  else underpayment = { safe: false, reason: `Withholding and estimated payments fell short of the required installments: Form 760C figures an addition to tax of ${usdPlain(form760c.addition)} (9% a year until May 1, 2026). It is on Schedule ADJ line 18 and Form 760 line 32.`, required: form760c.line4 }
+  const auto760c = underpayment.safe ? 0 : r(form760c.addition)
+  adj['18'] = v.additionToTaxManual ? r(pos(v.additionToTax)) : auto760c
+  adj['21'] = adj['18']
+
+  // ── Form 760 lines 29–36 ──
   lines['29'] = Math.min(r(pos(v.creditForward)), lines['28'])
   lines['30'] = r(pos(v.vacSavers))
   lines['31'] = r(pos(v.vacOther))
@@ -500,15 +520,6 @@ function computePath(ret: TaxReturnInput, res: TaxReturnResult, opt: PathOptions
   if (lines['27'] > 0) { lines['35'] = lines['27'] + lines['34']; lines['36'] = 0 }
   else if (lines['28'] < lines['34']) { lines['35'] = lines['34'] - lines['28']; lines['36'] = 0 }
   else { lines['35'] = 0; lines['36'] = lines['28'] - lines['34'] }
-
-  // ── 760C safe harbor ──
-  const taxAfterNonref = pos(lines['18'] - (li.option === 'nonrefundable' ? li.line17 : 0) - lines['24'] - lines['25'])
-  const paid = lines['19a'] + lines['19b'] + lines['20'] + lines['21']
-  const required = Math.min(0.9 * taxAfterNonref, v.priorYearTax === null ? Infinity : v.priorYearTax)
-  let underpayment: VaResult['underpayment']
-  if (lines['27'] <= 150) underpayment = { safe: true, reason: 'You owe $150 or less with your return.', required: r(required === Infinity ? 0 : required) }
-  else if (paid >= required) underpayment = { safe: true, reason: v.priorYearTax === null ? 'Withholding and estimated payments cover 90% of your 2025 tax.' : 'Withholding and estimated payments cover 90% of your 2025 tax or 100% of your 2024 tax.', required: r(required) }
-  else underpayment = { safe: false, reason: 'Withholding and timely estimated payments are less than 90% of your 2025 tax (or 100% of your 2024 tax). An addition to tax may be due: complete Form 760C and enter it on Schedule ADJ line 18.', required: r(required === Infinity ? 0 : required) }
 
   // ── Where the coded lines go ──
   const overflow: string[] = []
@@ -535,7 +546,8 @@ function computePath(ret: TaxReturnInput, res: TaxReturnResult, opt: PathOptions
   if (priorBonus) issues.push('Assets placed in service before 2025 that received federal bonus depreciation have a different Virginia basis. Enter the extra Virginia depreciation as a conformity subtraction (Schedule ADJ line 6a).')
   if (savers.carryforward > 0) issues.push(`Commonwealth Savers contributions over $4,000 per account carry forward: ${savers.carryforward.toLocaleString('en-US')} to 2026.`)
   if (overflow.length) issues.push(`Schedule ADJ has room for two additions, three subtractions and three deductions. Attach Schedule ADJS for ${overflow.join(', ')}.`)
-  if (!underpayment.safe) issues.push(underpayment.reason)
+  if (!underpayment.safe && !v.additionToTaxManual) issues.push(underpayment.reason)
+  if (!underpayment.safe && form760c.columns.some((c) => !c.exceptionMet) && v.priorYearTax === null) issues.push('Enter your 2024 Virginia tax: paying 25%, 50%, 75% and 100% of it by the due dates voids the addition to tax (Form 760C Exception 1).')
   if (status === 3) issues.push('Filing status 3: report only your own income, deductions and exemptions. Dependents and itemized deductions that cannot be separated must be split by each spouse’s share of federal AGI.')
   if (status === 3 && claimants > 0 && !v.spouseFagiIfSeparate) issues.push('For the age deduction, married taxpayers filing separately must test combined income: enter your spouse’s federal AGI.')
   if (lines['24'] > 0) issues.push('Attach Schedule OSC and a copy of the other state’s return for the credit on line 24.')
@@ -544,7 +556,7 @@ function computePath(ret: TaxReturnInput, res: TaxReturnResult, opt: PathOptions
   return {
     status, hoh: ret.filingStatus === 'hoh', path: age.total > 0 ? 'age' : 'credit', exemptions, lines,
     adj: { bonusAddition, otherConformity, additions, subtractions, deductions, lines: adj, overflow, needed },
-    age, sta, lowIncome: li, itemized, belowThreshold, underpayment, issues
+    age, sta, lowIncome: li, itemized, belowThreshold, underpayment, form760c, needs760c: !v.additionToTaxManual && adj['18'] > 0, issues
   }
 }
 

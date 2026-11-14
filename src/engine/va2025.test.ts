@@ -194,3 +194,18 @@ test('760C: no addition to tax when the balance due is $150 or less after the re
   const big = va(base({ w2s: [w2(90000)] }))
   assert.equal(big.underpayment.safe, false)
 })
+
+test('Form 760C flows to Schedule ADJ line 18 and Form 760 line 32', () => {
+  const v = va(base({ w2s: [w2(90000)] }))
+  // Tax 720 + 5.75% × (90,000 − 8,750 − 930 − 17,000) = 4,361; required 90% = 3,925 (rounded 3,924.90 → 3,925).
+  assert.equal(v.lines['18'], 4361)
+  assert.equal(v.form760c.line4, 3925)
+  assert.equal(v.underpayment.safe, false)
+  assert.equal(v.adj.lines['18'], Math.round(3925 / 4 * 0.00025 * 1019))
+  assert.equal(v.lines['32'], v.adj.lines['18'])
+  assert.equal(v.lines['35'], 4361 + v.lines['32'])
+  assert.equal(v.needs760c, true)
+  const manual = va(base({ w2s: [w2(90000)] }, { additionToTaxManual: true, additionToTax: 40 }))
+  assert.equal(manual.lines['32'], 40)
+  assert.equal(manual.needs760c, false)
+})
