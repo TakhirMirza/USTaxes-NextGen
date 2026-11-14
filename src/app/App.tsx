@@ -6,6 +6,7 @@ import type { TaxReturnInput } from '../engine/model.ts'
 import { AboutStep, DeductionsStep, IncomeStep, PaymentsStep } from './steps'
 import type { Setter } from './steps'
 import { ReviewStep } from './review'
+import { CompareStep } from './compare'
 import { exampleReturn, hasEntries } from './example'
 import { usd } from './fields'
 import {
@@ -26,7 +27,8 @@ const STEPS = [
   { path: 'income', title: 'Income', blurb: 'W-2, 1099, retirement, business, rentals, K-1' },
   { path: 'deductions', title: 'Deductions', blurb: 'HSA, adjustments, 2025 deductions, Schedule A' },
   { path: 'payments', title: 'Credits & payments', blurb: 'EIC, child, care, education, saver’s credits' },
-  { path: 'review', title: 'Review', blurb: 'Form 1040, IRS forms, letter' }
+  { path: 'review', title: 'Review', blurb: 'Form 1040, IRS forms, letter' },
+  { path: 'compare', title: 'What if', blurb: 'Compare scenarios side by side' }
 ] as const
 type StepPath = (typeof STEPS)[number]['path']
 const stepForIssue: Record<Issue['step'], StepPath> = { about: 'about', income: 'income', deductions: 'deductions', credits: 'payments', review: 'review' }
@@ -79,9 +81,10 @@ function Summary({ result, open, onToggle }: { result: TaxReturnResult; open: bo
   )
 }
 
-function Workspace({ ret, set, result, current, preparer, meta, onExample, onStatus }: {
+function Workspace({ ret, set, result, current, preparer, meta, onExample, onStatus, onSaveAsReturn }: {
   ret: TaxReturnInput; set: Setter; result: TaxReturnResult; current: StepPath; preparer: PreparerProfile
   meta: ReturnMeta; onExample: () => void; onStatus: (s: ReturnMeta['status']) => void
+  onSaveAsReturn: (data: TaxReturnInput, label: string) => void
 }): ReactElement {
   const navigate = useNavigate()
   const [summaryOpen, setSummaryOpen] = useState(false)
@@ -122,6 +125,7 @@ function Workspace({ ret, set, result, current, preparer, meta, onExample, onSta
         {current === 'deductions' && <DeductionsStep {...props} />}
         {current === 'payments' && <PaymentsStep {...props} />}
         {current === 'review' && <ReviewStep {...props} preparer={preparer} status={meta.status} onStatus={onStatus} onGo={(s) => go(stepForIssue[s])} />}
+        {current === 'compare' && <CompareStep {...props} onSaveAsReturn={onSaveAsReturn} />}
 
         <footer className="pager">
           {index > 0 ? <button type="button" className="button is-quiet" onClick={() => go(STEPS[index - 1].path)}>Back to {STEPS[index - 1].title}</button> : <span />}
@@ -251,7 +255,8 @@ function ReturnsApp({ storage, registerFlush }: { storage: { kv: KV; persistent:
       {gate}
       {banner}
       <Workspace ret={doc.data} set={set} result={result} current={step.path} preparer={preparer} meta={meta}
-        onExample={onExample} onStatus={(status) => setIndex((prev) => updateMeta(kv, prev, meta.id, { status }))} />
+        onExample={onExample} onStatus={(status) => setIndex((prev) => updateMeta(kv, prev, meta.id, { status }))}
+        onSaveAsReturn={(data, label) => newReturn(data, `${displayName(meta, doc.data)} — ${label}`)} />
     </>
   )
 }

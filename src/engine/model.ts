@@ -439,6 +439,23 @@ export interface ItemizedDeductions {
 
 export type DeductionChoice = 'auto' | 'standard' | 'itemized'
 
+/** A what-if variant of the return (compared on the What if step; the return itself is not changed). */
+export interface Scenario {
+  id: string
+  name: string
+  filingStatus: FilingStatus | ''
+  deductionChoice: DeductionChoice | ''
+  /** Extra pre-tax 401(k)/403(b) deferral (lowers W-2 box 1). */ pretax401k: number
+  /** Extra deductible traditional IRA contribution. */ ira: number
+  /** Extra personal HSA contribution. */ hsa: number
+  /** Extra cash donation (itemized). */ charity: number
+  otherIncome: number
+  /** Extra self-employment net income (Schedule C). */ selfEmployment: number
+  longTermGain: number
+  shortTermGain: number
+  /** Extra estimated tax payment. */ extraPayments: number
+}
+
 export interface TaxReturnInput {
   version: 1
   filingStatus: FilingStatus
@@ -494,6 +511,8 @@ export interface TaxReturnInput {
   priorYear: PriorYear
   /** estimatedByQuarter: payments made by 4/15/25, 6/15/25, 9/15/25 and 1/15/26. estimatedTaxPayments is their sum. */
   payments: { estimatedTaxPayments: number; estimatedByQuarter: [number, number, number, number]; otherWithholding: number }
+  /** What-if scenarios kept with the return. */
+  scenarios: Scenario[]
 }
 
 let counter = 0
@@ -648,7 +667,8 @@ export const emptyReturn = (): TaxReturnInput => ({
   students: [],
   savings: { taxpayer: emptySavings(), spouse: emptySavings() },
   priorYear: { tax: null, agi: 0, noLiability: false },
-  payments: { estimatedTaxPayments: 0, estimatedByQuarter: [0, 0, 0, 0], otherWithholding: 0 }
+  payments: { estimatedTaxPayments: 0, estimatedByQuarter: [0, 0, 0, 0], otherWithholding: 0 },
+  scenarios: []
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -746,6 +766,10 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     k1s: arr(r.k1s, emptyK1).map((k) => ({ ...k, qbi: { ...emptyK1().qbi, ...(k.qbi ?? {}) } })),
     savings: { taxpayer: { ...emptySavings(), ...(r.savings?.taxpayer ?? {}) }, spouse: { ...emptySavings(), ...(r.savings?.spouse ?? {}) } },
     priorYear: { ...base.priorYear, ...(r.priorYear ?? {}) },
-    payments: normalizePayments(r.payments)
+    payments: normalizePayments(r.payments),
+    scenarios: Array.isArray(r.scenarios) ? r.scenarios.map((x) => ({
+      id: newId('scn'), name: 'Scenario', filingStatus: '', deductionChoice: '', pretax401k: 0, ira: 0, hsa: 0, charity: 0,
+      otherIncome: 0, selfEmployment: 0, longTermGain: 0, shortTermGain: 0, extraPayments: 0, ...(x as object)
+    })) : []
   })
 }

@@ -10,6 +10,7 @@ import { emptyAsset, emptyK1, emptySale, emptyBusiness, emptyDependent, emptyHom
 import type { CapitalTransaction, DepreciableAsset, K1, PropertySale, RentalProperty, ScheduleCBusiness, TaxReturnInput } from './model.ts'
 import { groups8949, holdingTermFromDates, lineFor, scheduleDLines } from './capital.ts'
 import { qbiDeduction } from './qbi.ts'
+import { applyScenario, emptyScenario, isEmptyScenario, summarize } from './scenarios.ts'
 import { assetDepreciation, macrsRate } from './depreciation.ts'
 import type { QbiBusinessInput } from './qbi.ts'
 
@@ -732,4 +733,23 @@ test('older returns: the single rental carryover moves onto a property', () => {
   const ret = normalizeReturn({ priorPassiveCarryover: 4000, rentals: [{ id: 'x', address: 'X', rents: 1000 }] })
   assert.equal(ret.rentals[0].priorUnallowed, 4000)
   assert.equal(ret.priorPassiveCarryover, 0)
+})
+
+test('what-if scenarios: 401(k), IRA, filing status and gains change the tax; the return is untouched', () => {
+  const ret = base({ w2s: [w2(90000, 11000)] })
+  const before = summarize(ret)
+  const k = applyScenario(ret, { ...emptyScenario(), pretax401k: 10000 })
+  assert.equal(k.w2s[0].wages, 80000)
+  assert.equal(k.w2s[0].socialSecurityWages, 90000)
+  assert.equal(ret.w2s[0].wages, 90000, 'the original return is not changed')
+  const after = summarize(k)
+  assert.equal(after.agi, before.agi - 10000)
+  assert.equal(before.totalTax - after.totalTax, 2200, '22% bracket')
+  assert.equal(before.marginalRate, 0.22)
+  const gain = summarize(applyScenario(ret, { ...emptyScenario(), longTermGain: 10000 }))
+  assert.equal(gain.totalTax - before.totalTax, 1500, '15% rate on long-term gains')
+  const hoh = applyScenario(ret, { ...emptyScenario(), filingStatus: 'hoh' })
+  assert.equal(hoh.filingStatus, 'hoh')
+  assert.ok(isEmptyScenario(emptyScenario()))
+  assert.equal(normalizeReturn({ scenarios: [{ name: 'Max 401k', pretax401k: 5000 }] }).scenarios[0].ira, 0)
 })

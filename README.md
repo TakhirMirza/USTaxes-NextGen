@@ -45,6 +45,15 @@ See the in-app page *Privacy* for live checks, and [SECURITY.md](SECURITY.md) fo
 print-ready file: Form 1040, Schedules 1, 1-A, 2, 3, A, B, C, D, E, SE, EIC, 8812, Forms 2441, 4562, 4797, 5329, 8582, 6251, 8829, 8863, 8880, 8889, 8949, 8995-A, 8959, 8960, 8995, and the
 1040-V payment voucher when tax is owed. The blank forms live in `public/forms/2025` (official IRS PDFs).
 
+## What if
+
+The last step compares the return with up to three scenarios side by side: extra 401(k), IRA or HSA
+contributions, a donation, capital gains or losses, more self-employment or other income, another
+filing status or deduction choice, an extra estimated payment. It shows the change in tax and refund,
+the effective rate, and the true marginal rate on the next $1,000 (including phase-outs and
+refundable credits). Scenarios are saved with the return; any scenario can be saved as a separate
+return to work on in full.
+
 ## For preparers and families
 
 - **Many returns.** The *All returns* page lists every return in this browser with its refund or balance, status
@@ -70,6 +79,7 @@ src/
     rules2025.ts   All 2025 rates, brackets, limits and phase-outs, with sources
     model.ts       Return data model and defaults
     compute.ts     TaxReturnInput → every Form 1040 line and schedule
+    scenarios.ts   What-if changes applied to a copy of a return
     compute.test.ts  Hand-worked regression cases
   app/             React interface
     App.tsx        Storage mode, lock and auto-lock, routing, autosave, the step shell
@@ -80,6 +90,7 @@ src/
     pages.tsx      All returns, Settings, privacy notice, client letter
     steps.tsx      About you, Income, Deductions, Credits & payments
     review.tsx     Form 1040 lines, schedules, warnings, save/open/print
+    compare.tsx    What if: scenarios side by side
     fields.tsx     Form controls
     app.css        Styles
   pdf/
