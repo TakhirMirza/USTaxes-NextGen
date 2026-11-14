@@ -181,3 +181,16 @@ test('birth dates typed without slashes still count, and a mismatch with the fed
   const mismatch = va(base({ w2s: [w2(40000)] }, { birthDate: { taxpayer: '08/14/1959', spouse: '' } }))
   assert.ok(mismatch.issues.some((i) => i.includes('does not match the age')))
 })
+
+test('760C: no addition to tax when the balance due is $150 or less after the refundable credit', () => {
+  // Tax $919 − STA $157 = $762; refundable Virginia EIC $739 leaves $23 to pay, so no 760C.
+  const ret = base({
+    filingStatus: 'mfj', w2s: [w2(30000), w2(10000, 'spouse')],
+    dependents: [{ ...emptyDependent(), name: 'A', relationship: 'Son', age: 5, ssn: '123456789' }, { ...emptyDependent(), name: 'B', relationship: 'Daughter', age: 8, ssn: '123456780' }]
+  })
+  const v = va(ret)
+  assert.ok(v.lines['27'] <= 150)
+  assert.equal(v.underpayment.safe, true)
+  const big = va(base({ w2s: [w2(90000)] }))
+  assert.equal(big.underpayment.safe, false)
+})

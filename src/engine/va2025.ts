@@ -506,7 +506,7 @@ function computePath(ret: TaxReturnInput, res: TaxReturnResult, opt: PathOptions
   const paid = lines['19a'] + lines['19b'] + lines['20'] + lines['21']
   const required = Math.min(0.9 * taxAfterNonref, v.priorYearTax === null ? Infinity : v.priorYearTax)
   let underpayment: VaResult['underpayment']
-  if (pos(taxAfterNonref - paid) <= 150) underpayment = { safe: true, reason: 'You owe $150 or less after withholding and estimated payments.', required: r(required === Infinity ? 0 : required) }
+  if (lines['27'] <= 150) underpayment = { safe: true, reason: 'You owe $150 or less with your return.', required: r(required === Infinity ? 0 : required) }
   else if (paid >= required) underpayment = { safe: true, reason: v.priorYearTax === null ? 'Withholding and estimated payments cover 90% of your 2025 tax.' : 'Withholding and estimated payments cover 90% of your 2025 tax or 100% of your 2024 tax.', required: r(required) }
   else underpayment = { safe: false, reason: 'Withholding and timely estimated payments are less than 90% of your 2025 tax (or 100% of your 2024 tax). An addition to tax may be due: complete Form 760C and enter it on Schedule ADJ line 18.', required: r(required === Infinity ? 0 : required) }
 
