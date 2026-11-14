@@ -524,6 +524,20 @@ export interface VirginiaInput {
   priorYearTax: number | null
 }
 
+export interface StateGenericInput {
+  /** State income tax withheld: W-2 box 17, 1099 state boxes. */
+  withholding: number
+  /** 2025 state estimated payments, including a 2024 overpayment applied. */
+  estimatedPayments: number
+  /** Local income tax rate in percent (county or city), applied to state taxable income. */
+  localRate: number
+  /** Net state additions (+) and subtractions (−) you know of. */
+  adjustments: number
+  /** State credits you know of (against tax). */
+  otherCredits: number
+}
+export const emptyStateGeneric = (): StateGenericInput => ({ withholding: 0, estimatedPayments: 0, localRate: 0, adjustments: 0, otherCredits: 0 })
+
 export interface TaxReturnInput {
   version: 1
   filingStatus: FilingStatus
@@ -583,6 +597,8 @@ export interface TaxReturnInput {
   scenarios: Scenario[]
   /** State lived in all of 2025 (two-letter code), '' = not chosen yet. Decides which state return is prepared. */
   residentState: string
+  /** Inputs for the state estimate (states not yet prepared in full). */
+  stateGeneric: StateGenericInput
   /** Virginia resident return (Form 760). */
   virginia: VirginiaInput
 }
@@ -775,6 +791,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   payments: { estimatedTaxPayments: 0, estimatedByQuarter: [0, 0, 0, 0], otherWithholding: 0 },
   scenarios: [],
   residentState: '',
+  stateGeneric: emptyStateGeneric(),
   virginia: emptyVirginia()
 })
 
@@ -880,6 +897,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     })) : [],
     // Before the state picker, a Virginia return was switched on with virginia.enabled.
     residentState: typeof r.residentState === 'string' ? r.residentState.toUpperCase() : r.virginia?.enabled ? 'VA' : '',
+    stateGeneric: { ...emptyStateGeneric(), ...(r.stateGeneric ?? {}) },
     virginia: normalizeVirginia(r.virginia)
   })
 }

@@ -9,6 +9,7 @@ import { ReviewStep } from './review'
 import { CompareStep } from './compare'
 import { StateStep } from './state'
 import { stateInfo } from '../engine/states.ts'
+import { estimateStateTax } from '../engine/stateEstimate.ts'
 import { computeVirginia } from '../engine/va2025.ts'
 import { preparerReady } from './store.ts'
 import { exampleReturn, hasEntries } from './example'
@@ -42,7 +43,7 @@ function stepLabel(s: (typeof STEPS)[number], ret: TaxReturnInput): { title: str
   if (s.path !== 'state') return s
   const info = stateInfo(ret.residentState)
   if (!info) return s
-  return { title: info.name, blurb: info.support === 'no-tax' ? 'No state income tax' : info.support === 'supported' ? `State return, ${info.form}` : `${info.form}, not prepared yet` }
+  return { title: info.name, blurb: info.support === 'no-tax' ? 'No state income tax' : info.support === 'supported' ? `State return, ${info.form}` : `${info.form}, estimate` }
 }
 const stepForIssue: Record<Issue['step'], StepPath> = { about: 'about', income: 'income', deductions: 'deductions', credits: 'payments', review: 'review' }
 
@@ -88,10 +89,22 @@ function Summary({ ret, result, open, onToggle }: { ret: TaxReturnInput; result:
             <div key={label}><dt>{label}</dt><dd>{usd(value)}</dd></div>
           ))}
         </dl>
-        {ret.residentState === 'VA' && <VirginiaSummary ret={ret} result={result} />}
+        {ret.residentState === 'VA' ? <VirginiaSummary ret={ret} result={result} /> : ret.residentState ? <EstimateSummary ret={ret} result={result} /> : null}
         <p className="summary-foot">Federal return, tax year 2025. Estimate only: check every number before you file.</p>
       </div>
     </aside>
+  )
+}
+
+function EstimateSummary({ ret, result }: { ret: TaxReturnInput; result: TaxReturnResult }): ReactElement | null {
+  const est = useMemo(() => estimateStateTax(ret, result), [ret, result])
+  if (!est) return null
+  const owes = est.owed > 0
+  return (
+    <p className="summary-state">
+      <span>{owes ? `${est.name}: you owe` : `${est.name} refund`} <small>(estimate)</small></span>
+      <strong>{usd(owes ? est.owed : est.refund)}</strong>
+    </p>
   )
 }
 
@@ -159,7 +172,7 @@ function Workspace({ ret, set, result, current, preparer, meta, onExample, onSta
         </footer>
         <p className="disclaimer">
           USTaxes NextGen is an open-source preparation aid, not tax advice. It prints IRS forms to sign and mail; it does not e-file.
-          Not yet covered: like-kind exchanges, casualty losses, estates and trusts (K-1 from Form 1041), foreign income, and state returns other than Virginia.
+          Not yet covered: like-kind exchanges, casualty losses, estates and trusts (K-1 from Form 1041), foreign income, and state forms other than Virginia’s (other states get an estimate).
         </p>
       </main>
 

@@ -9,11 +9,12 @@ import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { Section, usd } from './fields'
 import type { StepProps } from './steps'
 import { VirginiaStep } from './virginia'
+import { StateEstimateView } from './stateEstimate'
 
 const GROUPS: { label: string; support: StateInfo['support'] }[] = [
   { label: 'Prepared by this app', support: 'supported' },
   { label: 'No state income tax', support: 'no-tax' },
-  { label: 'Other states (not prepared yet)', support: 'not-yet' }
+  { label: 'Estimate (full forms coming)', support: 'estimate' }
 ]
 
 /** Short label for the step list and summary. */
@@ -23,7 +24,8 @@ export function StateStep(props: StepProps & { preparer: PreparerInfo | null }):
   const { ret, set, result } = props
   const info = stateInfo(ret.residentState)
   const addressState = stateInfo(ret.contact.state ?? '')
-  const choose = (code: string): void => set((r) => ({ ...r, residentState: code, virginia: { ...r.virginia, enabled: code === 'VA' } }))
+  // A local rate and state adjustments belong to one state, so they start over when the state changes.
+  const choose = (code: string): void => set((r) => ({ ...r, residentState: code, virginia: { ...r.virginia, enabled: code === 'VA' }, stateGeneric: code === r.residentState ? r.stateGeneric : { ...r.stateGeneric, localRate: 0, adjustments: 0, otherCredits: 0 } }))
   const ltcg = result.scheduleD.longTerm
 
   return (
@@ -61,17 +63,7 @@ export function StateStep(props: StepProps & { preparer: PreparerInfo | null }):
         </Section>
       )}
 
-      {info?.support === 'not-yet' && (
-        <Section title={`${info.name}: not prepared yet`}>
-          <p>{info.name} taxes income, and its resident return is <strong>{info.form}</strong> from the {info.agency}. This app does not prepare it yet, so nothing here is figured for {info.name}.</p>
-          {info.note && <p className="why">{info.note}</p>}
-          <ul className="va-auto">
-            <li><span>Start from</span><strong>Federal AGI {usd(result.f1040['11a'])}</strong></li>
-            <li><span>Federal return</span><strong>Form 1040 PDF from the Review step</strong></li>
-          </ul>
-          <p className="why">Most states start from federal adjusted gross income, so the federal PDF from this app is what you will copy numbers from. Many states also offer free online filing on their department’s website.</p>
-        </Section>
-      )}
+      {info?.support === 'estimate' && <StateEstimateView {...props} />}
 
       {info?.code === 'VA' && <VirginiaStep {...props} />}
     </div>

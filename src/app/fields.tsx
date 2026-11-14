@@ -156,8 +156,9 @@ export function DocList<T extends { id: string }>({ items, title, render, onAdd,
   )
 }
 
-export function NumberField({ label, value, onChange, min = 0, max = 130, hint, suffix }: {
+export function NumberField({ label, value, onChange, min = 0, max = 130, hint, suffix, decimal }: {
   label: string; value: number; onChange: (n: number) => void; min?: number; max?: number; hint?: string; suffix?: string
+  /** Allow a decimal point (rates such as 3.2%). */ decimal?: boolean
 }): ReactElement {
   const id = useFieldId('n')
   const [text, setText] = useState(value ? String(value) : '')
@@ -167,12 +168,14 @@ export function NumberField({ label, value, onChange, min = 0, max = 130, hint, 
     <div className="field">
       <label htmlFor={id}><span>{label}</span></label>
       <div className="number-input">
-        <input id={id} inputMode="numeric" autoComplete="off" value={text}
+        <input id={id} inputMode={decimal ? 'decimal' : 'numeric'} autoComplete="off" value={text}
           onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
           onChange={(e) => {
-            const t = e.target.value.replace(/\D/g, '').slice(0, String(max).length)
+            const t = decimal
+              ? e.target.value.replace(/[^\d.]/g, '').replace(/^(\d*\.?\d{0,3}).*$/, '$1').slice(0, 7)
+              : e.target.value.replace(/\D/g, '').slice(0, String(max).length)
             setText(t)
-            const n = t === '' ? 0 : Math.min(max, Math.max(min, Number(t)))
+            const n = t === '' || t === '.' ? 0 : Math.min(max, Math.max(min, Number(t)))
             onChange(n)
           }} />
         {suffix && <span aria-hidden="true">{suffix}</span>}
