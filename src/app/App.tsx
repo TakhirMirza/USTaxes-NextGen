@@ -12,6 +12,7 @@ import { stateInfo } from '../engine/states.ts'
 import { estimateStateTax } from '../engine/stateEstimate.ts'
 import { computeMaryland } from '../engine/md2025.ts'
 import { computeDc } from '../engine/dc2025.ts'
+import { computeCalifornia } from '../engine/ca2025.ts'
 import { computeVirginia } from '../engine/va2025.ts'
 import { preparerReady } from './store.ts'
 import { exampleReturn, hasEntries } from './example'
@@ -91,7 +92,7 @@ function Summary({ ret, result, open, onToggle }: { ret: TaxReturnInput; result:
             <div key={label}><dt>{label}</dt><dd>{usd(value)}</dd></div>
           ))}
         </dl>
-        {ret.residentState === 'VA' ? <VirginiaSummary ret={ret} result={result} /> : ret.residentState === 'MD' ? <MarylandSummary ret={ret} result={result} /> : ret.residentState === 'DC' ? <DcSummary ret={ret} result={result} /> : ret.residentState ? <EstimateSummary ret={ret} result={result} /> : null}
+        {ret.residentState === 'VA' ? <VirginiaSummary ret={ret} result={result} /> : ret.residentState === 'MD' ? <MarylandSummary ret={ret} result={result} /> : ret.residentState === 'DC' ? <DcSummary ret={ret} result={result} /> : ret.residentState === 'CA' ? <CaliforniaSummary ret={ret} result={result} /> : ret.residentState ? <EstimateSummary ret={ret} result={result} /> : null}
         <p className="summary-foot">Federal return, tax year 2025. Estimate only: check every number before you file.</p>
       </div>
     </aside>
@@ -106,6 +107,17 @@ function EstimateSummary({ ret, result }: { ret: TaxReturnInput; result: TaxRetu
     <p className="summary-state">
       <span>{owes ? `${est.name}: you owe` : `${est.name} refund`} <small>(estimate)</small></span>
       <strong>{usd(owes ? est.owed : est.refund)}</strong>
+    </p>
+  )
+}
+
+function CaliforniaSummary({ ret, result }: { ret: TaxReturnInput; result: TaxReturnResult }): ReactElement {
+  const ca = useMemo(() => computeCalifornia(ret, result), [ret, result])
+  const owes = ca.lines['111'] > 0
+  return (
+    <p className="summary-state">
+      <span>{owes ? 'California: you owe' : 'California refund'}</span>
+      <strong>{usd(owes ? ca.lines['111'] : ca.lines['115'])}</strong>
     </p>
   )
 }

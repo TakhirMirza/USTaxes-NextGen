@@ -632,6 +632,61 @@ export const emptyDc = (): DcInput => ({
   landlord: { name: '', street: '', apt: '', city: '', state: '', zip: '', phone: '' }, ssl: { square: '', suffix: '', lot: '' }, dependentBirthDates: {}, nonrefundableCredits: 0, refundableCredits: 0, creditForward: 0, contribution: 0
 })
 
+export interface CaInput {
+  /** MM/DD/YYYY, printed on Form 540 (required for the California EITC). */
+  birthDate: { taxpayer: string; spouse: string }
+  /** County of principal residence at the time of filing. */
+  county: string
+  /** Line 12: W-2 box 16 state wages; null = use W-2 box 1. */
+  stateWages: number | null
+  withholding: number
+  estimatedPayments: number
+  /** Paid with an extension (FTB 3519); reported on line 72 with estimated payments. */
+  extensionPayments: number
+  /** Schedule CA subtractions not figured from the federal return. */
+  stateRefundInFagi: number
+  usObligationInterest: number
+  otherSubtractions: number
+  /** Schedule CA additions not figured from the federal return. */
+  otherStateBondInterest: number
+  otherAdditions: number
+  /** Other Schedule CA Part II itemized adjustments (+ or −), for example job expenses over 2% of AGI. */
+  itemizedAdjustment: number
+  /** Married filing separately and the spouse itemizes (then you must itemize too). */
+  spouseItemizes: boolean
+  /** Paid rent at least half of 2025 on a California principal residence not exempt from property tax. */
+  rentedHome: boolean
+  /** You or your spouse claimed the homeowner’s property tax exemption in 2025. */
+  homeownerExemption: boolean
+  /** Child or dependent care was provided in California (FTB 3506). */
+  careInCalifornia: boolean
+  /** One special credit for line 43 (code, name, amount). */
+  specialCredit: { code: string; name: string; amount: number }
+  /** Line 63: other taxes and credit recapture (for example, FTB 3805P). */
+  otherTaxes: number
+  /** Married filing separately but separated from your spouse (FTB 3514 checkbox). */
+  separatedSpouse: boolean
+  fullYearCoverage: boolean
+  /** Line 92: Individual Shared Responsibility Penalty from FTB 3853. */
+  isrPenalty: number
+  /** Line 91: use tax. */
+  useTax: number
+  /** Line 91 is 0 because the use tax was paid directly to CDTFA (otherwise "No use tax is owed"). */
+  useTaxPaidDirectly: boolean
+  creditForward: number
+  /** One voluntary contribution (code 400–449). */
+  contribution: { code: string; amount: number }
+  /** Dependent id → MM/DD/YYYY, for FTB 3514. */
+  dependentBirthDates: Record<string, string>
+}
+export const emptyCa = (): CaInput => ({
+  birthDate: { taxpayer: '', spouse: '' }, county: '', stateWages: null, withholding: 0, estimatedPayments: 0, extensionPayments: 0,
+  stateRefundInFagi: 0, usObligationInterest: 0, otherSubtractions: 0, otherStateBondInterest: 0, otherAdditions: 0, itemizedAdjustment: 0,
+  spouseItemizes: false, rentedHome: false, homeownerExemption: false, careInCalifornia: true, specialCredit: { code: '', name: '', amount: 0 },
+  otherTaxes: 0, separatedSpouse: false, fullYearCoverage: true, isrPenalty: 0, useTax: 0, useTaxPaidDirectly: false, creditForward: 0,
+  contribution: { code: '', amount: 0 }, dependentBirthDates: {}
+})
+
 export interface StateGenericInput {
   /** State income tax withheld: W-2 box 17, 1099 state boxes. */
   withholding: number
@@ -713,6 +768,8 @@ export interface TaxReturnInput {
   maryland: MarylandInput
   /** DC resident return (Form D-40). */
   dc: DcInput
+  /** California resident return (Form 540). */
+  ca: CaInput
 }
 
 let counter = 0
@@ -906,7 +963,8 @@ export const emptyReturn = (): TaxReturnInput => ({
   stateGeneric: emptyStateGeneric(),
   virginia: emptyVirginia(),
   maryland: emptyMaryland(),
-  dc: emptyDc()
+  dc: emptyDc(),
+  ca: emptyCa()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -1014,6 +1072,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     stateGeneric: { ...emptyStateGeneric(), ...(r.stateGeneric ?? {}) },
     virginia: normalizeVirginia(r.virginia),
     maryland: normalizeMaryland(r.maryland),
-    dc: { ...emptyDc(), ...(r.dc ?? {}), birthDate: { ...emptyDc().birthDate, ...(r.dc?.birthDate ?? {}) }, landlord: { ...emptyDc().landlord, ...(r.dc?.landlord ?? {}) }, ssl: { ...emptyDc().ssl, ...(r.dc?.ssl ?? {}) }, dependentBirthDates: { ...(r.dc?.dependentBirthDates ?? {}) } }
+    dc: { ...emptyDc(), ...(r.dc ?? {}), birthDate: { ...emptyDc().birthDate, ...(r.dc?.birthDate ?? {}) }, landlord: { ...emptyDc().landlord, ...(r.dc?.landlord ?? {}) }, ssl: { ...emptyDc().ssl, ...(r.dc?.ssl ?? {}) }, dependentBirthDates: { ...(r.dc?.dependentBirthDates ?? {}) } },
+    ca: { ...emptyCa(), ...(r.ca ?? {}), birthDate: { ...emptyCa().birthDate, ...(r.ca?.birthDate ?? {}) }, specialCredit: { ...emptyCa().specialCredit, ...(r.ca?.specialCredit ?? {}) }, contribution: { ...emptyCa().contribution, ...(r.ca?.contribution ?? {}) }, dependentBirthDates: { ...(r.ca?.dependentBirthDates ?? {}) }, stateWages: typeof r.ca?.stateWages === 'number' ? r.ca.stateWages : null }
   })
 }

@@ -4,6 +4,8 @@ import type { VaResult } from '../engine/va2025.ts'
 import type { MdResult } from '../engine/md2025.ts'
 import { buildMarylandPacket } from './md2025.ts'
 import type { DcResult } from '../engine/dc2025.ts'
+import type { CaResult } from '../engine/ca2025.ts'
+import { buildCaPacket } from './ca2025.ts'
 import { buildDcPacket } from './dc2025.ts'
 import { buildPacket2025 } from './irs2025.ts'
 import type { FormFill, PreparerInfo } from './irs2025.ts'
@@ -47,4 +49,8 @@ export function downloadMarylandForms(ret: TaxReturnInput, res: TaxReturnResult,
 
 export function downloadDcForms(ret: TaxReturnInput, res: TaxReturnResult, dc: DcResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildDcPacket(ret, res, dc, preparer).forms, '2025 DC Form D-40 — USTaxes NextGen', `2025-DC-D40-${slug(ret)}.pdf`)
+}
+
+export function downloadCaliforniaForms(ret: TaxReturnInput, res: TaxReturnResult, ca: CaResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildCaPacket(ret, res, ca, preparer).forms, '2025 California Form 540 — USTaxes NextGen', `2025-California-540-${slug(ret)}.pdf`)
 }

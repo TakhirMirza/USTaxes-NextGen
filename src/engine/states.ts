@@ -29,7 +29,7 @@ export const STATES: readonly StateInfo[] = [
   S('AK', 'Alaska', 'no-tax', '', 'Alaska Department of Revenue', 'Alaska has no individual income tax.'),
   S('AZ', 'Arizona', 'estimate', 'Form 140', 'Arizona Department of Revenue'),
   S('AR', 'Arkansas', 'estimate', 'Form AR1000F', 'Arkansas Department of Finance and Administration'),
-  S('CA', 'California', 'estimate', 'Form 540', 'California Franchise Tax Board'),
+  S('CA', 'California', 'supported', 'Form 540', 'California Franchise Tax Board'),
   S('CO', 'Colorado', 'estimate', 'Form DR 0104', 'Colorado Department of Revenue'),
   S('CT', 'Connecticut', 'estimate', 'Form CT-1040', 'Connecticut Department of Revenue Services'),
   S('DE', 'Delaware', 'estimate', 'Form PIT-RES', 'Delaware Division of Revenue'),
