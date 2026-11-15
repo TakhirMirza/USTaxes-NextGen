@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { computeReturn } from './compute.ts'
 import { emptyDependent, emptyReturn, emptyW2 } from './model.ts'
 import type { NyInput, TaxReturnInput } from './model.ts'
-import { computeNewYork, nycEicRate, nycTax, nysTax, salesTaxChart } from './ny2025.ts'
+import { computeNewYork, eliminationThreshold, nyCareDecimal, nyCareLimitation, nycCareLimitation, nycEicRate, nycTax, nysTax, salesTaxChart } from './ny2025.ts'
 
 const person = { ...emptyReturn().taxpayer, firstName: 'Test', lastName: 'Payer', age: 35 }
 const w2 = (wages: number, owner: 'taxpayer' | 'spouse' = 'taxpayer') =>
@@ -102,4 +102,62 @@ test('pension exclusion: up to $20,000 for someone 60 or older', () => {
 test('Yonkers resident surcharge: 16.75% of net state tax', () => {
   const v = ny(base({ w2s: [w2(60000)] }, { locality: 'yonkers' }))
   assert.equal(v.lines['55'], Math.round(v.lines['46'] * 0.1675))
+})
+
+test('IT-216 tables: line 10 decimal, NYS limitation (line 13), NYC limitation (Worksheet 2 line 6)', () => {
+  assert.equal(nyCareDecimal(15000), 0.35)
+  assert.equal(nyCareDecimal(15001), 0.34)
+  assert.equal(nyCareDecimal(24000), 0.3)
+  assert.equal(nyCareDecimal(43000), 0.21)
+  assert.equal(nyCareDecimal(90000), 0.2)
+  assert.equal(nyCareLimitation(25000), 1.1)
+  assert.equal(nyCareLimitation(33000), 1.047) // 32,800–33,000
+  assert.equal(nyCareLimitation(33001), 1.046)
+  assert.equal(nyCareLimitation(45000), 1)
+  assert.equal(nyCareLimitation(50100), 1.162)
+  assert.equal(nyCareLimitation(55100), 0.927)
+  assert.equal(nyCareLimitation(60100), 1.07)
+  assert.equal(nyCareLimitation(65000), 0.476)
+  assert.equal(nyCareLimitation(65001), 0.6)
+  assert.equal(nyCareLimitation(150001), 0.2)
+  assert.equal(nycCareLimitation(25000), 0.75)
+  assert.equal(nycCareLimitation(25100), 0.735)
+  assert.equal(nycCareLimitation(27500), 0.375)
+  assert.equal(nycCareLimitation(29900), 0.015)
+  assert.equal(nycCareLimitation(30001), 0)
+})
+
+test('NYC parent with a 2-year-old in daycare: NYS and NYC child care credits', () => {
+  const ret = base({ filingStatus: 'hoh', w2s: [w2(24000)], dependents: [kid(2)], dependentCare: { expenses: 4000, employerBenefits: 0, providers: [] } }, { locality: 'nyc' })
+  const v = ny(ret)
+  assert.equal(v.care.line5, 3000)
+  assert.equal(v.care.line10, 0.3)
+  assert.equal(v.care.line11, 900)
+  assert.equal(v.care.line13, 1.1)
+  assert.equal(v.care.line14, 990)
+  assert.equal(v.care.nycCredit, 743) // 990 × 1 × 0.75
+  assert.equal(v.lines['64'], 1733)
+})
+
+test('NYC income tax elimination credit: partial within $5,000 over the threshold', () => {
+  assert.equal(eliminationThreshold('hoh', 1), 31503)
+  assert.equal(eliminationThreshold('mfj', 9), 91902)
+  assert.equal(eliminationThreshold('single', 9), 88361)
+  const v = ny(base({ filingStatus: 'hoh', w2s: [w2(34000)], dependents: [kid(10)] }, { locality: 'nyc' }))
+  assert.equal(v.elimination.line3, 2497)
+  assert.equal(v.elimination.line5, 0.5006)
+  assert.equal(v.elimination.line10, v.lines['54'] - v.lines['70'])
+  assert.equal(v.lines['70a'], Math.round(v.elimination.line10 * 0.5006))
+  assert.ok(v.lines['70a'] > 0)
+})
+
+test('IT-196: no SALT cap, state income tax out, high-income adjustment over $100,000', () => {
+  const v = ny(base({ w2s: [w2(120000)], itemized: { ...emptyReturn().itemized, stateLocalIncomeOrSalesTax: 8000, realEstateTax: 12000, mortgageInterest: 15000, charityCash: 3000 } }))
+  const it = v.deduction.it196!
+  assert.equal(it.lines['40'], 38000)
+  assert.equal(it.lines['41'], 8000)
+  assert.equal(it.lines['46'], 3000) // 25% × 30,000 × 20,000 / 50,000
+  assert.equal(it.lines['49'], 27000)
+  assert.equal(v.deduction.method, 'itemized')
+  assert.equal(v.lines['34'], 27000)
 })

@@ -5,7 +5,7 @@
  */
 import type { Person, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
-import { eicChild } from '../engine/compute.ts'
+import { careQualifyingPerson, eicChild } from '../engine/compute.ts'
 import type { NyResult } from '../engine/ny2025.ts'
 import { parseBirthDate } from '../engine/va2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
@@ -164,13 +164,82 @@ export function formIT215(ret: TaxReturnInput, res: TaxReturnResult, ny: NyResul
   return { id: 'nyit215', file: 'nyit215.pdf', title: 'New York Form IT-215', values }
 }
 
+/** Form IT-216: NYS and NYC child and dependent care credit. */
+export function formIT216(ret: TaxReturnInput, res: TaxReturnResult, ny: NyResult): FormFill {
+  const c = ny.care
+  const values: Record<string, FieldValue> = {
+    'Your last name': displayName(ret), 'Your SSN': digits(ret.taxpayer.ssn),
+    'Already Filed': 'No', 'line 4': 'Yes',
+    '3 total qualifying persons': String(c.persons), '3a dollars16': amt(c.line3a),
+    '5 dollars16': amt(c.line5), '6 dollars16': amt(c.line6), '7 dollars16': amt(c.line7), '8 dollars16': amt(c.line8, true),
+    '9 dollars16': amt(res.f1040['11a'], true), 'line 10': String(Math.round(c.line10 * 100)).padStart(2, '0'), '11 dollars16': amt(c.line11, true),
+    '12 dollars16': amt(c.line11, true), '13 IT201 filers dollars16': amt(ny.lines['33'], true), '13 first number16': c.line13.toFixed(3),
+    '14 dollars16': amt(c.line14, true), '23 dollars16': amt(c.nycCredit ? c.under4Expenses : 0), '24 dollars16': amt(c.nycCredit),
+    '25 dollars16': amt(ny.lines['64'], true)
+  }
+  ret.dependentCare.providers.slice(0, 2).forEach((p, i) => {
+    const n = i + 1
+    values[`2_${n}_a`] = upper(p.name)
+    values[`2_${n}_b_street`] = upper(p.address)
+    values[`2_${n}_c`] = digits(p.tin)
+    values[`2_${n}_d`] = amt(p.amountPaid)
+  })
+  const persons = ret.dependents.filter(careQualifyingPerson).sort((a, b) => a.age - b.age).slice(0, 5)
+  const ssnField = ['3 social security number16', '3 social security 216', '3 social security number316', '3 social security 416', '3 social security 516']
+  const dobField = ['3 Year of Birth16', '3 Year of Birth 216', '3 Year of Birth316', '3 Year of Birth 416', '3 Year of Birth 516']
+  persons.forEach((p, i) => {
+    const n = `${i + 1}16`
+    const [f, l] = splitName(p.name)
+    values[`3 first name ${n}`] = upper(f)
+    values[`3 last name ${n}`] = upper(l)
+    values[ssnField[i]] = digits(p.ssn)
+    values[dobField[i]] = dob(ret.ny.dependentBirthDates[p.id] ?? '')
+    values[`disability ${n}`] = p.disabled
+    if (persons.length === 1) values[`3 qualified expenses ${n}`] = amt(c.line3a)
+  })
+  return { id: 'nyit216', file: 'nyit216.pdf', title: 'New York Form IT-216', values }
+}
+
+/** Form IT-270: NYC income tax elimination credit. */
+export function formIT270(ret: TaxReturnInput, res: TaxReturnResult, ny: NyResult): FormFill {
+  const e = ny.elimination
+  return {
+    id: 'nyit270', file: 'nyit270.pdf', title: 'New York Form IT-270',
+    values: {
+      NameReturn: displayName(ret), SSN: digits(ret.taxpayer.ssn),
+      LineA: 'Yes', LineB: 'No', LineC: 'No', LineD: 'No', LineE: 'No',
+      Line1: amt(res.f1040['11a'], true), Line2: amt(e.threshold, true), Line3: amt(e.line3, true), Line4: amt(5000 - e.line3, true),
+      Line5: e.line5.toFixed(4), Line6: amt(ny.lines['54'], true), Line7: amt(ny.care.nycCredit, true), Line8: amt(ny.lines['70'], true),
+      Line9: amt(ny.care.nycCredit + ny.lines['70'], true), Line10: amt(e.line10, true), Line11: amt(ny.lines['70a'], true)
+    }
+  }
+}
+
+/** Form IT-196: New York itemized deductions. */
+export function formIT196(ret: TaxReturnInput, res: TaxReturnResult, ny: NyResult): FormFill {
+  const L = ny.deduction.it196?.lines ?? {}
+  const values: Record<string, FieldValue> = { Name: displayName(ret), SSN: digits(ret.taxpayer.ssn) }
+  for (const k of ['1', '2', '3', '4', '5', '6', '7', '9', '10', '15', '16', '17', '19', '25', '26', '27', '28', '39', '40', '41', '42', '44', '45', '46', '47', '48', '49']) values[`Line${k}`] = amt(L[k])
+  if (L['5']) values.Line5ab = 'Income'
+  values.Over_line19 = Math.round(res.f1040['11a']) > 204400 ? 'Yes' : 'No'
+  if (L['25']) values.Line21 = amt(L['25'])
+  return { id: 'nyit196', file: 'nyit196.pdf', title: 'New York Form IT-196', values }
+}
+
 export function buildNyPacket(ret: TaxReturnInput, res: TaxReturnResult, ny: NyResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formIT201(ret, res, ny, preparer)]
   if (ny.escc.under4 + ny.escc.age4to16 > 0) forms.push(formIT213(ret, res, ny))
   if (ny.lines['65'] > 0 || ny.lines['70'] > 0) forms.push(formIT215(ret, res, ny))
-  const filled = new Set(['Form IT-213, Empire State child credit', 'Form IT-215, earned income credit'])
+  if (ny.lines['64'] > 0) forms.push(formIT216(ret, res, ny))
+  if (ny.lines['70a'] > 0) forms.push(formIT270(ret, res, ny))
+  if (ny.deduction.method === 'itemized') forms.push(formIT196(ret, res, ny))
+  const filled = new Set(['Form IT-213, Empire State child credit', 'Form IT-215, earned income credit', 'Form IT-216, child and dependent care credit', 'Form IT-270, NYC income tax elimination credit', 'Form IT-196, New York itemized deductions'])
   const notIncluded = ny.attach.filter((a) => !filled.has(a))
   notIncluded.push('Item D1 on page 1: mark whether you had a financial account in a foreign country')
   if (ret.dependents.length > 7) notIncluded.push('Form IT-201 item H continued: dependents after the seventh')
+  if (ny.lines['64'] > 0) {
+    notIncluded.push('Form IT-216 line 2: each care provider’s city, state and ZIP code')
+    if (ret.dependents.filter(careQualifyingPerson).length > 1) notIncluded.push('Form IT-216 line 3 column C: split the care expenses among the qualifying persons')
+  }
   return { forms, notIncluded }
 }

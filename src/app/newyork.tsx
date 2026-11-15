@@ -139,9 +139,10 @@ export function NewYorkStep({ ret, set, result, preparer }: StepProps & { prepar
           ))}
           <MoneyField label="Other additions (Form IT-225)" value={d.otherAdditions} onChange={(n) => put({ otherAdditions: n })} />
           <MoneyField label="Other subtractions (Form IT-225)" value={d.otherSubtractions} onChange={(n) => put({ otherSubtractions: n })} />
-          <MoneyField label="New York itemized deduction" hint={`Form IT-196 line 49; used if more than the ${usd(ny.deduction.standard)} standard deduction`} value={d.itemizedDeduction} onChange={(n) => put({ itemizedDeduction: n })} />
+          <MoneyField label="Job and miscellaneous expenses (IT-196 lines 21–24)" hint="New York still allows these over 2% of AGI when you itemize" value={d.itemizedMiscellaneous} onChange={(n) => put({ itemizedMiscellaneous: n })} />
         </div>
         {L['29'] > 0 && <p className="why">Pension and annuity exclusion: {usd(L['29'])}.</p>}
+        <p className="why">{ny.deduction.it196 ? `New York itemized deduction (Form IT-196): ${usd(ny.deduction.itemized)}; standard deduction: ${usd(ny.deduction.standard)}. Using the ${ny.deduction.method}.` : `Standard deduction: ${usd(ny.deduction.standard)}. Itemized deductions entered on the Deductions step are figured on Form IT-196 automatically.`}</p>
       </Section>
 
       <Section title="Credits">
@@ -150,12 +151,16 @@ export function NewYorkStep({ ret, set, result, preparer }: StepProps & { prepar
           <div><dt>NYS earned income credit</dt><dd>{usd(L['65'])}</dd></div>
           {nyc && <div><dt>NYC earned income credit</dt><dd>{usd(L['70'])}</dd></div>}
           {nyc && <div><dt>NYC school tax credits</dt><dd>{usd(L['69'] + L['69a'])}</dd></div>}
+          {L['64'] > 0 && <div><dt>Child and dependent care credit</dt><dd>{usd(L['64'])}</dd></div>}
+          {nyc && L['70a'] > 0 && <div><dt>NYC income tax elimination credit</dt><dd>{usd(L['70a'])}</dd></div>}
         </dl>
+        {ny.care.line14 > 0 && <p className="why">Child care (Form IT-216): {usd(ny.care.line8)} × {Math.round(ny.care.line10 * 100)}% × {ny.care.line13.toFixed(3)} = {usd(ny.care.line14)} New York State{ny.care.nycCredit ? `, plus ${usd(ny.care.nycCredit)} New York City for children under 4` : ''}.</p>}
         <div className="grid">
-          <MoneyField label="Child and dependent care credit (Form IT-216, line 25)" value={d.childCareCredit} onChange={(n) => put({ childCareCredit: n })} />
+          {nyc && L['19'] <= 30000 && ny.care.persons > 0 && (
+            <MoneyField label="Care expenses for children under 4" hint="For the NYC child care credit (IT-216 line 23)" value={d.careExpensesUnder4 ?? ny.care.under4Expenses} onChange={(n) => put({ careExpensesUnder4: n })} />
+          )}
           <MoneyField label="Real property tax credit (Form IT-214)" value={d.realPropertyCredit} onChange={(n) => put({ realPropertyCredit: n })} />
           <MoneyField label="College tuition credit (Form IT-272)" value={d.collegeTuitionCredit} onChange={(n) => put({ collegeTuitionCredit: n })} />
-          {nyc && <MoneyField label="NYC income tax elimination credit (Form IT-270)" value={d.nycEliminationCredit} onChange={(n) => put({ nycEliminationCredit: n })} />}
           <MoneyField label="Resident credit for tax paid to another state (IT-112-R)" value={d.residentCredit} onChange={(n) => put({ residentCredit: n })} />
           <MoneyField label="Other NYS nonrefundable credits (IT-201-ATT)" value={d.otherNonrefundableCredits} onChange={(n) => put({ otherNonrefundableCredits: n })} />
           <MoneyField label="Other refundable credits (IT-201-ATT)" value={d.otherRefundableCredits} onChange={(n) => put({ otherRefundableCredits: n })} />

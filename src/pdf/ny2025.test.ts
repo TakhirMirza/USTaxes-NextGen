@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import * as lib from 'pdf-lib'
 import { computeReturn } from '../engine/compute.ts'
-import { emptyDependent, emptyReturn, emptyW2 } from '../engine/model.ts'
+import { emptyDependent, emptyProvider, emptyReturn, emptyW2 } from '../engine/model.ts'
 import type { TaxReturnInput } from '../engine/model.ts'
 import { computeNewYork } from '../engine/ny2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -26,6 +26,7 @@ const family = (): TaxReturnInput => {
     contact: { ...r.contact, street: '200 W 100th St', apt: '5B', city: 'New York', state: 'NY', zip: '10025', phone: '212-555-0100', email: 'ana@example.com' },
     dependents: [kid],
     w2s: [{ ...emptyW2('taxpayer'), employer: 'Acme', wages: 24000, socialSecurityWages: 24000, medicareWages: 24000, socialSecurityWithheld: 1488, medicareWithheld: 348 }],
+    dependentCare: { expenses: 3500, employerBenefits: 0, providers: [{ ...emptyProvider(), name: 'Little Steps Daycare', address: '10 W 104th St', tin: '13-1234567', amountPaid: 3500 }] },
     refundDeposit: { routingNumber: '021000021', accountNumber: '998877', accountType: 'checking' },
     ny: { ...r.ny, locality: 'nyc', county: 'New York', schoolDistrict: 'NYC', schoolDistrictCode: '441', birthDate: { taxpayer: '02/03/1995', spouse: '' }, withholding: 300, nycWithholding: 150, dependentBirthDates: { [kid.id]: '06/07/2022' } }
   }
@@ -36,7 +37,7 @@ test('IT-201, IT-213 and IT-215: every key matches exactly one field', async () 
   const res = computeReturn(ret)
   const ny = computeNewYork(ret, res)
   const packet = buildNyPacket(ret, res, ny)
-  assert.deepEqual(packet.forms.map((x) => x.id), ['nyit201', 'nyit213', 'nyit215'])
+  assert.deepEqual(packet.forms.map((x) => x.id), ['nyit201', 'nyit213', 'nyit215', 'nyit216'])
   const problems: FillProblem[] = []
   for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
   assert.deepEqual(problems, [])
@@ -57,6 +58,29 @@ test('IT-201, IT-213 and IT-215: every key matches exactly one field', async () 
   const e = packet.forms[2].values
   assert.equal(e['16 dollars15'], String(ny.lines['65']))
   assert.equal(e['27 dollars15'], String(ny.lines['70']))
+  const k = packet.forms[3].values
+  assert.equal(k['line 10'], '30')
+  assert.equal(k['13 first number16'], '1.100')
+  assert.equal(k['25 dollars16'], String(ny.lines['64']))
+  assert.ok(ny.care.nycCredit > 0)
+})
+
+test('IT-270 and IT-196 fill', async () => {
+  const r = family()
+  const ret: TaxReturnInput = {
+    ...r, w2s: [{ ...r.w2s[0], wages: 34000 }], dependentCare: { expenses: 0, employerBenefits: 0, providers: [] },
+    dependents: [{ ...r.dependents[0], age: 10 }],
+    itemized: { ...r.itemized, stateLocalIncomeOrSalesTax: 1500, realEstateTax: 9000, mortgageInterest: 9000, charityCash: 500 }
+  }
+  const res = computeReturn(ret)
+  const ny = computeNewYork(ret, res)
+  const packet = buildNyPacket(ret, res, ny)
+  const ids = packet.forms.map((x) => x.id)
+  assert.ok(ids.includes('nyit270'))
+  assert.ok(ids.includes('nyit196'))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
 })
 
 test('the New York PDF builds', async () => {
@@ -64,7 +88,7 @@ test('the New York PDF builds', async () => {
   const res = computeReturn(ret)
   const { bytes, problems } = await buildPdf(lib, buildNyPacket(ret, res, computeNewYork(ret, res)).forms, load, '2025 New York Form IT-201')
   assert.deepEqual(problems, [])
-  assert.equal((await lib.PDFDocument.load(bytes)).getPageCount(), 4 + 1 + 2)
+  assert.equal((await lib.PDFDocument.load(bytes)).getPageCount(), 4 + 1 + 2 + 2)
   if (process.env.WRITE_PDF) await writeFile(process.env.WRITE_PDF, bytes)
 })
 

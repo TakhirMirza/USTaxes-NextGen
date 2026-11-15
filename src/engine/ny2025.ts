@@ -11,6 +11,7 @@
  */
 import type { Owner, TaxReturnInput } from './model.ts'
 import type { TaxReturnResult } from './compute.ts'
+import { careQualifyingPerson } from './compute.ts'
 
 export const NY_STANDARD_DEDUCTION = { single: 8000, mfs: 8000, mfj: 16050, hoh: 11200, qss: 16050, dependent: 3100 } as const
 export const NY_DEPENDENT_EXEMPTION = 1000
@@ -143,9 +144,93 @@ export function salesTaxChart(fagi: number): number {
   return Math.min(125, r(fagi * 0.000175))
 }
 
+/** IT-216 line 10: decimal by federal AGI. */
+export function nyCareDecimal(fagi: number): number {
+  if (fagi <= 15000) return 0.35
+  return Math.max(0.2, Math.round((0.35 - Math.ceil((fagi - 15000) / 2000) * 0.01) * 100) / 100)
+}
+const CARE_25_40 = [1.099, 1.098, 1.097, 1.095, 1.094, 1.093, 1.091, 1.09, 1.089, 1.087, 1.086, 1.085, 1.083, 1.082, 1.081, 1.079, 1.078, 1.077, 1.075, 1.074, 1.073, 1.071, 1.07, 1.069, 1.067, 1.066, 1.065, 1.063, 1.062, 1.061, 1.059, 1.058, 1.057, 1.055, 1.054, 1.053, 1.051, 1.05, 1.049, 1.047, 1.046, 1.045, 1.043, 1.042, 1.041, 1.039, 1.038, 1.037, 1.035, 1.034, 1.033, 1.031, 1.03, 1.029, 1.027, 1.026, 1.025, 1.023, 1.022, 1.021, 1.019, 1.018, 1.017, 1.015, 1.014, 1.013, 1.011, 1.01, 1.009, 1.007, 1.006, 1.005, 1.003, 1.002, 1.001]
+const CARE_50_65 = [1.162, 1.15, 1.137, 1.125, 1.112, 1.099, 1.088, 1.075, 1.062, 1.05, 1.037, 1.025, 1.013, 1, 0.987, 0.975, 0.963, 0.95, 0.938, 0.925, 0.912, 0.901, 0.888, 0.875, 0.863, 0.927, 0.913, 0.9, 0.886, 0.872, 0.859, 0.845, 0.831, 0.819, 0.805, 0.791, 0.778, 0.764, 0.75, 0.737, 0.723, 0.709, 0.696, 0.682, 0.668, 0.656, 0.642, 0.628, 0.615, 0.601, 1.07, 1.047, 1.022, 0.996, 0.973, 0.947, 0.922, 0.899, 0.873, 0.848, 0.824, 0.799, 0.773, 0.75, 0.724, 0.699, 0.676, 0.65, 0.625, 0.601, 0.576, 0.55, 0.527, 0.502, 0.476]
+/** IT-216 line 13: New York State child and dependent care credit limitation table, by New York AGI ($200 rows, "over … but not over"). */
+export function nyCareLimitation(nyagi: number): number {
+  if (nyagi <= 25000) return 1.1
+  if (nyagi <= 40000) return CARE_25_40[Math.ceil((nyagi - 25000) / 200) - 1]
+  if (nyagi <= 50000) return 1
+  if (nyagi <= 65000) return CARE_50_65[Math.ceil((nyagi - 50000) / 200) - 1]
+  if (nyagi <= 150000) return 0.6
+  return 0.2
+}
+/** IT-216 Worksheet 2 line 6: NYC child and dependent care credit limitation, by federal AGI. */
+export function nycCareLimitation(fagi: number): number {
+  if (fagi <= 25000) return 0.75
+  if (fagi > 30000) return 0
+  return Math.round((0.735 - (Math.ceil((fagi - 25000) / 200) - 1) * 0.03) * 1000) / 1000
+}
+const CARE_LIMIT = [0, 3000, 6000, 7500, 8500, 9000]
+/** IT-270 income thresholds by number of dependents: [joint or surviving spouse, others]. */
+const ELIMINATION_THRESHOLD: { joint: number[]; other: number[] } = {
+  joint: [0, 36789, 46350, 54545, 61071, 68403, 75204, 91902],
+  other: [0, 31503, 36824, 46512, 53711, 59928, 65712, 74565, 88361]
+}
+export function eliminationThreshold(fs: TaxReturnInput['filingStatus'], dependents: number): number {
+  const t = fs === 'mfj' || fs === 'qss' ? ELIMINATION_THRESHOLD.joint : ELIMINATION_THRESHOLD.other
+  return dependents <= 0 ? 0 : t[Math.min(dependents, t.length - 1)]
+}
+/** IT-196 limits: the line 40 limitation ($ federal AGI) and Worksheet 3 starting point (NYAGI). */
+const IT196_LIMIT = { single: 340700, mfj: 408850, qss: 408850, mfs: 204400, hoh: 374800 } as const
+const IT196_WS3 = { single: 100000, mfs: 100000, hoh: 150000, mfj: 200000, qss: 200000 } as const
+
+export interface NyItemized { lines: Record<string, number>; total: number }
+/** Form IT-196: New York itemized deduction (pre-2018 federal rules, no SALT cap, state income tax out). */
+export function nyItemized(ret: TaxReturnInput, res: TaxReturnResult, nyagi: number): NyItemized | null {
+  const it = ret.itemized
+  const misc = pos(ret.ny.itemizedMiscellaneous)
+  if (it.medical + it.stateLocalIncomeOrSalesTax + it.realEstateTax + it.personalPropertyTax + it.mortgageInterest + it.charityCash + it.charityNonCash + it.other + misc <= 0) return null
+  const fs = ret.filingStatus
+  const fagi = r(res.f1040['11a'])
+  const L: Record<string, number> = {}
+  L['1'] = r(pos(it.medical)); L['2'] = fagi; L['3'] = r(pos(fagi) * 0.1); L['4'] = pos(L['1'] - L['3'])
+  L['5'] = r(pos(it.stateLocalIncomeOrSalesTax)); L['6'] = r(pos(it.realEstateTax)); L['7'] = r(pos(it.personalPropertyTax)); L['8'] = 0
+  L['9'] = L['5'] + L['6'] + L['7'] + L['8']
+  L['10'] = r(pos(it.mortgageInterest)); L['15'] = L['10']
+  L['16'] = r(pos(it.charityCash)); L['17'] = r(pos(it.charityNonCash)); L['19'] = L['16'] + L['17']
+  L['25'] = r(misc); L['26'] = fagi; L['27'] = r(pos(fagi) * 0.02); L['28'] = pos(L['25'] - L['27'])
+  L['39'] = r(pos(it.other))
+  const sum = L['4'] + L['9'] + L['15'] + L['19'] + L['28'] + L['39']
+  // Line 40 worksheet (overall limitation).
+  let line9 = 0
+  let line3 = 0
+  if (fagi > IT196_LIMIT[fs]) {
+    line3 = pos(sum - L['4'])
+    if (line3 > 0) line9 = r(Math.min(line3 * 0.8, (fagi - IT196_LIMIT[fs]) * 0.03))
+  }
+  L['40'] = sum - line9
+  // Line 41: state and local income taxes, reduced in proportion when the deduction was limited (Worksheet 2).
+  L['41'] = line9 > 0 && line3 > 0 ? r(L['5'] - L['5'] * Math.round((line9 / line3) * 10000) / 10000) : L['5']
+  L['42'] = L['40'] - L['41']
+  L['44'] = 0
+  L['45'] = L['42'] + L['44']
+  // Line 46: high-income adjustment.
+  let adj = 0
+  if (nyagi > 100000 && nyagi <= 475000) {
+    const over = nyagi - IT196_WS3[fs]
+    if (over > 0) adj = r(Math.round(Math.min(over, 50000) / 50000 * 10000) / 10000 * L['45'] * 0.25)
+  } else if (nyagi > 475000 && nyagi <= 525000) {
+    const q = 0.25 * L['45']
+    adj = r(q + Math.round(Math.min(nyagi - 475000, 50000) / 50000 * 10000) / 10000 * q)
+  } else if (nyagi > 525000 && nyagi <= 1000000) adj = r(L['45'] * 0.5)
+  L['46'] = adj
+  L['47'] = nyagi > 10000000 ? r(L['19'] * 0.25) : nyagi > 1000000 ? r(L['19'] * 0.5) : L['45'] - L['46']
+  L['48'] = 0
+  L['49'] = L['47'] + L['48']
+  return { lines: L, total: L['49'] }
+}
+
 export interface NyResult {
   lines: Record<string, number>
-  deduction: { method: 'standard' | 'itemized'; standard: number; itemized: number }
+  deduction: { method: 'standard' | 'itemized'; standard: number; itemized: number; it196: NyItemized | null }
+  care: { persons: number; line3a: number; line5: number; line6: number; line7: number; line8: number; line10: number; line11: number; line13: number; line14: number; under4Expenses: number; nycLine4: number; nycLine6: number; nycCredit: number }
+  elimination: { threshold: number; line3: number; line5: number; line10: number; credit: number }
   pensionExclusion: Record<Owner, number>
   escc: { under4: number; age4to16: number; reduction: number }
   eic: { federal: number; tentative: number; worksheetB: number; nycRate: number }
@@ -217,8 +302,9 @@ export function computeNewYork(ret: TaxReturnInput, res: TaxReturnResult): NyRes
 
   // ── Deduction and exemptions ──
   const standard: number = ret.canBeClaimedAsDependent && fs === 'single' ? NY_STANDARD_DEDUCTION.dependent : NY_STANDARD_DEDUCTION[fs]
-  const itemized = r(pos(d.itemizedDeduction))
-  const method: 'standard' | 'itemized' = itemized > standard ? 'itemized' : 'standard'
+  const it196 = nyItemized(ret, res, L['33'])
+  const itemized = it196?.total ?? 0
+  const method: 'standard' | 'itemized' = it196 && (itemized > standard || (fs === 'mfs' && res.deduction.used === 'itemized')) ? 'itemized' : 'standard'
   L['34'] = method === 'itemized' ? itemized : standard
   L['35'] = pos(L['33'] - L['34'])
   L['36box'] = ret.dependents.length
@@ -253,7 +339,7 @@ export function computeNewYork(ret: TaxReturnInput, res: TaxReturnResult): NyRes
 
   // ── Refundable credits ──
   // Empire State child credit (IT-213).
-  const kids = ret.dependents.filter((x) => x.childRelationship && x.age < 17)
+  const kids = ret.dependents.filter((x) => x.childRelationship && x.age < 17 && x.monthsLivedWithYou > 6)
   const under4 = kids.filter((x) => x.age < 4).length
   const age4to16 = kids.length - under4
   const esccBase = under4 * NY_ESCC.under4 + age4to16 * NY_ESCC.age4to16
@@ -265,7 +351,31 @@ export function computeNewYork(ret: TaxReturnInput, res: TaxReturnResult): NyRes
   const tentative = r(fedEic * NY_EIC_RATE)
   const worksheetB = pos(L['39'] - L['41'])
   const nysEic = fedEic > 0 && res.eic.investmentIncome <= NY_EIC_INVESTMENT_LIMIT ? pos(tentative - Math.min(worksheetB, L['40'])) : 0
-  L['64'] = r(pos(d.childCareCredit))
+  // Child and dependent care credit (IT-216): NYS credit, plus the NYC credit for children under 4.
+  const carePersons = ret.dependents.filter(careQualifyingPerson)
+  const care = { persons: carePersons.length, line3a: 0, line5: 0, line6: 0, line7: 0, line8: 0, line10: 0, line11: 0, line13: 0, line14: 0, under4Expenses: 0, nycLine4: 0, nycLine6: 0, nycCredit: 0 }
+  if (carePersons.length > 0 && ret.dependentCare.expenses > 0) {
+    care.line3a = r(ret.dependentCare.expenses)
+    const limit = CARE_LIMIT[Math.min(5, carePersons.length)]
+    const p3 = res.form2441.partIII
+    const line3b = p3 ? pos(limit - p3.line28) : Infinity
+    care.line5 = r(Math.min(care.line3a, line3b, limit))
+    care.line6 = r(res.form2441.line4)
+    care.line7 = joint ? r(res.form2441.line5) : care.line6
+    care.line8 = pos(Math.min(care.line5, care.line6, care.line7))
+    care.line10 = nyCareDecimal(fagi)
+    care.line11 = r(care.line8 * care.line10)
+    care.line13 = nyCareLimitation(nyagi)
+    care.line14 = r(care.line11 * care.line13)
+    const under4 = carePersons.filter((x) => x.age < 4)
+    care.under4Expenses = r(d.careExpensesUnder4 ?? (under4.length === carePersons.length ? care.line3a : 0))
+    if (nyc && fagi <= 30000 && under4.length > 0 && care.line14 > 0 && care.line3a > 0) {
+      care.nycLine4 = Math.min(1, Math.round((care.under4Expenses / care.line3a) * 10000) / 10000)
+      care.nycLine6 = nycCareLimitation(fagi)
+      care.nycCredit = r(r(care.line14 * care.nycLine4) * care.nycLine6)
+    }
+  }
+  L['64'] = care.line14 + care.nycCredit
   L['65'] = nysEic
   L['66'] = 0
   L['67'] = r(pos(d.realPropertyCredit))
@@ -283,7 +393,17 @@ export function computeNewYork(ret: TaxReturnInput, res: TaxReturnResult): NyRes
   L['69a'] = rateReduction
   const nycRate = nycEicRate(nyagi)
   L['70'] = nyc && fedEic > 0 && res.eic.investmentIncome <= NY_EIC_INVESTMENT_LIMIT ? r(fedEic * nycRate) : 0
-  L['70a'] = nyc ? r(pos(d.nycEliminationCredit)) : 0
+  // NYC income tax elimination credit (IT-270).
+  const elimination = { threshold: eliminationThreshold(fs, ret.dependents.length), line3: 0, line5: 0, line10: 0, credit: 0 }
+  if (nyc && ret.dependents.length > 0 && L['54'] > 0 && res.eic.investmentIncome <= 10000) {
+    elimination.line3 = pos(fagi - elimination.threshold)
+    if (elimination.line3 <= 5000) {
+      elimination.line5 = Math.round(((5000 - elimination.line3) / 5000) * 10000) / 10000
+      elimination.line10 = L['54'] - (care.nycCredit + L['70'])
+      if (elimination.line10 > 0) elimination.credit = r(elimination.line10 * elimination.line5)
+    }
+  }
+  L['70a'] = elimination.credit
   L['71'] = r(pos(d.otherRefundableCredits))
 
   // ── Yonkers resident surcharge ──
@@ -325,7 +445,8 @@ export function computeNewYork(ret: TaxReturnInput, res: TaxReturnResult): NyRes
   if (L['70a'] > 0) attach.push('Form IT-270, NYC income tax elimination credit')
   if (!d.schoolDistrictCode.trim()) issues.push('Enter your school district name and code number (from the IT-201 instructions); New York requires them.')
   if (!d.county.trim()) issues.push('Enter your New York State county of residence.')
-  if (res.deduction.used === 'itemized' && method === 'standard') issues.push('You itemized federally. If your New York itemized deduction (Form IT-196, line 49) is larger than the standard deduction, enter it.')
+  if (it196 && method === 'standard' && res.deduction.used === 'itemized') issues.push(`You itemized federally, but the New York standard deduction (${standard.toLocaleString('en-US')}) is larger than the New York itemized deduction (${itemized.toLocaleString('en-US')}).`)
+  if (method === 'itemized') issues.push(`New York itemized deduction (Form IT-196): ${itemized.toLocaleString('en-US')} — medical over 10% of AGI, no SALT cap, state and local income tax left out${it196 && it196.lines['46'] ? `, reduced by ${it196.lines['46'].toLocaleString('en-US')} for New York AGI over $100,000` : ''}.`)
   if (L['29'] > 0) issues.push(`Pension and annuity exclusion: ${L['29'].toLocaleString('en-US')} (up to $20,000 each for people who were 59½ before 2025). Check that the pensions qualify.`)
   if (ret.retirement.some((x) => x.taxableAmount > 0) && L['29'] === 0 && owners.some((o) => (o === 'taxpayer' ? ret.taxpayer : ret.spouse).age >= 59)) issues.push('If you were 59½ before January 1, 2025, up to $20,000 of private pension and IRA income can be excluded; enter it if it was not figured.')
   if (fs === 'mfs') issues.push('Married filing separately: the household credit tables use both spouses’ federal AGI; check the amount on line 40.')
@@ -333,14 +454,16 @@ export function computeNewYork(ret: TaxReturnInput, res: TaxReturnResult): NyRes
   if (kids.length > 0 && L['63'] === 0 && esccBase > 0) issues.push('The Empire State child credit is phased out by your federal AGI.')
   if (kids.length > 0) attach.push('Form IT-213, Empire State child credit')
   if (L['65'] > 0 || L['70'] > 0) attach.push('Form IT-215, earned income credit')
-  if (res.form2441.expensesUsed > 0 && L['64'] === 0) issues.push('You have child or dependent care expenses: the New York credit (Form IT-216) can be large. Enter it on line 64.')
-  if (nyc && fagi <= 100000) issues.push('NYC residents with low income may qualify for the NYC income tax elimination credit (Form IT-270, line 70a).')
+  if (ret.dependentCare.employerBenefits > 0 && care.line14 > 0) issues.push('You received dependent care benefits: check Form IT-216 line 3b (Worksheet 1) against your federal Form 2441 Part III.')
+  if (care.nycCredit === 0 && nyc && fagi <= 30000 && carePersons.some((x) => x.age < 4) && carePersons.some((x) => x.age >= 4) && d.careExpensesUnder4 === null) issues.push('For the NYC child care credit, enter how much of your care expenses was for children under 4.')
   if (s1.businessIncome > 50000 && (nyc || ['Nassau', 'Suffolk', 'Westchester', 'Rockland', 'Orange', 'Putnam', 'Dutchess'].includes(d.county))) issues.push('Self-employment earnings over $50,000 in the Metropolitan Commuter Transportation District may owe the MCTMT (lines 54a–54e); it is not figured here.')
   if (ret.dependents.length > 7) issues.push('Form IT-201 lists seven dependents; mark the box and attach the rest.')
 
   return {
     lines: L,
-    deduction: { method, standard, itemized },
+    deduction: { method, standard, itemized, it196 },
+    care,
+    elimination,
     pensionExclusion,
     escc: { under4, age4to16, reduction: esccReduction },
     eic: { federal: fedEic, tentative, worksheetB, nycRate },

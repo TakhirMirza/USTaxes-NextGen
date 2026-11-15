@@ -719,17 +719,16 @@ export interface NyInput {
   nys529Contributions: number
   nys529Earnings: number
   otherSubtractions: number
-  /** Form IT-196, line 49 (0 = standard deduction). */
-  itemizedDeduction: number
+  /** Form IT-196: job expenses and other miscellaneous deductions (lines 21–24, before the 2% floor). */
+  itemizedMiscellaneous: number
   residentCredit: number
   otherNonrefundableCredits: number
   otherTaxes: number
   nycNonrefundableCredits: number
-  /** Line 64 from Form IT-216. */
-  childCareCredit: number
+  /** Form IT-216 line 23: care expenses paid for children under 4 (null = figured from the children's ages). */
+  careExpensesUnder4: number | null
   realPropertyCredit: number
   collegeTuitionCredit: number
-  nycEliminationCredit: number
   otherRefundableCredits: number
   /** Line 59: use the sales and use tax chart; otherwise salesTax. */
   salesTaxChart: boolean
@@ -743,9 +742,9 @@ export const emptyNy = (): NyInput => ({
   birthDate: { taxpayer: '', spouse: '' }, locality: 'none', county: '', schoolDistrict: '', schoolDistrictCode: '',
   withholding: 0, nycWithholding: 0, yonkersWithholding: 0, estimatedPayments: 0, stateRefundInFagi: 0, otherStateBondInterest: 0,
   pension414h: 0, nys529Distributions: 0, otherAdditions: 0, govPensions: { taxpayer: 0, spouse: 0 }, usBondInterest: 0,
-  pensionExclusionOverride: { taxpayer: null, spouse: null }, nys529Contributions: 0, nys529Earnings: 0, otherSubtractions: 0, itemizedDeduction: 0,
-  residentCredit: 0, otherNonrefundableCredits: 0, otherTaxes: 0, nycNonrefundableCredits: 0, childCareCredit: 0, realPropertyCredit: 0,
-  collegeTuitionCredit: 0, nycEliminationCredit: 0, otherRefundableCredits: 0, salesTaxChart: false, salesTax: 0, contributions: 0, creditForward: 0,
+  pensionExclusionOverride: { taxpayer: null, spouse: null }, nys529Contributions: 0, nys529Earnings: 0, otherSubtractions: 0, itemizedMiscellaneous: 0,
+  residentCredit: 0, otherNonrefundableCredits: 0, otherTaxes: 0, nycNonrefundableCredits: 0, careExpensesUnder4: null, realPropertyCredit: 0,
+  collegeTuitionCredit: 0, otherRefundableCredits: 0, salesTaxChart: false, salesTax: 0, contributions: 0, creditForward: 0,
   dependentBirthDates: {}
 })
 
