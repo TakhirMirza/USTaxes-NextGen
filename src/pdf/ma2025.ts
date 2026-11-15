@@ -154,6 +154,119 @@ export function formMa1(ret: TaxReturnInput, res: TaxReturnResult, ma: MaResult,
   return { id: 'ma1', file: 'ma1.pdf', title: 'Massachusetts Form 1', values }
 }
 
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+const mmddyyyy = (v: string): string => {
+  const t = v.trim()
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t)
+  return iso ? `${iso[2]}${iso[3]}${iso[1]}` : digits(t).slice(0, 8)
+}
+const splitName = (full: string): { first: string; mi: string; last: string } => {
+  const parts = full.trim().split(/\s+/).filter(Boolean)
+  if (parts.length < 2) return { first: full.trim(), mi: '', last: '' }
+  const last = parts.pop() ?? ''
+  const mi = parts.length > 1 && /^[A-Za-z]\.?$/.test(parts[parts.length - 1]) ? (parts.pop() ?? '').replace('.', '') : ''
+  return { first: parts.join(' '), mi, last }
+}
+
+/** Schedule HC: health care information (lines 1–7); the penalty sections are left for the filer when they apply. File page 1 is the
+ * "skip the remainder" panel, so it is not printed. */
+export function scheduleMaHc(ret: TaxReturnInput, res: TaxReturnResult, ma: MaResult): FormFill {
+  const d = ret.ma
+  const joint = ret.filingStatus === 'mfj'
+  const [first, mi] = firstAndInitial(ret.taxpayer)
+  const fagi = Math.round(res.f1040['11a'])
+  const values: Record<string, FieldValue> = {
+    "Taxpayer's First Name": upper(first), "Taxpayer's Middle Initial": mi, "Taxpayer's Last Name": upper(ret.taxpayer.lastName),
+    "Taxpayer's Social Security Number": digits(ret.taxpayer.ssn),
+    'Line 1a. Date of Birth': mmddyyyy(d.birthDate.taxpayer), 'Line 1b. Spouse’s date of birth': joint ? mmddyyyy(d.birthDate.spouse) : '',
+    'line 1c. Family size. See instructions': String(ma.health.familySize),
+    'Line 2. Federal adjusted gross income (required information; from U.S. Form 1040, line 11a). If married filing separately, see instructions': amt(fagi, true),
+    'fill in box if line 2 is a loss': fagi < 0
+  }
+  const coverage = { full: 'Full-year MCC', part: 'Part-year MCC', none: 'No MCC/None' } as const
+  const people: ['taxpayer' | 'spouse', string, string][] = [['taxpayer', '3a. Indicate the time period that you were enrolled in a Minimum Creditable Coverage (MCC) health insurance plan(s). See Form MA 1099-HC from your insurer or Schedule HC instructions', '']]
+  if (joint) people.push(['spouse', '3b. Indicate the time period that your spouse was enrolled in a Minimum Creditable Coverage (MCC) health insurance plan(s). See Form MA 1099-HC from your insurer or Schedule HC instructions', 'Spouse '])
+  for (const [o, line3, sp] of people) {
+    const h = d.health[o]
+    values[line3] = coverage[h.coverage]
+    if (h.coverage === 'none') continue
+    values[`4a. ${sp}Private insurance including ConnectorCare`] = h.plans.private
+    values[`4b. ${sp}MassHealth. Fill in oval(s) and go to line 5`] = h.plans.masshealth
+    values[`4c. ${sp}Medicare (including a replacement or supplemental plan). Fill in oval(s) and go to line 5`] = h.plans.medicare
+    values[`4d. ${sp}U.S. military (including Veteran’s Administration and Tri-Care). Fill in oval(s) and go to line 5`] = h.plans.military
+    values[`4e. ${sp}Other program. Enter program name(s) only in lines 4f and/or 4g below (see instructions)`] = h.plans.other
+    if (h.plans.private || h.plans.other) {
+      if (o === 'taxpayer') {
+        values['4f line 1. Name of private insurance company, administrator or other government program (from box 1 of form ma 1099-hc)'] = upper(h.insurer).slice(0, 36)
+        values['4f line 1a. Subscriber number (from form ma 1099-hc) note: if you were not issued form ma 1099-hc, enter the identification number from your health insurance card'] = h.subscriber.trim().slice(0, 17)
+      } else {
+        values['4g Line 1. Name of private insurance company, administrator or other government program for spouse (from box 1 of form ma 1099-hc)'] = upper(h.insurer).slice(0, 36)
+        values['4g Line 1a. Subscriber number (from form ma 1099-hc) note: if you were not issued form ma 1099-hc, enter the identification number from your health insurance card'] = h.subscriber.trim().slice(0, 17)
+      }
+    }
+  }
+  const pages = [0]
+  if (ma.health.askLine6) {
+    pages.push(2)
+    values['6 Was your income in 2025 at or below 150% of the federal poverty level?'] = ma.health.atOrBelowFpl ? 'Yes' : 'No'
+    if (!ma.health.atOrBelowFpl) {
+      for (const [o] of people) {
+        const h = d.health[o]
+        if (h.coverage !== 'part') continue
+        MONTHS.forEach((m, i) => {
+          const name = o === 'taxpayer' ? `Fill in if you had coverage for the month of ${m}` : `Fill in if your ${i < 2 ? 'spouse' : 'Spouse'} had coverage for the month of ${m}`
+          values[name] = h.months[i] !== false
+        })
+      }
+    }
+  }
+  if (ma.health.penaltyPossible.taxpayer || ma.health.penaltyPossible.spouse) pages.push(3)
+  return { id: 'maschhc', file: 'maschhc.pdf', title: 'Massachusetts Schedule HC', values, pages }
+}
+
+/** Schedule DI: dependent information. */
+export function scheduleMaDi(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
+  const values: Record<string, FieldValue> = { 'social security number': digits(ret.taxpayer.ssn) }
+  const eicChildren = res.eic.qualifyingChildren
+  let eicLeft = eicChildren
+  ret.dependents.slice(0, 10).forEach((x, i) => {
+    const n = i + 1
+    const nm = splitName(x.name)
+    values[`First Name #${n}`] = upper(nm.first)
+    values[`Middle Initial #${n}`] = upper(nm.mi)
+    values[`Last Name #${n}`] = upper(nm.last)
+    values[`Social Security Number #${n}`] = digits(x.ssn)
+    values[`relationship to taxpayer #${n}`] = upper(x.relationship)
+    values[`date of birth #${n}`] = mmddyyyy(ret.ma.dependentBirthDates[x.id] ?? '')
+    const eic = eicLeft > 0 && x.childRelationship && x.hasSsn && x.age < 19
+    if (eic) eicLeft--
+    values[`is dependent a qualifying child for earned income credit? #${n}`] = eic
+  })
+  return { id: 'maschdi', file: 'maschdi.pdf', title: 'Massachusetts Schedule DI', values }
+}
+
+/** Schedule B: interest, dividends and certain capital gains and losses. */
+export function scheduleMaB(ret: TaxReturnInput, ma: MaResult): FormFill {
+  const B = ma.scheduleB.lines
+  const [first, mi] = firstAndInitial(ret.taxpayer)
+  const values: Record<string, FieldValue> = { 'First Name': upper(first), 'Middle Initial': mi, 'Last Name': upper(ret.taxpayer.lastName), 'Social Security Number': digits(ret.taxpayer.ssn) }
+  const keep = new Set(['4', '7', '9', '29', '31', '33', '35', '37', '38'])
+  for (const [k, v] of Object.entries(B)) values[`Line ${k}`] = amt(v, keep.has(k))
+  for (const k of ['16', '19a', '19c', '21', '23', '40']) if ((B[k] ?? 0) < 0) values[`Line ${k} Checkbox`] = true
+  const hasPart2 = (B['10'] ?? 0) !== 0 || (B['16'] ?? 0) !== 0
+  if (!hasPart2) for (const k of Object.keys(B)) if (Number.parseInt(k, 10) >= 10 && Number.parseInt(k, 10) <= 28) delete values[`Line ${k}`]
+  if (!hasPart2) delete values['Line 40']
+  return { id: 'maschb', file: 'maschb.pdf', title: 'Massachusetts Schedule B', values }
+}
+
 export function buildMaPacket(ret: TaxReturnInput, res: TaxReturnResult, ma: MaResult, preparer?: PreparerInfo | null): FormPacket {
-  return { forms: [formMa1(ret, res, ma, preparer)], notIncluded: [...ma.attach, 'Signatures on page 1'] }
+  const forms: FormFill[] = [formMa1(ret, res, ma, preparer), scheduleMaHc(ret, res, ma)]
+  if (ret.dependents.length > 0 || ma.lines['43'] > 0) forms.push(scheduleMaDi(ret, res))
+  const B = ma.scheduleB.lines
+  if (B['4'] - B['5'] > 0 || (B['10'] ?? 0) !== 0 || (B['16'] ?? 0) !== 0) forms.push(scheduleMaB(ret, ma))
+  const notIncluded = [...ma.attach]
+  if (ret.dependents.length > 10) notIncluded.push('A statement listing the dependents beyond the first ten (Schedule DI)')
+  if (ma.health.penaltyPossible.taxpayer || ma.health.penaltyPossible.spouse) notIncluded.push('Schedule HC lines 8–12 and the Health Care Penalty Worksheet (penalty on Form 1, line 35)')
+  notIncluded.push('Signatures on page 1')
+  return { forms, notIncluded }
 }

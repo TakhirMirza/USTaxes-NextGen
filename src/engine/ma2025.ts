@@ -32,6 +32,11 @@ export function maTax(income: number): number {
   return Math.floor(((lower + upper) / 2) * MA_RATE + 0.5)
 }
 
+/** Schedule HC Table 1: 150% of the federal poverty level by family size. */
+export function maFpl150(size: number): number {
+  return 22590 + 8070 * Math.max(0, size - 1)
+}
+
 /** No Tax Status thresholds (not available married filing separately). */
 export function maNoTaxThreshold(fs: TaxReturnInput['filingStatus'], dependents: number): number | null {
   if (fs === 'single') return 8000
@@ -50,11 +55,13 @@ export function maLicLimit(fs: TaxReturnInput['filingStatus'], dependents: numbe
 
 export interface MaResult {
   lines: Record<string, number>
-  scheduleB: { interest: number; dividends: number; lossApplied: number; fivePercent: number; shortTerm: number }
+  scheduleB: { lines: Record<string, number>; interest: number; dividends: number; lossApplied: number; fivePercent: number; shortTerm: number }
   scheduleD: { longTerm: number }
   scheduleY: Record<string, number>
   excessExemptions: number
   noTaxStatus: boolean
+  /** Schedule HC: family size, 150% of the federal poverty level and whether a penalty may apply. */
+  health: { familySize: number; fpl150: number; atOrBelowFpl: boolean; askLine6: boolean; penaltyPossible: Record<Owner, boolean> }
   agi: number
   statements: { owner: Owner; employer: string; wages: number; tax: number }[]
   issues: string[]
@@ -129,23 +136,65 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
   let excess = pos(L['18'] - L['17'])
   const excessTotal = excess
 
-  // ── Schedule B and D ──
-  const interest = r(pos(f['2b'] - pos(d.maBankInterest) - pos(d.usObligationInterest) + pos(d.otherStateBondInterest)))
-  const dividends = r(pos(f['3b']))
-  let st = r(res.scheduleD.shortTerm)
+  // ── Schedule B (interest, dividends, short-term gains) and Schedule D (long-term gains) ──
+  const B: Record<string, number> = {}
+  B['1'] = r(pos(f['2a']) + pos(f['2b']))
+  B['2'] = r(pos(f['3b']))
+  B['3'] = 0
+  B['4'] = B['1'] + B['2'] + B['3']
+  B['5'] = r(pos(d.maBankInterest))
+  B['6a'] = r(pos(d.usObligationInterest) + pos(pos(f['2a']) - pos(d.otherStateBondInterest)))
+  B['7'] = pos(B['4'] - B['5'] - B['6a'])
+  B['8'] = 0
+  B['9'] = B['7']
+  const st = r(res.scheduleD.shortTerm)
   let lt = r(res.scheduleD.longTerm)
-  if (st < 0 && lt > 0) { const used = Math.min(-st, lt); lt -= used; st += used }
-  if (lt < 0 && st > 0) { const used = Math.min(-lt, st); st -= used; lt += used }
-  const loss = pos(-st) + pos(-lt)
-  const lossApplied = Math.min(2000, loss, interest + dividends)
-  let five = interest + dividends - lossApplied
-  let shortGain = pos(st)
-  let longGain = pos(lt)
-  const take = (x: number): [number, number] => { const u = Math.min(excess, x); excess -= u; return [x - u, u] }
-  ;[five] = take(five)
-  ;[shortGain] = take(shortGain)
-  ;[longGain] = take(longGain)
-  L['20'] = five
+  B['10'] = pos(st)
+  B['13a'] = B['10']; B['13c'] = B['13a']; B['15'] = B['13c']
+  B['16'] = st < 0 ? st : 0
+  B['19a'] = B['15'] + B['16']
+  B['19c'] = B['19a']
+  if (B['19c'] < 0) {
+    B['20'] = Math.min(B['9'], -B['19c'], 2000)
+    B['21'] = B['19c'] + B['20']
+    const used = Math.min(-B['21'], pos(lt))
+    B['22'] = used
+    lt -= used
+    B['23'] = B['21'] + used
+    B['28'] = 0
+  } else {
+    B['20'] = 0
+    B['24'] = B['19c']
+    B['25'] = lt < 0 ? Math.min(-lt, B['24']) : 0
+    lt += B['25']
+    B['26'] = B['24'] - B['25']
+    B['27'] = 0
+    B['28'] = B['26']
+    B['23'] = 0
+  }
+  B['29'] = B['9']
+  B['30'] = B['20']
+  B['31'] = B['29'] - B['30']
+  B['32'] = lt < 0 ? Math.min(-lt, 2000, B['31']) : 0
+  lt += B['32']
+  B['33'] = B['31'] - B['32']
+  B['34'] = B['28']
+  B['35'] = B['33'] + B['34']
+  B['36'] = Math.min(excess, B['35'])
+  excess -= B['36']
+  B['37'] = B['35'] - B['36']
+  B['38'] = Math.min(B['37'], B['9'])
+  B['39'] = pos(B['37'] - B['38'])
+  B['40'] = B['23']
+  const interest = pos(B['1'] - pos(f['2a']) - B['5'] - pos(d.usObligationInterest) + pos(d.otherStateBondInterest))
+  const dividends = B['2']
+  const lossApplied = B['30'] + B['32']
+  const ltGain = pos(lt)
+  const dExcess = Math.min(excess, ltGain)
+  excess -= dExcess
+  const longGain = ltGain - dExcess
+  const shortGain = B['39']
+  L['20'] = B['38']
   L['21'] = L['19'] + L['20']
   L['22'] = maTax(L['21'])
   L['23a'] = shortGain
@@ -159,7 +208,7 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
   // ── No Tax Status and Limited Income Credit ──
   const deps = ret.dependents.length
   const yEarly = Y['7'] + Y['8'] + Y['9c'] + Y['10']
-  const agi = pos(L['10'] - yEarly) + (interest + dividends - lossApplied) + pos(st) + pos(lt)
+  const agi = pos(L['10'] - yEarly) + B['35'] + ltGain
   const nts = maNoTaxThreshold(fs, deps)
   const noTaxStatus = nts !== null && agi <= nts
   L['28'] = noTaxStatus ? 0 : L['28a'] + L['28b']
@@ -198,11 +247,27 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
   L['54'] = L['52'] - L['53']
   L['55'] = pos(L['37'] - L['51'])
 
+  // ── Schedule HC ──
+  const familySize = owners.length + deps
+  const fpl150 = maFpl150(familySize)
+  const fagi = r(f['11a'])
+  const atOrBelowFpl = fagi <= fpl150
+  const govAtSomePoint = (o: Owner): boolean => d.health[o].plans.medicare || d.health[o].plans.military || d.health[o].plans.other
+  const longestGap = (m: boolean[]): number => { let best = 0; let run = 0; for (const x of m) { run = x ? 0 : run + 1; best = Math.max(best, run) } return best }
+  const needsLine6 = (o: Owner): boolean => d.health[o].coverage !== 'full' && !(d.health[o].coverage === 'part' && govAtSomePoint(o))
+  const penaltyPossible: Record<Owner, boolean> = { taxpayer: false, spouse: false }
+  for (const o of owners) {
+    if (!needsLine6(o) || atOrBelowFpl) continue
+    penaltyPossible[o] = d.health[o].coverage === 'none' || longestGap(d.health[o].months) >= 4
+  }
+  const askLine6 = owners.some(needsLine6)
+
   // ── Notes ──
-  attach.push('Schedule HC (health care coverage) — required for every Massachusetts resident')
-  if (deps > 0 || L['43a'] > 0) attach.push('Schedule DI (dependent information)')
-  if (interest + dividends > 0 || st !== 0 || lt !== 0) attach.push(`Schedule B (interest ${interest.toLocaleString('en-US')}, dividends ${dividends.toLocaleString('en-US')}${shortGain ? `, short-term gains ${shortGain.toLocaleString('en-US')}` : ''})`)
-  if (lt !== 0 || res.scheduleD.longTerm !== 0) attach.push('Schedule D (long-term capital gains and losses)')
+  if (penaltyPossible.taxpayer || penaltyPossible.spouse) issues.push('Health care penalty: without coverage for 4 or more months in a row and income above 150% of the poverty level, a penalty may apply. Complete Schedule HC lines 8–12 and the Health Care Penalty Worksheet, then enter the amount on Form 1, line 35.')
+  if (askLine6 && atOrBelowFpl) issues.push(`Schedule HC line 6: your federal AGI is at or below 150% of the poverty level (${fpl150.toLocaleString('en-US')} for a family of ${familySize}), so no health care penalty applies.`)
+  if (owners.some((o) => d.health[o].plans.private && !d.health[o].subscriber.trim())) issues.push('Schedule HC line 4f/4g: enter your insurer and subscriber number from Form MA 1099-HC.')
+  if (owners.some((o) => !d.birthDate[o])) issues.push('Schedule HC line 1 asks for date of birth.')
+  if (res.scheduleD.longTerm !== 0) attach.push(`Schedule D (long-term capital gains ${ltGain.toLocaleString('en-US')} taxed at 5%)`)
   if (L['9'] > 0) attach.push('Schedule X (IRA/Keogh distributions and other income)')
   if (L['15'] > 0) attach.push('Schedule Y (other deductions)')
   if (L['6a'] !== 0) attach.push('Massachusetts Schedule C')
@@ -215,14 +280,16 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
   if (L['9'] > 0 && d.iraBasisRecovered === 0) issues.push('IRA distributions: Massachusetts never allowed a deduction for IRA contributions, so contributions you made are recovered tax-free first. Enter them on the IRA line if they are not yet recovered.')
   if (retirements.some((x) => !x.ira && x.taxableAmount > 0) && d.governmentPension === 0) issues.push('Contributory pensions from the U.S. government or Massachusetts (and its cities and towns) and military retirement are not taxed; enter them as government pensions.')
   if (f['6b'] > 0) issues.push('Social Security is not taxed in Massachusetts.')
-  if (st !== 0 || lt !== 0) issues.push('Capital gains use the federal short- and long-term totals. Massachusetts has its own loss carryovers and collectibles rate (12%); adjust Schedules B and D if they apply.')
+  if (st !== 0 || res.scheduleD.longTerm !== 0) issues.push('Capital gains use the federal short- and long-term totals. Massachusetts has its own loss carryovers and collectibles rate (12%); adjust Schedules B and D if they apply.')
   if (older('taxpayer') || (joint && older('spouse'))) issues.push('Seniors who own or rent their home may qualify for the Senior Circuit Breaker Credit (up to $2,820) on Schedule CB.')
   if (Y['9c'] > 0) issues.push('Charitable deduction (Schedule Y line 9c): the federal amount without household goods or used clothing, allowed even if you do not itemize.')
 
   return {
     lines: L,
-    scheduleB: { interest, dividends, lossApplied, fivePercent: L['20'], shortTerm: L['23a'] },
+    scheduleB: { lines: B, interest, dividends, lossApplied, fivePercent: L['20'], shortTerm: L['23a'] },
     scheduleD: { longTerm: longGain },
-    scheduleY: Y, excessExemptions: excessTotal, noTaxStatus, agi, statements, issues, attach
+    scheduleY: Y, excessExemptions: excessTotal, noTaxStatus,
+    health: { familySize, fpl150, atOrBelowFpl, askLine6, penaltyPossible },
+    agi, statements, issues, attach
   }
 }

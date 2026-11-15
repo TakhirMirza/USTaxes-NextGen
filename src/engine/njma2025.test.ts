@@ -124,3 +124,28 @@ test('MA Child and Family Tax Credit and EITC', () => {
   assert.equal(v.lines['46'], 440)
   assert.equal(v.lines['43'], Math.round(res.eic.credit * 0.4))
 })
+
+test('MA Schedule B: short-term losses against interest first (up to $2,000), then long-term gains', () => {
+  const ret = base('MA', { w2s: [w2(50000)], interest: [{ ...empty1099Int(), payer: 'Bank', interest: 1000 }] })
+  const res = computeReturn(ret)
+  const v = computeMassachusetts(ret, { ...res, scheduleD: { ...res.scheduleD, shortTerm: -3000, longTerm: 5000 } })
+  const B = v.scheduleB.lines
+  assert.equal(B['20'], 1000)
+  assert.equal(B['21'], -2000)
+  assert.equal(B['22'], 2000)
+  assert.equal(B['23'], 0)
+  assert.equal(v.lines['20'], 0)
+  assert.equal(v.lines['24'], 150) // (5,000 − 2,000) × 5%
+})
+
+test('MA Schedule HC: 150% of the poverty level and the 4-month gap rule', () => {
+  const r = base('MA', { w2s: [w2(60000)] })
+  const gap = { ...r.ma.health.taxpayer, coverage: 'part' as const, months: [true, true, true, true, true, true, false, false, false, false, true, true] }
+  const ret = { ...r, ma: { ...r.ma, health: { ...r.ma.health, taxpayer: gap } } }
+  const v = computeMassachusetts(ret, computeReturn(ret))
+  assert.equal(v.health.fpl150, 22590)
+  assert.equal(v.health.penaltyPossible.taxpayer, true)
+  const three = { ...gap, months: [true, true, true, true, true, true, true, false, false, false, true, true] }
+  const ret2 = { ...r, ma: { ...r.ma, health: { ...r.ma.health, taxpayer: three } } }
+  assert.equal(computeMassachusetts(ret2, computeReturn(ret2)).health.penaltyPossible.taxpayer, false)
+})

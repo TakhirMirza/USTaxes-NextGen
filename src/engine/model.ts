@@ -1057,12 +1057,36 @@ export interface MaInput {
   /** Served in Operation Enduring Freedom, Iraqi Freedom, Noble Eagle or Sinai Peninsula. */
   veteran: Record<Owner, boolean>
   electionFund: Record<Owner, boolean>
+  /** Dates of birth, MM/DD/YYYY (Schedule HC line 1). */
+  birthDate: Record<Owner, string>
+  /** Dependents' dates of birth by dependent id (Schedule DI). */
+  dependentBirthDates: Record<string, string>
+  /** Schedule HC: health coverage for 2025, by person. */
+  health: Record<Owner, MaHealth>
+}
+/** Schedule HC coverage for one person. */
+export interface MaHealth {
+  /** Line 3: Minimum Creditable Coverage for the full year, part of the year, or none. */
+  coverage: 'full' | 'part' | 'none'
+  /** Line 4a–e: kinds of coverage. */
+  plans: { private: boolean; masshealth: boolean; medicare: boolean; military: boolean; other: boolean }
+  /** Line 4f/4g: insurer or program name and subscriber number (Form MA 1099-HC). */
+  insurer: string
+  subscriber: string
+  /** Line 7: months with MCC coverage (January = 0), for part-year coverage. */
+  months: boolean[]
+}
+export const emptyMaHealth = (): MaHealth => ({ coverage: 'full', plans: { private: true, masshealth: false, medicare: false, military: false, other: false }, insurer: '', subscriber: '', months: Array(12).fill(true) })
+const normalizeMaHealth = (h: Partial<MaHealth> | undefined): MaHealth => {
+  const e = emptyMaHealth()
+  return { ...e, ...(h ?? {}), plans: { ...e.plans, ...(h?.plans ?? {}) }, months: Array.from({ length: 12 }, (_, i) => (Array.isArray(h?.months) ? h.months[i] !== false : true)) }
 }
 export const emptyMa = (): MaInput => ({
   w2: {}, withholding1099: 0, otherWithholding: 0, priorOverpayment: 0, estimatedPayments: 0, extensionPayment: 0, maBankInterest: 0,
   usObligationInterest: 0, otherStateBondInterest: 0, governmentPension: 0, iraBasisRecovered: 0, lotteryWinnings: 0, rentPaid: 0,
   commuter: { taxpayer: 0, spouse: 0 }, collegeSavings: 0, otherDeductions: 0, otherStateCredit: 0, otherCredits: 0, circuitBreaker: 0,
-  extraFamilyCredit: 0, useTax: 0, creditForward: 0, donations: {}, veteran: { taxpayer: false, spouse: false }, electionFund: { taxpayer: false, spouse: false }
+  extraFamilyCredit: 0, useTax: 0, creditForward: 0, donations: {}, veteran: { taxpayer: false, spouse: false }, electionFund: { taxpayer: false, spouse: false },
+  birthDate: { taxpayer: '', spouse: '' }, dependentBirthDates: {}, health: { taxpayer: emptyMaHealth(), spouse: emptyMaHealth() }
 })
 
 export interface MiInput {
@@ -1533,6 +1557,6 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     ga: { ...emptyGa(), ...(r.ga ?? {}), birthDate: { ...emptyGa().birthDate, ...(r.ga?.birthDate ?? {}) }, disabled: { ...emptyGa().disabled, ...(r.ga?.disabled ?? {}) }, disabilityDate: { ...emptyGa().disabilityDate, ...(r.ga?.disabilityDate ?? {}) }, militaryRetirement: { ...emptyGa().militaryRetirement, ...(r.ga?.militaryRetirement ?? {}) }, w2: normalizeStatements(r.ga?.w2), donations: { ...(r.ga?.donations ?? {}) } },
     oh: { ...emptyOh(), ...(r.oh ?? {}), w2: normalizeStatements(r.oh?.w2), r1099: normalizeStatements(r.oh?.r1099), donations: { ...(r.oh?.donations ?? {}) }, dependentBirthDates: { ...(r.oh?.dependentBirthDates ?? {}) } },
     nj: { ...emptyNj(), ...(r.nj ?? {}), w2: normalizeStatements(r.nj?.w2), disabled: { ...emptyNj().disabled, ...(r.nj?.disabled ?? {}) }, veteran: { ...emptyNj().veteran, ...(r.nj?.veteran ?? {}) }, electionFund: { ...emptyNj().electionFund, ...(r.nj?.electionFund ?? {}) }, donations: { ...(r.nj?.donations ?? {}) }, dependentBirthYears: { ...(r.nj?.dependentBirthYears ?? {}) }, pensionTaxable: typeof r.nj?.pensionTaxable === 'number' ? r.nj.pensionTaxable : null, pensionExcludable: typeof r.nj?.pensionExcludable === 'number' ? r.nj.pensionExcludable : null },
-    ma: { ...emptyMa(), ...(r.ma ?? {}), w2: normalizeStatements(r.ma?.w2), commuter: { ...emptyMa().commuter, ...(r.ma?.commuter ?? {}) }, veteran: { ...emptyMa().veteran, ...(r.ma?.veteran ?? {}) }, electionFund: { ...emptyMa().electionFund, ...(r.ma?.electionFund ?? {}) }, donations: { ...(r.ma?.donations ?? {}) } }
+    ma: { ...emptyMa(), ...(r.ma ?? {}), w2: normalizeStatements(r.ma?.w2), commuter: { ...emptyMa().commuter, ...(r.ma?.commuter ?? {}) }, veteran: { ...emptyMa().veteran, ...(r.ma?.veteran ?? {}) }, electionFund: { ...emptyMa().electionFund, ...(r.ma?.electionFund ?? {}) }, donations: { ...(r.ma?.donations ?? {}) }, birthDate: { ...emptyMa().birthDate, ...(r.ma?.birthDate ?? {}) }, dependentBirthDates: { ...(r.ma?.dependentBirthDates ?? {}) }, health: { taxpayer: normalizeMaHealth(r.ma?.health?.taxpayer), spouse: normalizeMaHealth(r.ma?.health?.spouse) } }
   })
 }

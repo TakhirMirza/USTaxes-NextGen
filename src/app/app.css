@@ -537,3 +537,5 @@ details.more { margin-top: 14px; }
 details.more summary { cursor: pointer; font-weight: 600; color: var(--form-green); }
 details.more .grid { margin-top: 12px; }
 .statements + .grid, .checks + .grid, .grid + .checks { margin-top: 16px; }
+.checks.months { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px 12px; }
+@media (max-width: 640px) { .checks.months { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
