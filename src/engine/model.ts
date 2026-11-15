@@ -821,6 +821,83 @@ export const emptyPa = (): PaInput => ({
   extensionPayment: 0, residentCredit: 0, otherCredits: 0, useTax: 0, otherEligibilityIncome: 0, spouseEligibilityIncome: 0, creditForward: 0
 })
 
+export interface NcInput {
+  county: string
+  withholding: Record<Owner, number>
+  estimatedPayments: number
+  /** Paid with an extension (Form D-410). */
+  extensionPayment: number
+  stateRefundInFagi: number
+  otherStateBondInterest: number
+  usObligationInterest: number
+  /** Schedule S line 20: Bailey retirement benefits (N.C., local or federal government, vested by Aug 12, 1989). */
+  baileyRetirement: number
+  /** Schedule S line 21: uniformed services retirement. */
+  militaryRetirement: number
+  otherAdditions: number
+  otherDeductions: number
+  /** Married filing separately and the spouse itemizes (then the NC standard deduction is 0). */
+  spouseItemizes: boolean
+  /** Line 16: tax credits from Form D-400TC. */
+  taxCredits: number
+  useTax: number
+  /** Certify that no consumer use tax is due (when useTax is 0). */
+  noUseTaxDue: boolean
+  creditForward: number
+  contributions: number
+}
+export const emptyNc = (): NcInput => ({
+  county: '', withholding: { taxpayer: 0, spouse: 0 }, estimatedPayments: 0, extensionPayment: 0, stateRefundInFagi: 0, otherStateBondInterest: 0,
+  usObligationInterest: 0, baileyRetirement: 0, militaryRetirement: 0, otherAdditions: 0, otherDeductions: 0, spouseItemizes: false, taxCredits: 0,
+  useTax: 0, noUseTaxDue: true, creditForward: 0, contributions: 0
+})
+
+export interface MiInput {
+  /** Five-digit school district code from the MI-1040 instructions. */
+  schoolDistrictCode: string
+  withholding: number
+  /** Estimated tax, extension payments and 2024 credit forward. */
+  estimatedPayments: number
+  stateRefundInFagi: number
+  otherStateBondInterest: number
+  usObligationInterest: number
+  /** Schedule 1 line 11: military or railroad retirement included in AGI. */
+  militaryRetirement: number
+  /** Retirement/pension benefits from public (government) employment included in AGI, by owner. */
+  publicPensions: Record<Owner, number>
+  /** Year of birth, for the retirement subtraction (Schedule 1 line 24). */
+  birthYear: Record<Owner, number>
+  /** Line 9b: special exemptions (deaf, blind, paraplegic, totally and permanently disabled), count. */
+  specialExemptions: number
+  /** Line 9c: qualified disabled veterans, count. */
+  disabledVeterans: number
+  otherAdditions: number
+  otherSubtractions: number
+  /** Line 18: tax imposed by government units outside Michigan (credit). */
+  otherStateCredit: number
+  useTax: number
+  contributions: number
+  creditForward: number
+  /** MI-1040CR: homestead. */
+  housing: 'none' | 'own' | 'rent'
+  /** 2025 property taxes levied on the homestead (owners). */
+  propertyTax: number
+  /** 2025 taxable value of the homestead (owners; over $165,400 is not eligible). */
+  taxableValue: number
+  /** Rent paid for the homestead in 2025 (renters). */
+  rentPaid: number
+  /** Medical insurance/HMO premiums paid (reduces total household resources). */
+  medicalPremiums: number
+  /** Other household resources not on the federal return (child support, gifts, nontaxable income, FIP). */
+  otherHouseholdResources: number
+}
+export const emptyMi = (): MiInput => ({
+  schoolDistrictCode: '', withholding: 0, estimatedPayments: 0, stateRefundInFagi: 0, otherStateBondInterest: 0, usObligationInterest: 0,
+  militaryRetirement: 0, publicPensions: { taxpayer: 0, spouse: 0 }, birthYear: { taxpayer: 0, spouse: 0 }, specialExemptions: 0, disabledVeterans: 0,
+  otherAdditions: 0, otherSubtractions: 0, otherStateCredit: 0, useTax: 0, contributions: 0, creditForward: 0,
+  housing: 'none', propertyTax: 0, taxableValue: 0, rentPaid: 0, medicalPremiums: 0, otherHouseholdResources: 0
+})
+
 export interface StateGenericInput {
   /** State income tax withheld: W-2 box 17, 1099 state boxes. */
   withholding: number
@@ -910,6 +987,10 @@ export interface TaxReturnInput {
   il: IlInput
   /** Pennsylvania resident return (Form PA-40). */
   pa: PaInput
+  /** North Carolina resident return (Form D-400). */
+  nc: NcInput
+  /** Michigan resident return (Form MI-1040). */
+  mi: MiInput
 }
 
 let counter = 0
@@ -1107,7 +1188,9 @@ export const emptyReturn = (): TaxReturnInput => ({
   ca: emptyCa(),
   ny: emptyNy(),
   il: emptyIl(),
-  pa: emptyPa()
+  pa: emptyPa(),
+  nc: emptyNc(),
+  mi: emptyMi()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -1219,6 +1302,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     ca: { ...emptyCa(), ...(r.ca ?? {}), birthDate: { ...emptyCa().birthDate, ...(r.ca?.birthDate ?? {}) }, specialCredit: { ...emptyCa().specialCredit, ...(r.ca?.specialCredit ?? {}) }, contribution: { ...emptyCa().contribution, ...(r.ca?.contribution ?? {}) }, dependentBirthDates: { ...(r.ca?.dependentBirthDates ?? {}) }, stateWages: typeof r.ca?.stateWages === 'number' ? r.ca.stateWages : null },
     ny: { ...emptyNy(), ...(r.ny ?? {}), birthDate: { ...emptyNy().birthDate, ...(r.ny?.birthDate ?? {}) }, govPensions: { ...emptyNy().govPensions, ...(r.ny?.govPensions ?? {}) }, pensionExclusionOverride: { ...emptyNy().pensionExclusionOverride, ...(r.ny?.pensionExclusionOverride ?? {}) }, dependentBirthDates: { ...(r.ny?.dependentBirthDates ?? {}) } },
     il: { ...emptyIl(), ...(r.il ?? {}), birthDate: { ...emptyIl().birthDate, ...(r.il?.birthDate ?? {}) }, dependentBirthDates: { ...(r.il?.dependentBirthDates ?? {}) } },
-    pa: { ...emptyPa(), ...(r.pa ?? {}), tuitionContributions: { ...emptyPa().tuitionContributions, ...(r.pa?.tuitionContributions ?? {}) }, compensation: typeof r.pa?.compensation === 'number' ? r.pa.compensation : null }
+    pa: { ...emptyPa(), ...(r.pa ?? {}), tuitionContributions: { ...emptyPa().tuitionContributions, ...(r.pa?.tuitionContributions ?? {}) }, compensation: typeof r.pa?.compensation === 'number' ? r.pa.compensation : null },
+    nc: { ...emptyNc(), ...(r.nc ?? {}), withholding: { ...emptyNc().withholding, ...(r.nc?.withholding ?? {}) } },
+    mi: { ...emptyMi(), ...(r.mi ?? {}), publicPensions: { ...emptyMi().publicPensions, ...(r.mi?.publicPensions ?? {}) }, birthYear: { ...emptyMi().birthYear, ...(r.mi?.birthYear ?? {}) } }
   })
 }
