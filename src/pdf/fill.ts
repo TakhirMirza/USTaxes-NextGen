@@ -48,6 +48,10 @@ export async function fillForm(lib: PdfLib, bytes: Uint8Array | ArrayBuffer, fil
         widgets.forEach((w) => w.setAppearanceState(w.getOnValue() === on ? on : lib.PDFName.of('Off')))
       } else if (value === true) field.check()
       else field.uncheck()
+    } else if (field instanceof lib.PDFRadioGroup) {
+      if (typeof value !== 'string' || !value) continue
+      if (!field.getOptions().includes(value)) { problems.push({ form: fill.id, key, problem: `no "${value}" option` }); continue }
+      field.select(value)
     } else {
       problems.push({ form: fill.id, key, problem: `unsupported field type ${field.constructor.name}` })
     }

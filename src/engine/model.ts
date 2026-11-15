@@ -581,6 +581,57 @@ const normalizeMaryland = (m: Partial<MarylandInput> | undefined): MarylandInput
   }
 }
 
+/** DC Form D-40 (full-year resident) inputs that the federal return does not already hold. */
+export interface DcInput {
+  /** MM/DD/YYYY, printed on the D-40. */
+  birthDate: Record<Owner, string>
+  /** DC income tax withheld (W-2 box 17, 1099 state boxes). */
+  withholding: number
+  /** 2025 estimated payments and 2024 overpayment applied. */
+  estimatedPayments: number
+  /** Paid with Form FR-127 (extension). */
+  extensionPayments: number
+  stateRefundInFagi: number
+  /** Interest on other states' bonds, tax-exempt federally (now taxed by DC). */
+  otherStateBondInterest: number
+  otherAdditions: number
+  /** Interest and dividends from U.S. Treasury and other U.S. obligations (Schedule I, B-1). */
+  usObligationInterest: number
+  /** DC College Savings Plan contributions (up to $4,000 per account owner). */
+  collegeSavings: number
+  /** DC and federal government survivor benefits (62 or older). */
+  survivorBenefits: number
+  otherSubtractions: number
+  /** Everyone had qualifying health coverage all year (else Schedule HSR). */
+  fullYearCoverage: boolean
+  hsrPayment: number
+  /** Schedule H: rent paid or property tax owned in DC for 2025. */
+  housing: 'none' | 'rent' | 'own'
+  housingAmount: number
+  /** Schedule H: H house, A apartment, R rooming house, C condominium, O cooperative. */
+  propertyType: 'H' | 'A' | 'R' | 'C' | 'O'
+  /** Schedule H: DC property address if different from the home address. */
+  propertyAddress: string
+  /** Schedule H Section A (renters): landlord. */
+  landlord: { name: string; street: string; apt: string; city: string; state: string; zip: string; phone: string }
+  /** Schedule H Section B (owners): square, suffix and lot from the real property tax bill. */
+  ssl: { square: string; suffix: string; lot: string }
+  /** Dependent id → MM/DD/YYYY, for Schedule S. */
+  dependentBirthDates: Record<string, string>
+  /** Schedule U Part 1a non-refundable credits. */
+  nonrefundableCredits: number
+  /** Schedule U Part 1b refundable credits (for example, Keep Child Care Affordable, Schedule ELC). */
+  refundableCredits: number
+  creditForward: number
+  contribution: number
+}
+export const emptyDc = (): DcInput => ({
+  birthDate: { taxpayer: '', spouse: '' }, withholding: 0, estimatedPayments: 0, extensionPayments: 0, stateRefundInFagi: 0,
+  otherStateBondInterest: 0, otherAdditions: 0, usObligationInterest: 0, collegeSavings: 0, survivorBenefits: 0, otherSubtractions: 0,
+  fullYearCoverage: true, hsrPayment: 0, housing: 'none', housingAmount: 0, propertyType: 'A', propertyAddress: '',
+  landlord: { name: '', street: '', apt: '', city: '', state: '', zip: '', phone: '' }, ssl: { square: '', suffix: '', lot: '' }, dependentBirthDates: {}, nonrefundableCredits: 0, refundableCredits: 0, creditForward: 0, contribution: 0
+})
+
 export interface StateGenericInput {
   /** State income tax withheld: W-2 box 17, 1099 state boxes. */
   withholding: number
@@ -660,6 +711,8 @@ export interface TaxReturnInput {
   virginia: VirginiaInput
   /** Maryland resident return (Form 502). */
   maryland: MarylandInput
+  /** DC resident return (Form D-40). */
+  dc: DcInput
 }
 
 let counter = 0
@@ -852,7 +905,8 @@ export const emptyReturn = (): TaxReturnInput => ({
   residentState: '',
   stateGeneric: emptyStateGeneric(),
   virginia: emptyVirginia(),
-  maryland: emptyMaryland()
+  maryland: emptyMaryland(),
+  dc: emptyDc()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -959,6 +1013,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     residentState: typeof r.residentState === 'string' ? r.residentState.toUpperCase() : r.virginia?.enabled ? 'VA' : '',
     stateGeneric: { ...emptyStateGeneric(), ...(r.stateGeneric ?? {}) },
     virginia: normalizeVirginia(r.virginia),
-    maryland: normalizeMaryland(r.maryland)
+    maryland: normalizeMaryland(r.maryland),
+    dc: { ...emptyDc(), ...(r.dc ?? {}), birthDate: { ...emptyDc().birthDate, ...(r.dc?.birthDate ?? {}) }, landlord: { ...emptyDc().landlord, ...(r.dc?.landlord ?? {}) }, ssl: { ...emptyDc().ssl, ...(r.dc?.ssl ?? {}) }, dependentBirthDates: { ...(r.dc?.dependentBirthDates ?? {}) } }
   })
 }

@@ -11,6 +11,7 @@ import { StateStep } from './state'
 import { stateInfo } from '../engine/states.ts'
 import { estimateStateTax } from '../engine/stateEstimate.ts'
 import { computeMaryland } from '../engine/md2025.ts'
+import { computeDc } from '../engine/dc2025.ts'
 import { computeVirginia } from '../engine/va2025.ts'
 import { preparerReady } from './store.ts'
 import { exampleReturn, hasEntries } from './example'
@@ -90,7 +91,7 @@ function Summary({ ret, result, open, onToggle }: { ret: TaxReturnInput; result:
             <div key={label}><dt>{label}</dt><dd>{usd(value)}</dd></div>
           ))}
         </dl>
-        {ret.residentState === 'VA' ? <VirginiaSummary ret={ret} result={result} /> : ret.residentState === 'MD' ? <MarylandSummary ret={ret} result={result} /> : ret.residentState ? <EstimateSummary ret={ret} result={result} /> : null}
+        {ret.residentState === 'VA' ? <VirginiaSummary ret={ret} result={result} /> : ret.residentState === 'MD' ? <MarylandSummary ret={ret} result={result} /> : ret.residentState === 'DC' ? <DcSummary ret={ret} result={result} /> : ret.residentState ? <EstimateSummary ret={ret} result={result} /> : null}
         <p className="summary-foot">Federal return, tax year 2025. Estimate only: check every number before you file.</p>
       </div>
     </aside>
@@ -105,6 +106,17 @@ function EstimateSummary({ ret, result }: { ret: TaxReturnInput; result: TaxRetu
     <p className="summary-state">
       <span>{owes ? `${est.name}: you owe` : `${est.name} refund`} <small>(estimate)</small></span>
       <strong>{usd(owes ? est.owed : est.refund)}</strong>
+    </p>
+  )
+}
+
+function DcSummary({ ret, result }: { ret: TaxReturnInput; result: TaxReturnResult }): ReactElement {
+  const dc = useMemo(() => computeDc(ret, result), [ret, result])
+  const owes = dc.lines['37'] > 0
+  return (
+    <p className="summary-state">
+      <span>{owes ? 'DC: you owe' : 'DC refund'}</span>
+      <strong>{usd(owes ? dc.lines['37'] : dc.lines['43'])}</strong>
     </p>
   )
 }
@@ -184,7 +196,7 @@ function Workspace({ ret, set, result, current, preparer, meta, onExample, onSta
         </footer>
         <p className="disclaimer">
           USTaxes NextGen is an open-source preparation aid, not tax advice. It prints IRS forms to sign and mail; it does not e-file.
-          Not yet covered: like-kind exchanges, casualty losses, estates and trusts (K-1 from Form 1041), foreign income, and state forms other than Virginia’s and Maryland’s (other states get an estimate).
+          Not yet covered: like-kind exchanges, casualty losses, estates and trusts (K-1 from Form 1041), foreign income, and state forms other than Virginia’s, Maryland’s and DC’s (other states get an estimate).
         </p>
       </main>
 

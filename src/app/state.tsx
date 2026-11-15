@@ -10,6 +10,7 @@ import { Section, usd } from './fields'
 import type { StepProps } from './steps'
 import { VirginiaStep } from './virginia'
 import { MarylandStep } from './maryland'
+import { DcStep } from './dc'
 import { StateEstimateView } from './stateEstimate'
 
 const GROUPS: { label: string; support: StateInfo['support'] }[] = [
@@ -68,6 +69,7 @@ export function StateStep(props: StepProps & { preparer: PreparerInfo | null }):
 
       {info?.code === 'VA' && <VirginiaStep {...props} />}
       {info?.code === 'MD' && <MarylandStep {...props} />}
+      {info?.code === 'DC' && <DcStep {...props} />}
     </div>
   )
 }

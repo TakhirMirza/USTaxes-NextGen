@@ -33,7 +33,7 @@ export const STATES: readonly StateInfo[] = [
   S('CO', 'Colorado', 'estimate', 'Form DR 0104', 'Colorado Department of Revenue'),
   S('CT', 'Connecticut', 'estimate', 'Form CT-1040', 'Connecticut Department of Revenue Services'),
   S('DE', 'Delaware', 'estimate', 'Form PIT-RES', 'Delaware Division of Revenue'),
-  S('DC', 'District of Columbia', 'estimate', 'Form D-40', 'DC Office of Tax and Revenue'),
+  S('DC', 'District of Columbia', 'supported', 'Form D-40', 'DC Office of Tax and Revenue'),
   S('FL', 'Florida', 'no-tax', '', 'Florida Department of Revenue', 'Florida has no individual income tax.'),
   S('GA', 'Georgia', 'estimate', 'Form 500', 'Georgia Department of Revenue'),
   S('HI', 'Hawaii', 'estimate', 'Form N-11', 'Hawaii Department of Taxation'),

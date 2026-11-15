@@ -168,12 +168,15 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
         <p className="why">Before mailing: sign and date page 2 of Form 1040, attach Copy B of your W-2s (and any 1099-R with tax withheld), and send to the IRS address for your state listed in the Form 1040 instructions.</p>
       </Section>
 
-      {(ret.residentState === 'VA' || ret.residentState === 'MD') && (
-        <Section title={ret.residentState === 'VA' ? 'Virginia forms' : 'Maryland forms'}
-          intro={ret.residentState === 'VA' ? 'Form 760 and its schedules are prepared on the state step from this federal return.' : 'Form 502 and its schedules are prepared on the state step from this federal return.'}>
-          <div className="actions"><a className="button is-quiet" href="#/state">Open the {ret.residentState === 'VA' ? 'Virginia' : 'Maryland'} return</a></div>
-        </Section>
-      )}
+      {['VA', 'MD', 'DC'].includes(ret.residentState) && (() => {
+        const name = { VA: 'Virginia', MD: 'Maryland', DC: 'DC' }[ret.residentState as 'VA' | 'MD' | 'DC']
+        const form = { VA: 'Form 760', MD: 'Form 502', DC: 'Form D-40' }[ret.residentState as 'VA' | 'MD' | 'DC']
+        return (
+          <Section title={`${name} forms`} intro={`${form} and its schedules are prepared on the state step from this federal return.`}>
+            <div className="actions"><a className="button is-quiet" href="#/state">Open the {name} return</a></div>
+          </Section>
+        )
+      })()}
 
       <Section title="Form 1040" intro={`${FILING_STATUS_LABELS[ret.filingStatus]} · tax year 2025. Select any line to see how it was figured.`}>
         <table className="lines is-explainable">
