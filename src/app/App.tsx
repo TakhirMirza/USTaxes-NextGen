@@ -14,6 +14,8 @@ import { computeMaryland } from '../engine/md2025.ts'
 import { computeDc } from '../engine/dc2025.ts'
 import { computeCalifornia } from '../engine/ca2025.ts'
 import { computeNewYork } from '../engine/ny2025.ts'
+import { computeIllinois } from '../engine/il2025.ts'
+import { computePennsylvania } from '../engine/pa2025.ts'
 import { computeVirginia } from '../engine/va2025.ts'
 import { preparerReady } from './store.ts'
 import { exampleReturn, hasEntries } from './example'
@@ -93,7 +95,7 @@ function Summary({ ret, result, open, onToggle }: { ret: TaxReturnInput; result:
             <div key={label}><dt>{label}</dt><dd>{usd(value)}</dd></div>
           ))}
         </dl>
-        {ret.residentState === 'VA' ? <VirginiaSummary ret={ret} result={result} /> : ret.residentState === 'MD' ? <MarylandSummary ret={ret} result={result} /> : ret.residentState === 'DC' ? <DcSummary ret={ret} result={result} /> : ret.residentState === 'CA' ? <CaliforniaSummary ret={ret} result={result} /> : ret.residentState === 'NY' ? <NewYorkSummary ret={ret} result={result} /> : ret.residentState ? <EstimateSummary ret={ret} result={result} /> : null}
+        {ret.residentState === 'VA' ? <VirginiaSummary ret={ret} result={result} /> : ret.residentState === 'MD' ? <MarylandSummary ret={ret} result={result} /> : ret.residentState === 'DC' ? <DcSummary ret={ret} result={result} /> : ret.residentState === 'CA' ? <CaliforniaSummary ret={ret} result={result} /> : ret.residentState === 'NY' ? <NewYorkSummary ret={ret} result={result} /> : ret.residentState === 'IL' ? <SimpleSummary name="Illinois" owed={computeIllinois(ret, result).lines['41']} refund={computeIllinois(ret, result).lines['38']} /> : ret.residentState === 'PA' ? <SimpleSummary name="Pennsylvania" owed={computePennsylvania(ret, result).lines['28']} refund={computePennsylvania(ret, result).lines['30']} /> : ret.residentState ? <EstimateSummary ret={ret} result={result} /> : null}
         <p className="summary-foot">Federal return, tax year 2025. Estimate only: check every number before you file.</p>
       </div>
     </aside>
@@ -108,6 +110,15 @@ function EstimateSummary({ ret, result }: { ret: TaxReturnInput; result: TaxRetu
     <p className="summary-state">
       <span>{owes ? `${est.name}: you owe` : `${est.name} refund`} <small>(estimate)</small></span>
       <strong>{usd(owes ? est.owed : est.refund)}</strong>
+    </p>
+  )
+}
+
+function SimpleSummary({ name, owed, refund }: { name: string; owed: number; refund: number }): ReactElement {
+  return (
+    <p className="summary-state">
+      <span>{owed > 0 ? `${name}: you owe` : `${name} refund`}</span>
+      <strong>{usd(owed > 0 ? owed : refund)}</strong>
     </p>
   )
 }

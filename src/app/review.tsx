@@ -168,9 +168,9 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
         <p className="why">Before mailing: sign and date page 2 of Form 1040, attach Copy B of your W-2s (and any 1099-R with tax withheld), and send to the IRS address for your state listed in the Form 1040 instructions.</p>
       </Section>
 
-      {['VA', 'MD', 'DC', 'CA', 'NY'].includes(ret.residentState) && (() => {
-        const name = { VA: 'Virginia', MD: 'Maryland', DC: 'DC', CA: 'California', NY: 'New York' }[ret.residentState as 'VA' | 'MD' | 'DC' | 'CA' | 'NY']
-        const form = { VA: 'Form 760', MD: 'Form 502', DC: 'Form D-40', CA: 'Form 540', NY: 'Form IT-201' }[ret.residentState as 'VA' | 'MD' | 'DC' | 'CA' | 'NY']
+      {['VA', 'MD', 'DC', 'CA', 'NY', 'IL', 'PA'].includes(ret.residentState) && (() => {
+        const name = { VA: 'Virginia', MD: 'Maryland', DC: 'DC', CA: 'California', NY: 'New York', IL: 'Illinois', PA: 'Pennsylvania' }[ret.residentState as 'VA' | 'MD' | 'DC' | 'CA' | 'NY' | 'IL' | 'PA']
+        const form = { VA: 'Form 760', MD: 'Form 502', DC: 'Form D-40', CA: 'Form 540', NY: 'Form IT-201', IL: 'Form IL-1040', PA: 'Form PA-40' }[ret.residentState as 'VA' | 'MD' | 'DC' | 'CA' | 'NY' | 'IL' | 'PA']
         return (
           <Section title={`${name} forms`} intro={`${form} and its schedules are prepared on the state step from this federal return.`}>
             <div className="actions"><a className="button is-quiet" href="#/state">Open the {name} return</a></div>

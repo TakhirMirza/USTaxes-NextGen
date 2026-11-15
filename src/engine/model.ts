@@ -748,6 +748,79 @@ export const emptyNy = (): NyInput => ({
   dependentBirthDates: {}
 })
 
+export interface IlInput {
+  /** MM/DD/YYYY. */
+  birthDate: { taxpayer: string; spouse: string }
+  county: string
+  withholding: number
+  /** IL-1040-ES and IL-505-I payments, including a prior-year overpayment applied. */
+  estimatedPayments: number
+  passThroughWithholding: number
+  /** Illinois income tax refund included in federal income (line 6). */
+  stateRefundInFagi: number
+  /** Schedule M line 13: contributions to Bright Start, Bright Directions or College Illinois (up to $10,000 / $20,000). */
+  collegeSavings: number
+  /** Schedule M line 22: U.S. Treasury and agency interest. */
+  usObligationInterest: number
+  otherAdditions: number
+  otherSubtractions: number
+  /** Line 15: tax paid to another state (Schedule CR). */
+  otherStateCredit: number
+  /** Line 16: property tax and K-12 education expense credits (Schedule ICR). */
+  icrCredit: number
+  /** Line 17: Schedule 1299-C credits. */
+  otherCredits: number
+  /** Line 21: use the UT Table instead of useTax. */
+  useTaxTable: boolean
+  useTax: number
+  donations: number
+  creditForward: number
+  /** Dependent id → MM/DD/YYYY, for Schedule IL-E/EITC. */
+  dependentBirthDates: Record<string, string>
+}
+export const emptyIl = (): IlInput => ({
+  birthDate: { taxpayer: '', spouse: '' }, county: '', withholding: 0, estimatedPayments: 0, passThroughWithholding: 0, stateRefundInFagi: 0,
+  collegeSavings: 0, usObligationInterest: 0, otherAdditions: 0, otherSubtractions: 0, otherStateCredit: 0, icrCredit: 0, otherCredits: 0,
+  useTaxTable: false, useTax: 0, donations: 0, creditForward: 0, dependentBirthDates: {}
+})
+
+export interface PaInput {
+  schoolDistrict: string
+  /** Five-digit school code from the PA-40 instructions. */
+  schoolCode: string
+  /** Line 1a: PA compensation (W-2 box 16); null = W-2 box 1 plus elective deferrals. */
+  compensation: number | null
+  /** Line 1b: unreimbursed employee business expenses (Schedule UE). */
+  unreimbursedExpenses: number
+  /** Federal-tax-exempt interest from other states' bonds (taxable in PA). */
+  otherStateBondInterest: number
+  /** Interest on U.S. obligations (not taxable in PA). */
+  usObligationInterest: number
+  /** Line 8: gambling and lottery winnings (PA Schedule T). */
+  gamblingWinnings: number
+  /** Schedule O: 529 plan contributions by owner (up to $19,000 per beneficiary each). */
+  tuitionContributions: Record<Owner, number>
+  withholding: number
+  priorYearCredit: number
+  estimatedPayments: number
+  extensionPayment: number
+  /** Line 22: resident credit for tax paid to other states (Schedule G-L). */
+  residentCredit: number
+  /** Line 23: other credits (Schedule OC). */
+  otherCredits: number
+  useTax: number
+  /** Schedule SP Section III lines 2–10 not on the federal return (alimony, gifts, insurance proceeds, …). */
+  otherEligibilityIncome: number
+  /** Married filing separately: the spouse's eligibility income, for Tax Forgiveness. */
+  spouseEligibilityIncome: number
+  creditForward: number
+}
+export const emptyPa = (): PaInput => ({
+  schoolDistrict: '', schoolCode: '', compensation: null, unreimbursedExpenses: 0, otherStateBondInterest: 0, usObligationInterest: 0,
+  gamblingWinnings: 0, tuitionContributions: { taxpayer: 0, spouse: 0 }, withholding: 0, priorYearCredit: 0, estimatedPayments: 0,
+  extensionPayment: 0, residentCredit: 0, otherCredits: 0, useTax: 0, otherEligibilityIncome: 0, spouseEligibilityIncome: 0, creditForward: 0
+})
+
 export interface StateGenericInput {
   /** State income tax withheld: W-2 box 17, 1099 state boxes. */
   withholding: number
@@ -833,6 +906,10 @@ export interface TaxReturnInput {
   ca: CaInput
   /** New York resident return (Form IT-201). */
   ny: NyInput
+  /** Illinois resident return (Form IL-1040). */
+  il: IlInput
+  /** Pennsylvania resident return (Form PA-40). */
+  pa: PaInput
 }
 
 let counter = 0
@@ -1028,7 +1105,9 @@ export const emptyReturn = (): TaxReturnInput => ({
   maryland: emptyMaryland(),
   dc: emptyDc(),
   ca: emptyCa(),
-  ny: emptyNy()
+  ny: emptyNy(),
+  il: emptyIl(),
+  pa: emptyPa()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -1138,6 +1217,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     maryland: normalizeMaryland(r.maryland),
     dc: { ...emptyDc(), ...(r.dc ?? {}), birthDate: { ...emptyDc().birthDate, ...(r.dc?.birthDate ?? {}) }, landlord: { ...emptyDc().landlord, ...(r.dc?.landlord ?? {}) }, ssl: { ...emptyDc().ssl, ...(r.dc?.ssl ?? {}) }, dependentBirthDates: { ...(r.dc?.dependentBirthDates ?? {}) } },
     ca: { ...emptyCa(), ...(r.ca ?? {}), birthDate: { ...emptyCa().birthDate, ...(r.ca?.birthDate ?? {}) }, specialCredit: { ...emptyCa().specialCredit, ...(r.ca?.specialCredit ?? {}) }, contribution: { ...emptyCa().contribution, ...(r.ca?.contribution ?? {}) }, dependentBirthDates: { ...(r.ca?.dependentBirthDates ?? {}) }, stateWages: typeof r.ca?.stateWages === 'number' ? r.ca.stateWages : null },
-    ny: { ...emptyNy(), ...(r.ny ?? {}), birthDate: { ...emptyNy().birthDate, ...(r.ny?.birthDate ?? {}) }, govPensions: { ...emptyNy().govPensions, ...(r.ny?.govPensions ?? {}) }, pensionExclusionOverride: { ...emptyNy().pensionExclusionOverride, ...(r.ny?.pensionExclusionOverride ?? {}) }, dependentBirthDates: { ...(r.ny?.dependentBirthDates ?? {}) } }
+    ny: { ...emptyNy(), ...(r.ny ?? {}), birthDate: { ...emptyNy().birthDate, ...(r.ny?.birthDate ?? {}) }, govPensions: { ...emptyNy().govPensions, ...(r.ny?.govPensions ?? {}) }, pensionExclusionOverride: { ...emptyNy().pensionExclusionOverride, ...(r.ny?.pensionExclusionOverride ?? {}) }, dependentBirthDates: { ...(r.ny?.dependentBirthDates ?? {}) } },
+    il: { ...emptyIl(), ...(r.il ?? {}), birthDate: { ...emptyIl().birthDate, ...(r.il?.birthDate ?? {}) }, dependentBirthDates: { ...(r.il?.dependentBirthDates ?? {}) } },
+    pa: { ...emptyPa(), ...(r.pa ?? {}), tuitionContributions: { ...emptyPa().tuitionContributions, ...(r.pa?.tuitionContributions ?? {}) }, compensation: typeof r.pa?.compensation === 'number' ? r.pa.compensation : null }
   })
 }

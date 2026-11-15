@@ -6,6 +6,10 @@ import { buildMarylandPacket } from './md2025.ts'
 import type { DcResult } from '../engine/dc2025.ts'
 import type { CaResult } from '../engine/ca2025.ts'
 import type { NyResult } from '../engine/ny2025.ts'
+import type { IlResult } from '../engine/il2025.ts'
+import type { PaResult } from '../engine/pa2025.ts'
+import { buildIlPacket } from './il2025.ts'
+import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
 import { buildCaPacket } from './ca2025.ts'
 import { buildDcPacket } from './dc2025.ts'
@@ -59,4 +63,12 @@ export function downloadCaliforniaForms(ret: TaxReturnInput, res: TaxReturnResul
 
 export function downloadNewYorkForms(ret: TaxReturnInput, res: TaxReturnResult, ny: NyResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildNyPacket(ret, res, ny, preparer).forms, '2025 New York Form IT-201 — USTaxes NextGen', `2025-New-York-IT-201-${slug(ret)}.pdf`)
+}
+
+export function downloadIllinoisForms(ret: TaxReturnInput, res: TaxReturnResult, il: IlResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildIlPacket(ret, res, il, preparer).forms, '2025 Illinois Form IL-1040 — USTaxes NextGen', `2025-Illinois-IL-1040-${slug(ret)}.pdf`)
+}
+
+export function downloadPennsylvaniaForms(ret: TaxReturnInput, res: TaxReturnResult, pa: PaResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildPaPacket(ret, res, pa, preparer).forms, '2025 Pennsylvania Form PA-40 — USTaxes NextGen', `2025-Pennsylvania-PA-40-${slug(ret)}.pdf`)
 }
