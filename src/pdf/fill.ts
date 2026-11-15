@@ -41,9 +41,12 @@ export async function fillForm(lib: PdfLib, bytes: Uint8Array | ArrayBuffer, fil
     } else if (field instanceof lib.PDFCheckBox) {
       if (typeof value === 'string' && value) {
         // A check box with several widgets that each have their own "on" state (for example checking / savings).
-        const on = lib.PDFName.of(value)
         const widgets = field.acroField.getWidgets()
-        if (!widgets.some((w) => w.getOnValue() === on)) { problems.push({ form: fill.id, key, problem: `no "${value}" state` }); continue }
+        // Match by name; some forms use non-ASCII bytes in state names (for example a curly apostrophe), so also match the decoded text.
+        const named = lib.PDFName.of(value)
+        const plain = (t: string): string => t.replace(/[^\x20-\x7e]/g, '')
+        const on = widgets.map((w) => w.getOnValue()).find((v) => v === named || (v !== undefined && plain(v.decodeText()) === plain(value)))
+        if (!on) { problems.push({ form: fill.id, key, problem: `no "${value}" state` }); continue }
         field.acroField.dict.set(lib.PDFName.of('V'), on)
         widgets.forEach((w) => w.setAppearanceState(w.getOnValue() === on ? on : lib.PDFName.of('Off')))
       } else if (value === true) field.check()

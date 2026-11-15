@@ -687,6 +687,68 @@ export const emptyCa = (): CaInput => ({
   contribution: { code: '', amount: 0 }, dependentBirthDates: {}
 })
 
+export interface NyInput {
+  /** MM/DD/YYYY; printed on IT-201 as MMDDYYYY. */
+  birthDate: { taxpayer: string; spouse: string }
+  /** 'nyc' = New York City resident all year, 'yonkers' = Yonkers resident all year. */
+  locality: 'none' | 'nyc' | 'yonkers'
+  county: string
+  schoolDistrict: string
+  /** Three-digit school district code number from the IT-201 instructions. */
+  schoolDistrictCode: string
+  withholding: number
+  nycWithholding: number
+  yonkersWithholding: number
+  /** Estimated payments and amount paid with Form IT-370. */
+  estimatedPayments: number
+  stateRefundInFagi: number
+  /** Line 20: interest on other states' and their localities' bonds. */
+  otherStateBondInterest: number
+  /** Line 21: public employee 414(h) contributions (W-2 box 14). */
+  pension414h: number
+  /** Line 22: NY 529 distributions to add back. */
+  nys529Distributions: number
+  otherAdditions: number
+  /** Line 26: NYS, local and federal government pensions, by owner. */
+  govPensions: Record<Owner, number>
+  /** Line 28: interest on U.S. government bonds. */
+  usBondInterest: number
+  /** Line 29: pension exclusion, null = figured from 1099-R income for people 60 or older. */
+  pensionExclusionOverride: Record<Owner, number | null>
+  /** Line 30: contributions to New York's 529 plan (up to $5,000 / $10,000) and taxable 529 earnings. */
+  nys529Contributions: number
+  nys529Earnings: number
+  otherSubtractions: number
+  /** Form IT-196, line 49 (0 = standard deduction). */
+  itemizedDeduction: number
+  residentCredit: number
+  otherNonrefundableCredits: number
+  otherTaxes: number
+  nycNonrefundableCredits: number
+  /** Line 64 from Form IT-216. */
+  childCareCredit: number
+  realPropertyCredit: number
+  collegeTuitionCredit: number
+  nycEliminationCredit: number
+  otherRefundableCredits: number
+  /** Line 59: use the sales and use tax chart; otherwise salesTax. */
+  salesTaxChart: boolean
+  salesTax: number
+  contributions: number
+  creditForward: number
+  /** Dependent id → MM/DD/YYYY, for item H and IT-213. */
+  dependentBirthDates: Record<string, string>
+}
+export const emptyNy = (): NyInput => ({
+  birthDate: { taxpayer: '', spouse: '' }, locality: 'none', county: '', schoolDistrict: '', schoolDistrictCode: '',
+  withholding: 0, nycWithholding: 0, yonkersWithholding: 0, estimatedPayments: 0, stateRefundInFagi: 0, otherStateBondInterest: 0,
+  pension414h: 0, nys529Distributions: 0, otherAdditions: 0, govPensions: { taxpayer: 0, spouse: 0 }, usBondInterest: 0,
+  pensionExclusionOverride: { taxpayer: null, spouse: null }, nys529Contributions: 0, nys529Earnings: 0, otherSubtractions: 0, itemizedDeduction: 0,
+  residentCredit: 0, otherNonrefundableCredits: 0, otherTaxes: 0, nycNonrefundableCredits: 0, childCareCredit: 0, realPropertyCredit: 0,
+  collegeTuitionCredit: 0, nycEliminationCredit: 0, otherRefundableCredits: 0, salesTaxChart: false, salesTax: 0, contributions: 0, creditForward: 0,
+  dependentBirthDates: {}
+})
+
 export interface StateGenericInput {
   /** State income tax withheld: W-2 box 17, 1099 state boxes. */
   withholding: number
@@ -770,6 +832,8 @@ export interface TaxReturnInput {
   dc: DcInput
   /** California resident return (Form 540). */
   ca: CaInput
+  /** New York resident return (Form IT-201). */
+  ny: NyInput
 }
 
 let counter = 0
@@ -964,7 +1028,8 @@ export const emptyReturn = (): TaxReturnInput => ({
   virginia: emptyVirginia(),
   maryland: emptyMaryland(),
   dc: emptyDc(),
-  ca: emptyCa()
+  ca: emptyCa(),
+  ny: emptyNy()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -1073,6 +1138,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     virginia: normalizeVirginia(r.virginia),
     maryland: normalizeMaryland(r.maryland),
     dc: { ...emptyDc(), ...(r.dc ?? {}), birthDate: { ...emptyDc().birthDate, ...(r.dc?.birthDate ?? {}) }, landlord: { ...emptyDc().landlord, ...(r.dc?.landlord ?? {}) }, ssl: { ...emptyDc().ssl, ...(r.dc?.ssl ?? {}) }, dependentBirthDates: { ...(r.dc?.dependentBirthDates ?? {}) } },
-    ca: { ...emptyCa(), ...(r.ca ?? {}), birthDate: { ...emptyCa().birthDate, ...(r.ca?.birthDate ?? {}) }, specialCredit: { ...emptyCa().specialCredit, ...(r.ca?.specialCredit ?? {}) }, contribution: { ...emptyCa().contribution, ...(r.ca?.contribution ?? {}) }, dependentBirthDates: { ...(r.ca?.dependentBirthDates ?? {}) }, stateWages: typeof r.ca?.stateWages === 'number' ? r.ca.stateWages : null }
+    ca: { ...emptyCa(), ...(r.ca ?? {}), birthDate: { ...emptyCa().birthDate, ...(r.ca?.birthDate ?? {}) }, specialCredit: { ...emptyCa().specialCredit, ...(r.ca?.specialCredit ?? {}) }, contribution: { ...emptyCa().contribution, ...(r.ca?.contribution ?? {}) }, dependentBirthDates: { ...(r.ca?.dependentBirthDates ?? {}) }, stateWages: typeof r.ca?.stateWages === 'number' ? r.ca.stateWages : null },
+    ny: { ...emptyNy(), ...(r.ny ?? {}), birthDate: { ...emptyNy().birthDate, ...(r.ny?.birthDate ?? {}) }, govPensions: { ...emptyNy().govPensions, ...(r.ny?.govPensions ?? {}) }, pensionExclusionOverride: { ...emptyNy().pensionExclusionOverride, ...(r.ny?.pensionExclusionOverride ?? {}) }, dependentBirthDates: { ...(r.ny?.dependentBirthDates ?? {}) } }
   })
 }
