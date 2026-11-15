@@ -528,3 +528,12 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .va-760c th:first-child, .va-760c thead th:first-child { text-align: left; }
 .va-760c thead th { font-size: 0.8rem; color: var(--ink-soft); font-weight: 600; padding-bottom: 6px; }
 .va-sch-a { margin-bottom: 16px; }
+
+/* State copies of W-2s and 1099-Rs */
+.statements { display: grid; gap: 14px; margin-top: 12px; }
+.statement { border: 1px solid var(--rule); border-radius: 6px; padding: 12px 16px 16px; margin: 0; min-width: 0; }
+.statement legend { padding: 0 6px; font-weight: 600; font-size: 0.9rem; }
+details.more { margin-top: 14px; }
+details.more summary { cursor: pointer; font-weight: 600; color: var(--form-green); }
+details.more .grid { margin-top: 12px; }
+.statements + .grid, .checks + .grid, .grid + .checks { margin-top: 16px; }

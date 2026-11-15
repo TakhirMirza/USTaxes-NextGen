@@ -17,6 +17,8 @@ import { IllinoisStep } from './illinois'
 import { PennsylvaniaStep } from './pennsylvania'
 import { NorthCarolinaStep } from './northcarolina'
 import { MichiganStep } from './michigan'
+import { GeorgiaStep } from './georgia'
+import { OhioStep } from './ohio'
 import { StateEstimateView } from './stateEstimate'
 
 const GROUPS: { label: string; support: StateInfo['support'] }[] = [
@@ -82,6 +84,8 @@ export function StateStep(props: StepProps & { preparer: PreparerInfo | null }):
       {info?.code === 'PA' && <PennsylvaniaStep {...props} />}
       {info?.code === 'NC' && <NorthCarolinaStep {...props} />}
       {info?.code === 'MI' && <MichiganStep {...props} />}
+      {info?.code === 'GA' && <GeorgiaStep {...props} />}
+      {info?.code === 'OH' && <OhioStep {...props} />}
     </div>
   )
 }

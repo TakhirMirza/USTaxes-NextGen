@@ -168,10 +168,10 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
         <p className="why">Before mailing: sign and date page 2 of Form 1040, attach Copy B of your W-2s (and any 1099-R with tax withheld), and send to the IRS address for your state listed in the Form 1040 instructions.</p>
       </Section>
 
-      {(['VA', 'MD', 'DC', 'CA', 'NY', 'IL', 'PA', 'NC', 'MI'] as const).some((s) => s === ret.residentState) && (() => {
-        type Full = 'VA' | 'MD' | 'DC' | 'CA' | 'NY' | 'IL' | 'PA' | 'NC' | 'MI'
-        const name = { VA: 'Virginia', MD: 'Maryland', DC: 'DC', CA: 'California', NY: 'New York', IL: 'Illinois', PA: 'Pennsylvania', NC: 'North Carolina', MI: 'Michigan' }[ret.residentState as Full]
-        const form = { VA: 'Form 760', MD: 'Form 502', DC: 'Form D-40', CA: 'Form 540', NY: 'Form IT-201', IL: 'Form IL-1040', PA: 'Form PA-40', NC: 'Form D-400', MI: 'Form MI-1040' }[ret.residentState as Full]
+      {(['VA', 'MD', 'DC', 'CA', 'NY', 'IL', 'PA', 'NC', 'MI', 'GA', 'OH'] as const).some((s) => s === ret.residentState) && (() => {
+        type Full = 'VA' | 'MD' | 'DC' | 'CA' | 'NY' | 'IL' | 'PA' | 'NC' | 'MI' | 'GA' | 'OH'
+        const name = { VA: 'Virginia', MD: 'Maryland', DC: 'DC', CA: 'California', NY: 'New York', IL: 'Illinois', PA: 'Pennsylvania', NC: 'North Carolina', MI: 'Michigan', GA: 'Georgia', OH: 'Ohio' }[ret.residentState as Full]
+        const form = { VA: 'Form 760', MD: 'Form 502', DC: 'Form D-40', CA: 'Form 540', NY: 'Form IT-201', IL: 'Form IL-1040', PA: 'Form PA-40', NC: 'Form D-400', MI: 'Form MI-1040', GA: 'Form 500', OH: 'Form IT 1040' }[ret.residentState as Full]
         return (
           <Section title={`${name} forms`} intro={`${form} and its schedules are prepared on the state step from this federal return.`}>
             <div className="actions"><a className="button is-quiet" href="#/state">Open the {name} return</a></div>

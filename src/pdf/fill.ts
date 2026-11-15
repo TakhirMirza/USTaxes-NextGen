@@ -55,6 +55,11 @@ export async function fillForm(lib: PdfLib, bytes: Uint8Array | ArrayBuffer, fil
       if (typeof value !== 'string' || !value) continue
       if (!field.getOptions().includes(value)) { problems.push({ form: fill.id, key, problem: `no "${value}" option` }); continue }
       field.select(value)
+    } else if (field instanceof lib.PDFDropdown) {
+      // A choice list: select the option, or clear it so a "Select" placeholder does not print.
+      if (typeof value !== 'string' || !value) { field.clear(); continue }
+      if (!field.getOptions().includes(value)) { problems.push({ form: fill.id, key, problem: `no "${value}" option` }); continue }
+      field.select(value)
     } else {
       problems.push({ form: fill.id, key, problem: `unsupported field type ${field.constructor.name}` })
     }

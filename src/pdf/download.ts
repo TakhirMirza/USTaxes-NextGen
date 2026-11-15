@@ -12,6 +12,10 @@ import type { NcResult } from '../engine/nc2025.ts'
 import type { MiResult } from '../engine/mi2025.ts'
 import { buildNcPacket } from './nc2025.ts'
 import { buildMiPacket } from './mi2025.ts'
+import type { GaResult } from '../engine/ga2025.ts'
+import type { OhResult } from '../engine/oh2025.ts'
+import { buildGaPacket } from './ga2025.ts'
+import { buildOhPacket } from './oh2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -83,4 +87,12 @@ export function downloadNorthCarolinaForms(ret: TaxReturnInput, res: TaxReturnRe
 
 export function downloadMichiganForms(ret: TaxReturnInput, res: TaxReturnResult, mi: MiResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildMiPacket(ret, res, mi, preparer).forms, '2025 Michigan Form MI-1040 — USTaxes NextGen', `2025-Michigan-MI-1040-${slug(ret)}.pdf`)
+}
+
+export function downloadGeorgiaForms(ret: TaxReturnInput, res: TaxReturnResult, ga: GaResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildGaPacket(ret, res, ga, preparer).forms, '2025 Georgia Form 500 — USTaxes NextGen', `2025-Georgia-Form-500-${slug(ret)}.pdf`)
+}
+
+export function downloadOhioForms(ret: TaxReturnInput, res: TaxReturnResult, oh: OhResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildOhPacket(ret, res, oh, preparer).forms, '2025 Ohio IT 1040 — USTaxes NextGen', `2025-Ohio-IT-1040-${slug(ret)}.pdf`)
 }

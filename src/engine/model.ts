@@ -852,6 +852,117 @@ export const emptyNc = (): NcInput => ({
   useTax: 0, noUseTaxDue: true, creditForward: 0, contributions: 0
 })
 
+/** State copy of a W-2 or 1099-R: the IDs and state amounts a withholding schedule asks for. */
+export interface StateStatement {
+  /** Employer or payer federal ID (W-2 box b, 1099-R payer's TIN). */
+  ein: string
+  /** Employer's or payer's state ID number (W-2 box 15, 1099-R box 15). */
+  stateId: string
+  /** State wages or distribution (W-2 box 16, 1099-R box 16); null = same as federal. */
+  stateIncome: number | null
+  /** State income tax withheld (W-2 box 17, 1099-R box 14). */
+  stateTax: number
+}
+export const emptyStatement = (): StateStatement => ({ ein: '', stateId: '', stateIncome: null, stateTax: 0 })
+const normalizeStatements = (x: Record<string, Partial<StateStatement>> | undefined): Record<string, StateStatement> =>
+  Object.fromEntries(Object.entries(x ?? {}).map(([k, v]) => [k, { ...emptyStatement(), ...v }]))
+
+export interface GaInput {
+  /** Date of birth, MM/DD/YYYY (Form 500 line 1; needed for the retirement exclusion). */
+  birthDate: Record<Owner, string>
+  /** Permanently and totally disabled (retirement exclusion before age 62). */
+  disabled: Record<Owner, boolean>
+  /** Date of disability, MM/DD/YYYY. */
+  disabilityDate: Record<Owner, string>
+  /** Taxable military retirement in federal AGI, by owner (Schedule 1 line 7b/7e, under age 62). */
+  militaryRetirement: Record<Owner, number>
+  /** Georgia W-2 details by W-2 id (income statements and line 24). */
+  w2: Record<string, StateStatement>
+  /** Georgia tax withheld on 1099s (line 24, beyond W-2s). */
+  withholding1099: number
+  /** Line 25: Georgia tax withheld on G2-A, G2-FL, G2-LP or G2-RP. */
+  otherWithholding: number
+  estimatedPayments: number
+  /** Line 7b: unborn dependents (with a detectable heartbeat). */
+  unbornDependents: number
+  otherStateBondInterest: number
+  usObligationInterest: number
+  /** Schedule 1 line 9: Path2College 529 contributions (up to $4,000 per beneficiary, $8,000 joint). */
+  path2College: number
+  otherAdditions: number
+  otherSubtractions: number
+  /** Married filing separately and the spouse itemizes (then Georgia itemizing is required). */
+  spouseItemizes: boolean
+  /** Line 12b: income taxes paid to other states and other itemized adjustments. */
+  itemizedAdjustment: number
+  /** Line 18: credit for tax paid to other states. */
+  otherStateCredit: number
+  /** IND-CR credits other than child and dependent care (lines 1, 3–12 of the summary). */
+  otherIndCr: number
+  /** Line 21: Schedule 2 credits (the return must then be e-filed). */
+  schedule2Credits: number
+  creditForward: number
+  /** Lines 32–41: donations, by line number. */
+  donations: Record<string, number>
+  driversLicense: string
+  driversLicenseState: string
+  email: string
+}
+export const emptyGa = (): GaInput => ({
+  birthDate: { taxpayer: '', spouse: '' }, disabled: { taxpayer: false, spouse: false }, disabilityDate: { taxpayer: '', spouse: '' },
+  militaryRetirement: { taxpayer: 0, spouse: 0 }, w2: {}, withholding1099: 0, otherWithholding: 0, estimatedPayments: 0, unbornDependents: 0,
+  otherStateBondInterest: 0, usObligationInterest: 0, path2College: 0, otherAdditions: 0, otherSubtractions: 0, spouseItemizes: false,
+  itemizedAdjustment: 0, otherStateCredit: 0, otherIndCr: 0, schedule2Credits: 0, creditForward: 0, donations: {}, driversLicense: '',
+  driversLicenseState: '', email: ''
+})
+
+export interface OhInput {
+  /** Four-digit school district number. */
+  schoolDistrict: string
+  /** Ohio county (first four letters go on the form). */
+  county: string
+  /** Ohio W-2 details by W-2 id (Schedule of Ohio Withholding Part B). */
+  w2: Record<string, StateStatement>
+  /** Ohio 1099-R details by 1099-R id (Part C). */
+  r1099: Record<string, StateStatement>
+  /** Other Ohio withholding (W-2G, 1099-NEC, 1099-G). */
+  otherWithholding: number
+  /** Estimated and extension payments and the 2024 credit carryforward (line 15). */
+  estimatedPayments: number
+  otherStateBondInterest: number
+  usObligationInterest: number
+  stateRefundInFagi: number
+  /** Schedule of Adjustments line 37: 529 plan contributions (up to $4,000 per beneficiary). */
+  contributions529: number
+  /** Line 34: uniformed services retirement income. */
+  uniformedRetirement: number
+  /** Lines 42–43: disability and survivor benefits. */
+  disabilitySurvivor: number
+  /** Line 44: unreimbursed medical and health care expenses (from the worksheet). */
+  medicalExpenses: number
+  /** Line 9: 168(k) and 179 depreciation add-back. */
+  depreciationAddback: number
+  otherAdditions: number
+  otherDeductions: number
+  /** Schedule of Business Income line 9: other business income or loss. */
+  otherBusinessIncome: number
+  /** Schedule of Credits line 39: resident credit for tax paid to other states (Ohio IT RC). */
+  residentCredit: number
+  /** Other nonrefundable credits (Schedule of Credits lines 14–35). */
+  otherCredits: number
+  useTax: number
+  creditForward: number
+  /** Line 25a–f donations, by letter. */
+  donations: Record<string, number>
+  dependentBirthDates: Record<string, string>
+}
+export const emptyOh = (): OhInput => ({
+  schoolDistrict: '', county: '', w2: {}, r1099: {}, otherWithholding: 0, estimatedPayments: 0, otherStateBondInterest: 0, usObligationInterest: 0,
+  stateRefundInFagi: 0, contributions529: 0, uniformedRetirement: 0, disabilitySurvivor: 0, medicalExpenses: 0, depreciationAddback: 0,
+  otherAdditions: 0, otherDeductions: 0, otherBusinessIncome: 0, residentCredit: 0, otherCredits: 0, useTax: 0, creditForward: 0, donations: {},
+  dependentBirthDates: {}
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -991,6 +1102,10 @@ export interface TaxReturnInput {
   nc: NcInput
   /** Michigan resident return (Form MI-1040). */
   mi: MiInput
+  /** Georgia resident return (Form 500). */
+  ga: GaInput
+  /** Ohio resident return (Form IT 1040). */
+  oh: OhInput
 }
 
 let counter = 0
@@ -1190,7 +1305,9 @@ export const emptyReturn = (): TaxReturnInput => ({
   il: emptyIl(),
   pa: emptyPa(),
   nc: emptyNc(),
-  mi: emptyMi()
+  mi: emptyMi(),
+  ga: emptyGa(),
+  oh: emptyOh()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -1304,6 +1421,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     il: { ...emptyIl(), ...(r.il ?? {}), birthDate: { ...emptyIl().birthDate, ...(r.il?.birthDate ?? {}) }, dependentBirthDates: { ...(r.il?.dependentBirthDates ?? {}) } },
     pa: { ...emptyPa(), ...(r.pa ?? {}), tuitionContributions: { ...emptyPa().tuitionContributions, ...(r.pa?.tuitionContributions ?? {}) }, compensation: typeof r.pa?.compensation === 'number' ? r.pa.compensation : null },
     nc: { ...emptyNc(), ...(r.nc ?? {}), withholding: { ...emptyNc().withholding, ...(r.nc?.withholding ?? {}) } },
-    mi: { ...emptyMi(), ...(r.mi ?? {}), publicPensions: { ...emptyMi().publicPensions, ...(r.mi?.publicPensions ?? {}) }, birthYear: { ...emptyMi().birthYear, ...(r.mi?.birthYear ?? {}) } }
+    mi: { ...emptyMi(), ...(r.mi ?? {}), publicPensions: { ...emptyMi().publicPensions, ...(r.mi?.publicPensions ?? {}) }, birthYear: { ...emptyMi().birthYear, ...(r.mi?.birthYear ?? {}) } },
+    ga: { ...emptyGa(), ...(r.ga ?? {}), birthDate: { ...emptyGa().birthDate, ...(r.ga?.birthDate ?? {}) }, disabled: { ...emptyGa().disabled, ...(r.ga?.disabled ?? {}) }, disabilityDate: { ...emptyGa().disabilityDate, ...(r.ga?.disabilityDate ?? {}) }, militaryRetirement: { ...emptyGa().militaryRetirement, ...(r.ga?.militaryRetirement ?? {}) }, w2: normalizeStatements(r.ga?.w2), donations: { ...(r.ga?.donations ?? {}) } },
+    oh: { ...emptyOh(), ...(r.oh ?? {}), w2: normalizeStatements(r.oh?.w2), r1099: normalizeStatements(r.oh?.r1099), donations: { ...(r.oh?.donations ?? {}) }, dependentBirthDates: { ...(r.oh?.dependentBirthDates ?? {}) } }
   })
 }
