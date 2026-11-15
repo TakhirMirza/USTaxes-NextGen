@@ -53,6 +53,17 @@ export async function fillForm(lib: PdfLib, bytes: Uint8Array | ArrayBuffer, fil
       else field.uncheck()
     } else if (field instanceof lib.PDFRadioGroup) {
       if (typeof value !== 'string' || !value) continue
+      // "#n" picks the n-th button (0-based), for groups whose buttons share an export value.
+      const byIndex = /^#(\d+)$/.exec(value)
+      if (byIndex) {
+        const widgets = field.acroField.getWidgets()
+        const w = widgets[Number(byIndex[1])]
+        const on = w?.getOnValue()
+        if (!w || !on) { problems.push({ form: fill.id, key, problem: `no button ${value}` }); continue }
+        field.acroField.dict.set(lib.PDFName.of('V'), on)
+        widgets.forEach((x) => x.setAppearanceState(x === w ? on : lib.PDFName.of('Off')))
+        continue
+      }
       if (!field.getOptions().includes(value)) { problems.push({ form: fill.id, key, problem: `no "${value}" option` }); continue }
       field.select(value)
     } else if (field instanceof lib.PDFDropdown) {

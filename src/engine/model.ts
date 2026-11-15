@@ -963,6 +963,108 @@ export const emptyOh = (): OhInput => ({
   dependentBirthDates: {}
 })
 
+export interface NjInput {
+  /** Four-digit county/municipality code (table in the NJ-1040 instructions). */
+  municipalityCode: string
+  /** New Jersey W-2 details by W-2 id (box 16 wages, box 17 tax). */
+  w2: Record<string, StateStatement>
+  /** NJ tax withheld on 1099s and W-2Gs. */
+  otherWithholding: number
+  /** Estimated payments, extension payment and 2024 credit (line 57). */
+  estimatedPayments: number
+  usObligationInterest: number
+  otherStateBondInterest: number
+  /** Line 20a override: taxable pensions, annuities and IRA withdrawals under NJ rules (null = federal taxable amount). */
+  pensionTaxable: number | null
+  /** Line 20b override: excludable part of pensions and IRA withdrawals (null = gross minus taxable). */
+  pensionExcludable: number | null
+  gamblingWinnings: number
+  alimonyReceived: number
+  otherIncome: number
+  alimonyPaid: number
+  /** Worksheet F line 1: unreimbursed medical expenses. */
+  medicalExpenses: number
+  /** Blind or disabled (Social Security guidelines) on December 31. */
+  disabled: Record<Owner, boolean>
+  /** Honorably discharged veteran ($6,000 exemption). */
+  veteran: Record<Owner, boolean>
+  /** Dependents under 22 attending college full time (line 12). */
+  collegeDependents: number
+  housing: 'none' | 'own' | 'rent' | 'both'
+  /** Property taxes paid on the main home (your share). */
+  propertyTax: number
+  /** Rent paid for the main home (your share). */
+  rentPaid: number
+  /** Line 44: credit for income taxes paid to other jurisdictions (Schedule NJ-COJ). */
+  otherJurisdictionCredit: number
+  useTax: number
+  creditForward: number
+  /** Lines 70–74 donations, by line. */
+  donations: Record<string, number>
+  /** Someone in the household had no health coverage for part of 2025 (Schedule NJ-HCC). */
+  missingCoverage: boolean
+  /** $1 to the Gubernatorial Elections Fund. */
+  electionFund: Record<Owner, boolean>
+  dependentBirthYears: Record<string, string>
+}
+export const emptyNj = (): NjInput => ({
+  municipalityCode: '', w2: {}, otherWithholding: 0, estimatedPayments: 0, usObligationInterest: 0, otherStateBondInterest: 0,
+  pensionTaxable: null, pensionExcludable: null, gamblingWinnings: 0, alimonyReceived: 0, otherIncome: 0, alimonyPaid: 0, medicalExpenses: 0,
+  disabled: { taxpayer: false, spouse: false }, veteran: { taxpayer: false, spouse: false }, collegeDependents: 0, housing: 'none',
+  propertyTax: 0, rentPaid: 0, otherJurisdictionCredit: 0, useTax: 0, creditForward: 0, donations: {}, missingCoverage: false,
+  electionFund: { taxpayer: false, spouse: false }, dependentBirthYears: {}
+})
+
+export interface MaInput {
+  /** Massachusetts W-2 details by W-2 id (box 16 wages, box 17 tax). */
+  w2: Record<string, StateStatement>
+  /** Massachusetts tax withheld on 1099s (line 38b) and other forms (38c). */
+  withholding1099: number
+  otherWithholding: number
+  /** 2024 overpayment applied (line 39). */
+  priorOverpayment: number
+  estimatedPayments: number
+  extensionPayment: number
+  /** Interest from deposits in Massachusetts banks (line 5). */
+  maBankInterest: number
+  usObligationInterest: number
+  otherStateBondInterest: number
+  /** Exempt contributory U.S. or Massachusetts government pensions included in federal taxable pensions. */
+  governmentPension: number
+  /** Schedule X line 2: IRA/Keogh contributions previously taxed by Massachusetts recovered this year. */
+  iraBasisRecovered: number
+  lotteryWinnings: number
+  /** Rent paid for the principal residence in Massachusetts (line 14). */
+  rentPaid: number
+  /** Schedule Y line 15: MBTA, tolls and other commuter costs paid, by person. */
+  commuter: Record<Owner, number>
+  /** Schedule Y line 18a: Massachusetts 529 (U.Fund/U.Plan) contributions. */
+  collegeSavings: number
+  /** Other Schedule Y deductions. */
+  otherDeductions: number
+  /** Line 30: credit for tax due to another state. */
+  otherStateCredit: number
+  /** Line 31: other credits (Schedule CMS). */
+  otherCredits: number
+  /** Line 44: Senior Circuit Breaker Credit (Schedule CB). */
+  circuitBreaker: number
+  /** Dependents (or spouse) who are disabled or 65+ and qualify for the $440 credit beyond children under 13. */
+  extraFamilyCredit: number
+  useTax: number
+  creditForward: number
+  /** Line 33a–f donations, by letter. */
+  donations: Record<string, number>
+  /** Served in Operation Enduring Freedom, Iraqi Freedom, Noble Eagle or Sinai Peninsula. */
+  veteran: Record<Owner, boolean>
+  electionFund: Record<Owner, boolean>
+}
+export const emptyMa = (): MaInput => ({
+  w2: {}, withholding1099: 0, otherWithholding: 0, priorOverpayment: 0, estimatedPayments: 0, extensionPayment: 0, maBankInterest: 0,
+  usObligationInterest: 0, otherStateBondInterest: 0, governmentPension: 0, iraBasisRecovered: 0, lotteryWinnings: 0, rentPaid: 0,
+  commuter: { taxpayer: 0, spouse: 0 }, collegeSavings: 0, otherDeductions: 0, otherStateCredit: 0, otherCredits: 0, circuitBreaker: 0,
+  extraFamilyCredit: 0, useTax: 0, creditForward: 0, donations: {}, veteran: { taxpayer: false, spouse: false }, electionFund: { taxpayer: false, spouse: false }
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -1106,6 +1208,10 @@ export interface TaxReturnInput {
   ga: GaInput
   /** Ohio resident return (Form IT 1040). */
   oh: OhInput
+  /** New Jersey resident return (Form NJ-1040). */
+  nj: NjInput
+  /** Massachusetts resident return (Form 1). */
+  ma: MaInput
 }
 
 let counter = 0
@@ -1307,7 +1413,9 @@ export const emptyReturn = (): TaxReturnInput => ({
   nc: emptyNc(),
   mi: emptyMi(),
   ga: emptyGa(),
-  oh: emptyOh()
+  oh: emptyOh(),
+  nj: emptyNj(),
+  ma: emptyMa()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -1423,6 +1531,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     nc: { ...emptyNc(), ...(r.nc ?? {}), withholding: { ...emptyNc().withholding, ...(r.nc?.withholding ?? {}) } },
     mi: { ...emptyMi(), ...(r.mi ?? {}), publicPensions: { ...emptyMi().publicPensions, ...(r.mi?.publicPensions ?? {}) }, birthYear: { ...emptyMi().birthYear, ...(r.mi?.birthYear ?? {}) } },
     ga: { ...emptyGa(), ...(r.ga ?? {}), birthDate: { ...emptyGa().birthDate, ...(r.ga?.birthDate ?? {}) }, disabled: { ...emptyGa().disabled, ...(r.ga?.disabled ?? {}) }, disabilityDate: { ...emptyGa().disabilityDate, ...(r.ga?.disabilityDate ?? {}) }, militaryRetirement: { ...emptyGa().militaryRetirement, ...(r.ga?.militaryRetirement ?? {}) }, w2: normalizeStatements(r.ga?.w2), donations: { ...(r.ga?.donations ?? {}) } },
-    oh: { ...emptyOh(), ...(r.oh ?? {}), w2: normalizeStatements(r.oh?.w2), r1099: normalizeStatements(r.oh?.r1099), donations: { ...(r.oh?.donations ?? {}) }, dependentBirthDates: { ...(r.oh?.dependentBirthDates ?? {}) } }
+    oh: { ...emptyOh(), ...(r.oh ?? {}), w2: normalizeStatements(r.oh?.w2), r1099: normalizeStatements(r.oh?.r1099), donations: { ...(r.oh?.donations ?? {}) }, dependentBirthDates: { ...(r.oh?.dependentBirthDates ?? {}) } },
+    nj: { ...emptyNj(), ...(r.nj ?? {}), w2: normalizeStatements(r.nj?.w2), disabled: { ...emptyNj().disabled, ...(r.nj?.disabled ?? {}) }, veteran: { ...emptyNj().veteran, ...(r.nj?.veteran ?? {}) }, electionFund: { ...emptyNj().electionFund, ...(r.nj?.electionFund ?? {}) }, donations: { ...(r.nj?.donations ?? {}) }, dependentBirthYears: { ...(r.nj?.dependentBirthYears ?? {}) }, pensionTaxable: typeof r.nj?.pensionTaxable === 'number' ? r.nj.pensionTaxable : null, pensionExcludable: typeof r.nj?.pensionExcludable === 'number' ? r.nj.pensionExcludable : null },
+    ma: { ...emptyMa(), ...(r.ma ?? {}), w2: normalizeStatements(r.ma?.w2), commuter: { ...emptyMa().commuter, ...(r.ma?.commuter ?? {}) }, veteran: { ...emptyMa().veteran, ...(r.ma?.veteran ?? {}) }, electionFund: { ...emptyMa().electionFund, ...(r.ma?.electionFund ?? {}) }, donations: { ...(r.ma?.donations ?? {}) } }
   })
 }

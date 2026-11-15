@@ -16,6 +16,10 @@ import type { GaResult } from '../engine/ga2025.ts'
 import type { OhResult } from '../engine/oh2025.ts'
 import { buildGaPacket } from './ga2025.ts'
 import { buildOhPacket } from './oh2025.ts'
+import type { NjResult } from '../engine/nj2025.ts'
+import type { MaResult } from '../engine/ma2025.ts'
+import { buildNjPacket } from './nj2025.ts'
+import { buildMaPacket } from './ma2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -95,4 +99,12 @@ export function downloadGeorgiaForms(ret: TaxReturnInput, res: TaxReturnResult, 
 
 export function downloadOhioForms(ret: TaxReturnInput, res: TaxReturnResult, oh: OhResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildOhPacket(ret, res, oh, preparer).forms, '2025 Ohio IT 1040 — USTaxes NextGen', `2025-Ohio-IT-1040-${slug(ret)}.pdf`)
+}
+
+export function downloadNewJerseyForms(ret: TaxReturnInput, res: TaxReturnResult, nj: NjResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildNjPacket(ret, res, nj, preparer).forms, '2025 New Jersey Form NJ-1040 — USTaxes NextGen', `2025-New-Jersey-NJ-1040-${slug(ret)}.pdf`)
+}
+
+export function downloadMassachusettsForms(ret: TaxReturnInput, res: TaxReturnResult, ma: MaResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildMaPacket(ret, res, ma, preparer).forms, '2025 Massachusetts Form 1 — USTaxes NextGen', `2025-Massachusetts-Form-1-${slug(ret)}.pdf`)
 }
