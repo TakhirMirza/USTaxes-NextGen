@@ -1107,6 +1107,114 @@ export const emptyMa = (): MaInput => ({
   alimonyReceived: 0, otherGambling: 0, otherIncome: 0, earlyWithdrawalPenalty: 0, alimonyPaid: 0, undergradLoanInterest: 0, shortTermCarryover: 0, longTermCarryover: 0
 })
 
+export interface AzInput {
+  /** Arizona W-2 details by W-2 id (line 53). */
+  w2: Record<string, StateStatement>
+  /** Arizona tax withheld on 1099-Rs and other 1099s. */
+  withholding1099: number
+  /** Line 54a: 2025 estimated payments (and 2024 overpayment applied). */
+  estimatedPayments: number
+  /** Line 55: extension payment (Form 204). */
+  extensionPayment: number
+  /** Line 15: interest on other states' municipal bonds. */
+  otherStateBondInterest: number
+  /** Line 28: interest on U.S. obligations. */
+  usObligationInterest: number
+  /** Line 29a: U.S., Arizona state or local government pension in federal AGI, by owner ($2,500 each). */
+  governmentPension: Record<Owner, number>
+  /** Line 29b: military retired or retainer pay in federal AGI, by owner. */
+  militaryRetirement: Record<Owner, number>
+  /** Line 32: pay for active service in the reserves, National Guard or armed forces. */
+  activeMilitaryPay: number
+  /** Line 23 worksheet: net long-term gain from assets acquired after 2011 (null = not entered). */
+  ltcgAfter2011: number | null
+  /** Line 34a/34b: 529 and ABLE contributions, and the number of beneficiaries. */
+  contributions529: number
+  contributionsAble: number
+  beneficiaries: number
+  /** Box 11a: qualifying parents and grandparents ($10,000 each). */
+  qualifyingParents: number
+  /** Box 40E: other exemptions ($2,300 each). */
+  otherExemptions: number
+  /** Page 5 and 6 totals. */
+  otherAdditions: number
+  otherSubtractions: number
+  /** Line 43: adjustments that lower federal itemized deductions (Arizona Schedule A). */
+  itemizedAdjustment: number
+  /** Married filing separately and the spouse itemizes. */
+  spouseItemizes: boolean
+  /** Worksheet 5C: 2025 gifts for which an Arizona tax credit is claimed. */
+  charityCreditGifts: number
+  /** Worksheet 3C: charitable contribution carryover. */
+  charityCarryover: number
+  /** Line 51 (Form 301 credits) and line 58 (other refundable credits). */
+  nonrefundableCredits: number
+  refundableCredits: number
+  /** Line 62: overpayment applied to 2026 estimated tax. */
+  creditForward: number
+  /** Lines 64–74 voluntary gifts, by line number. */
+  donations: Record<string, number>
+  politicalParty: '' | 'Democratic' | 'Libertarian' | 'Republican'
+}
+export const emptyAz = (): AzInput => ({
+  w2: {}, withholding1099: 0, estimatedPayments: 0, extensionPayment: 0, otherStateBondInterest: 0, usObligationInterest: 0,
+  governmentPension: { taxpayer: 0, spouse: 0 }, militaryRetirement: { taxpayer: 0, spouse: 0 }, activeMilitaryPay: 0, ltcgAfter2011: null,
+  contributions529: 0, contributionsAble: 0, beneficiaries: 1, qualifyingParents: 0, otherExemptions: 0, otherAdditions: 0, otherSubtractions: 0,
+  itemizedAdjustment: 0, spouseItemizes: false, charityCreditGifts: 0, charityCarryover: 0, nonrefundableCredits: 0, refundableCredits: 0,
+  creditForward: 0, donations: {}, politicalParty: ''
+})
+
+export interface CoInput {
+  /** Colorado W-2 details by W-2 id (line 24). */
+  w2: Record<string, StateStatement>
+  withholding1099: number
+  /** Line 25: prior-year overpayment carried forward. */
+  priorCarryforward: number
+  /** Line 26: 2025 quarterly estimated payments. */
+  estimatedPayments: number
+  /** Line 27: extension payment (DR 0158-I). */
+  extensionPayment: number
+  /** The state and local tax on federal Schedule A is sales tax, not income tax (then no line 2 addback). */
+  deductedSalesTax: boolean
+  /** Line 9: interest on non-Colorado state and local bonds (also TABOR line 36). */
+  otherStateBondInterest: number
+  /** Line 9: other additions. */
+  otherAdditions: number
+  /** DR 0104AD line 1: state income tax refund in federal AGI (Schedule 1 line 1). */
+  stateRefundInFagi: number
+  /** DR 0104AD line 2. */
+  usObligationInterest: number
+  /** DR 0104AD lines 7/8: military retirement in federal taxable income, by owner (under 55). */
+  militaryRetirement: Record<Owner, number>
+  /** DR 0104AD lines 10/11: CollegeInvest and Colorado ABLE contributions, and beneficiaries. */
+  collegeInvest: number
+  coloradoAble: number
+  beneficiaries: number
+  /** DR 0104AD line 19: Colorado FAMLI benefits in federal income. */
+  famliBenefits: number
+  /** DR 0104AD line 20. */
+  otherSubtractions: number
+  /** DR 0104CR Part II: credit for tax paid to another state, and other credits. */
+  otherStateCredit: number
+  nonrefundableCredits: number
+  refundableCredits: number
+  /** Eligible for the TABOR sales tax refund (full-year resident, generally 18 or older on January 1, 2025). */
+  tabor: boolean
+  /** Line 41: overpayment carried to 2026. */
+  creditForward: number
+  /** Driver's license or state ID: state, last 4 characters, date of issue. */
+  idState: Record<Owner, string>
+  idLast4: Record<Owner, string>
+  idIssued: Record<Owner, string>
+  birthDate: Record<Owner, string>
+}
+export const emptyCo = (): CoInput => ({
+  w2: {}, withholding1099: 0, priorCarryforward: 0, estimatedPayments: 0, extensionPayment: 0, deductedSalesTax: false, otherStateBondInterest: 0,
+  otherAdditions: 0, stateRefundInFagi: 0, usObligationInterest: 0, militaryRetirement: { taxpayer: 0, spouse: 0 }, collegeInvest: 0, coloradoAble: 0, beneficiaries: 1,
+  famliBenefits: 0, otherSubtractions: 0, otherStateCredit: 0, nonrefundableCredits: 0, refundableCredits: 0, tabor: true, creditForward: 0,
+  idState: { taxpayer: '', spouse: '' }, idLast4: { taxpayer: '', spouse: '' }, idIssued: { taxpayer: '', spouse: '' }, birthDate: { taxpayer: '', spouse: '' }
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -1256,6 +1364,10 @@ export interface TaxReturnInput {
   nj: NjInput
   /** Massachusetts resident return (Form 1). */
   ma: MaInput
+  /** Arizona resident return (Form 140). */
+  az: AzInput
+  /** Colorado resident return (DR 0104). */
+  co: CoInput
 }
 
 let counter = 0
@@ -1460,7 +1572,9 @@ export const emptyReturn = (): TaxReturnInput => ({
   ga: emptyGa(),
   oh: emptyOh(),
   nj: emptyNj(),
-  ma: emptyMa()
+  ma: emptyMa(),
+  az: emptyAz(),
+  co: emptyCo()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -1580,6 +1694,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     ga: { ...emptyGa(), ...(r.ga ?? {}), birthDate: { ...emptyGa().birthDate, ...(r.ga?.birthDate ?? {}) }, disabled: { ...emptyGa().disabled, ...(r.ga?.disabled ?? {}) }, disabilityDate: { ...emptyGa().disabilityDate, ...(r.ga?.disabilityDate ?? {}) }, militaryRetirement: { ...emptyGa().militaryRetirement, ...(r.ga?.militaryRetirement ?? {}) }, w2: normalizeStatements(r.ga?.w2), donations: { ...(r.ga?.donations ?? {}) } },
     oh: { ...emptyOh(), ...(r.oh ?? {}), w2: normalizeStatements(r.oh?.w2), r1099: normalizeStatements(r.oh?.r1099), donations: { ...(r.oh?.donations ?? {}) }, dependentBirthDates: { ...(r.oh?.dependentBirthDates ?? {}) } },
     nj: { ...emptyNj(), ...(r.nj ?? {}), w2: normalizeStatements(r.nj?.w2), disabled: { ...emptyNj().disabled, ...(r.nj?.disabled ?? {}) }, veteran: { ...emptyNj().veteran, ...(r.nj?.veteran ?? {}) }, electionFund: { ...emptyNj().electionFund, ...(r.nj?.electionFund ?? {}) }, donations: { ...(r.nj?.donations ?? {}) }, dependentBirthYears: { ...(r.nj?.dependentBirthYears ?? {}) }, pensionTaxable: typeof r.nj?.pensionTaxable === 'number' ? r.nj.pensionTaxable : null, pensionExcludable: typeof r.nj?.pensionExcludable === 'number' ? r.nj.pensionExcludable : null },
-    ma: { ...emptyMa(), ...(r.ma ?? {}), w2: normalizeStatements(r.ma?.w2), commuter: { ...emptyMa().commuter, ...(r.ma?.commuter ?? {}) }, veteran: { ...emptyMa().veteran, ...(r.ma?.veteran ?? {}) }, electionFund: { ...emptyMa().electionFund, ...(r.ma?.electionFund ?? {}) }, donations: { ...(r.ma?.donations ?? {}) }, birthDate: { ...emptyMa().birthDate, ...(r.ma?.birthDate ?? {}) }, dependentBirthDates: { ...(r.ma?.dependentBirthDates ?? {}) }, health: { taxpayer: normalizeMaHealth(r.ma?.health?.taxpayer), spouse: normalizeMaHealth(r.ma?.health?.spouse) } }
+    ma: { ...emptyMa(), ...(r.ma ?? {}), w2: normalizeStatements(r.ma?.w2), commuter: { ...emptyMa().commuter, ...(r.ma?.commuter ?? {}) }, veteran: { ...emptyMa().veteran, ...(r.ma?.veteran ?? {}) }, electionFund: { ...emptyMa().electionFund, ...(r.ma?.electionFund ?? {}) }, donations: { ...(r.ma?.donations ?? {}) }, birthDate: { ...emptyMa().birthDate, ...(r.ma?.birthDate ?? {}) }, dependentBirthDates: { ...(r.ma?.dependentBirthDates ?? {}) }, health: { taxpayer: normalizeMaHealth(r.ma?.health?.taxpayer), spouse: normalizeMaHealth(r.ma?.health?.spouse) } },
+    az: { ...emptyAz(), ...(r.az ?? {}), w2: normalizeStatements(r.az?.w2), governmentPension: { ...emptyAz().governmentPension, ...(r.az?.governmentPension ?? {}) }, militaryRetirement: { ...emptyAz().militaryRetirement, ...(r.az?.militaryRetirement ?? {}) }, donations: { ...(r.az?.donations ?? {}) } },
+    co: { ...emptyCo(), ...(r.co ?? {}), w2: normalizeStatements(r.co?.w2), militaryRetirement: { ...emptyCo().militaryRetirement, ...(r.co?.militaryRetirement ?? {}) }, idState: { ...emptyCo().idState, ...(r.co?.idState ?? {}) }, idLast4: { ...emptyCo().idLast4, ...(r.co?.idLast4 ?? {}) }, idIssued: { ...emptyCo().idIssued, ...(r.co?.idIssued ?? {}) }, birthDate: { ...emptyCo().birthDate, ...(r.co?.birthDate ?? {}) } }
   })
 }

@@ -27,10 +27,10 @@ const S = (code: StateCode, name: string, support: StateSupport, form: string, a
 export const STATES: readonly StateInfo[] = [
   S('AL', 'Alabama', 'estimate', 'Form 40', 'Alabama Department of Revenue'),
   S('AK', 'Alaska', 'no-tax', '', 'Alaska Department of Revenue', 'Alaska has no individual income tax.'),
-  S('AZ', 'Arizona', 'estimate', 'Form 140', 'Arizona Department of Revenue'),
+  S('AZ', 'Arizona', 'supported', 'Form 140', 'Arizona Department of Revenue'),
   S('AR', 'Arkansas', 'estimate', 'Form AR1000F', 'Arkansas Department of Finance and Administration'),
   S('CA', 'California', 'supported', 'Form 540', 'California Franchise Tax Board'),
-  S('CO', 'Colorado', 'estimate', 'Form DR 0104', 'Colorado Department of Revenue'),
+  S('CO', 'Colorado', 'supported', 'Form DR 0104', 'Colorado Department of Revenue'),
   S('CT', 'Connecticut', 'estimate', 'Form CT-1040', 'Connecticut Department of Revenue Services'),
   S('DE', 'Delaware', 'estimate', 'Form PIT-RES', 'Delaware Division of Revenue'),
   S('DC', 'District of Columbia', 'supported', 'Form D-40', 'DC Office of Tax and Revenue'),

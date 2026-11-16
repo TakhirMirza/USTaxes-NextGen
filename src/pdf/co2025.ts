@@ -1,0 +1,111 @@
+/**
+ * Maps a computed Colorado return onto the Colorado DOR fillable forms (2025): public/forms/2025/co104.pdf
+ * (DR 0104, 8 pages), co104ad.pdf (DR 0104AD), co104cr.pdf (DR 0104CR), co104cn.pdf (DR 0104CN) and co0347.pdf
+ * (DR 0347). Amounts are whole dollars.
+ */
+import type { Person, TaxReturnInput } from '../engine/model.ts'
+import type { TaxReturnResult } from '../engine/compute.ts'
+import type { CoResult } from '../engine/co2025.ts'
+import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+
+const digits = (v: string): string => v.replace(/\D/g, '')
+const amt = (n: number | undefined, keepZero = false): string => {
+  if (n === undefined || !Number.isFinite(n)) return ''
+  const v = Math.round(n)
+  if (v === 0) return keepZero ? '0' : ''
+  return v < 0 ? `(${-v})` : String(v)
+}
+const upper = (s: string): string => s.trim().toUpperCase()
+const firstAndInitial = (p: Person): [string, string] => {
+  const parts = p.firstName.trim().split(/\s+/)
+  if (parts.length > 1 && /^[A-Za-z]\.?$/.test(parts[parts.length - 1])) return [parts.slice(0, -1).join(' '), parts[parts.length - 1].replace('.', '').toUpperCase()]
+  return [p.firstName.trim(), '']
+}
+const q = (n: string | number): string => `Form Question ${n}`
+
+export function formCo104(ret: TaxReturnInput, res: TaxReturnResult, co: CoResult, preparer?: PreparerInfo | null): FormFill {
+  const L = co.lines
+  const d = ret.co
+  const c = ret.contact
+  const joint = ret.filingStatus === 'mfj'
+  const [first, mi] = firstAndInitial(ret.taxpayer)
+  const [sFirst, sMi] = firstAndInitial(ret.spouse)
+  const values: Record<string, FieldValue> = {
+    RB1: '1',
+    'Last Name': upper(ret.taxpayer.lastName), 'First Name': upper(first), 'Middle Initial': mi, 'Social Security Number': digits(ret.taxpayer.ssn),
+    'Date of Birth': d.birthDate.taxpayer, 'State of Issue': upper(d.idState.taxpayer).slice(0, 2), 'ID Number': upper(d.idLast4.taxpayer).slice(-4),
+    'Date of Issuance': d.idIssued.taxpayer,
+    'Spouse Last Name': joint ? upper(ret.spouse.lastName) : '', 'Spouse First Name': joint ? upper(sFirst) : '', 'Spouse Middle Initial': joint ? sMi : '',
+    'Spouse Social Security Number': joint ? digits(ret.spouse.ssn) : '', 'Spouse Date of Birth': joint ? d.birthDate.spouse : '',
+    'Spouse State of Issue': joint ? upper(d.idState.spouse).slice(0, 2) : '', 'Spouse ID Number': joint ? upper(d.idLast4.spouse).slice(-4) : '',
+    'Spouse Date of Issuance': joint ? d.idIssued.spouse : '',
+    'Physical Street Address 2': upper([c.street, c.apt].filter((x) => x.trim()).join(' ')), 'Phone Number 3': digits(c.phone).slice(-10),
+    'City 4': upper(c.city), 'State 5': upper(c.state).slice(0, 2), 'ZIP Code 4': digits(c.zip).slice(0, 9),
+    'Explain Other Additions': L['9'] > 0 ? (d.otherStateBondInterest > 0 ? 'NON-COLORADO BOND INTEREST' : 'SEE STATEMENT') : ''
+  }
+  for (const k of ['1', '2', '3', '4', '5', '6', '7', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23',
+    '24', '25', '26', '27', '28', '29', '30', '31', '32', '33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46', '47']) {
+    values[q(k)] = amt(L[k], ['1', '10', '12', '13', '16', '21', '23', '33', '34', '37', '39'].includes(k))
+  }
+  co.dependents.forEach((x, i) => {
+    const n = i + 1
+    values[`Last Name Dependent ${n}`] = upper(x.last)
+    values[`First Name Dependent ${n}`] = upper(x.first)
+    values[`Social Security Number Dependent ${n}`] = digits(x.ssn)
+    values[`Year of Birth Dependent ${n}`] = String(x.birthYear)
+    values[`C6 - Qualifying Child ${n}`] = x.childTaxCredit
+  })
+  if (L['42'] > 0 && ret.refundDeposit.routingNumber && ret.refundDeposit.accountNumber) {
+    values['Routing Number 4'] = digits(ret.refundDeposit.routingNumber).slice(0, 9)
+    values['Acount Number 4'] = ret.refundDeposit.accountNumber.replace(/[^0-9A-Za-z-]/g, '').slice(0, 17)
+    if (ret.refundDeposit.accountType === 'savings') values.RB7 = '2'
+    else values.RB6 = '1'
+  }
+  values.RB9 = '1'
+  if (ret.usePaidPreparer && preparer) {
+    values['Paid Preparer’s Name 2'] = upper(preparer.name)
+    values['Paid Preparer’s Phone Number 2'] = digits(preparer.phone).slice(-10)
+  }
+  return { id: 'co104', file: 'co104.pdf', title: 'Colorado Form DR 0104', values }
+}
+
+export function formCo104AD(ret: TaxReturnInput, co: CoResult): FormFill {
+  const A = co.ad
+  const values: Record<string, FieldValue> = {
+    Name: `${upper(ret.taxpayer.firstName)} ${upper(ret.taxpayer.lastName)}`.trim(), 'SSN or ITIN': digits(ret.taxpayer.ssn)
+  }
+  for (const k of ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '21', '22']) values[q(k)] = amt(A[k], k === '22')
+  values[q(23)] = amt(A['20'])
+  if (A['20'] > 0) values['Other Subtractions Expanation'] = 'SEE STATEMENT'
+  if (A['12'] > 0) values['Total Contribution Qualifying Charitable'] = amt(A['12c'])
+  const name = `${upper(ret.taxpayer.firstName)} ${upper(ret.taxpayer.lastName)}`.trim()
+  if (A['10'] > 0) Object.assign(values, { 'Total Contribution CollegeInvest': amt(A['10']), 'Owners Name CollegeInvest': name, 'SSN or ITIN Owner CollegeInvest': digits(ret.taxpayer.ssn) })
+  if (A['11'] > 0) Object.assign(values, { 'Total Contribution Colorado ABLE': amt(A['11']), 'Owners Name Colorado ABLE': name, 'SSN or ITIN Owner Colorado ABLE': digits(ret.taxpayer.ssn) })
+  return { id: 'co104ad', file: 'co104ad.pdf', title: 'Colorado DR 0104AD (subtractions)', values, pages: [0, 1, 2] }
+}
+
+export function formCo104CR(ret: TaxReturnInput, co: CoResult): FormFill {
+  const CR = co.cr
+  const [first, mi] = firstAndInitial(ret.taxpayer)
+  const values: Record<string, FieldValue> = {
+    'Taxpayer Last Name': upper(ret.taxpayer.lastName), 'Taxpayer First Name': upper(first), 'Taxpayer Middle Initial': mi, 'Social Security Number': digits(ret.taxpayer.ssn),
+    'Taxpayer Last Name_1': upper(ret.taxpayer.lastName), 'Taxpayer First Name_1': upper(first), 'Taxpayer Middle Initial_1': mi, 'Social Security Number_1': digits(ret.taxpayer.ssn),
+    [q(1)]: amt(CR['1']), [q(2)]: amt(CR['2']), [q(3)]: amt(CR['3']), [q(4)]: amt(CR['4']), [q(5)]: amt(CR['5']),
+    [q(26)]: amt(CR['26'], true), [q(34)]: amt(CR['34']), [q(63)]: amt(CR['65'])
+  }
+  if (CR['34'] > 0) values[q(33)] = amt(CR['34'])
+  return { id: 'co104cr', file: 'co104cr.pdf', title: 'Colorado DR 0104CR (credits)', values, pages: CR['65'] > 0 ? [0, 1, 2, 3, 8] : [0, 1, 2, 3] }
+}
+
+export function buildCoPacket(ret: TaxReturnInput, res: TaxReturnResult, co: CoResult, preparer?: PreparerInfo | null): FormPacket {
+  const forms: FormFill[] = [formCo104(ret, res, co, preparer)]
+  if (co.lines['11'] > 0) forms.push(formCo104AD(ret, co))
+  if (co.cr['26'] > 0 || co.cr['65'] > 0) forms.push(formCo104CR(ret, co))
+  const shown = new Set(['DR 0104AD', 'DR 0104CR'])
+  const notIncluded = co.attach.filter((a) => ![...shown].some((s) => a.startsWith(s)))
+  if (co.cr['34'] > 0) notIncluded.push('DR 0104CR Part II (lines 27–33): name the other state and show the income ratio; the credit is on line 34')
+  if (ret.co.nonrefundableCredits > 0) notIncluded.push('DR 0104CR Part III: list your other nonrefundable credits by line (only the line 65 total is filled in)')
+  if (ret.co.refundableCredits > 0) notIncluded.push('DR 0104CR: enter your other refundable credits on their own lines (lines 7–25)')
+  if (co.lines['9'] > 0 || co.ad['20'] > 0) notIncluded.push('A statement explaining other additions (line 9) or other subtractions (DR 0104AD line 20)')
+  return { forms, notIncluded }
+}

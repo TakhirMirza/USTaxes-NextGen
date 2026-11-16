@@ -20,6 +20,10 @@ import type { NjResult } from '../engine/nj2025.ts'
 import type { MaResult } from '../engine/ma2025.ts'
 import { buildNjPacket } from './nj2025.ts'
 import { buildMaPacket } from './ma2025.ts'
+import type { AzResult } from '../engine/az2025.ts'
+import type { CoResult } from '../engine/co2025.ts'
+import { buildAzPacket } from './az2025.ts'
+import { buildCoPacket } from './co2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -108,4 +112,12 @@ export function downloadNewJerseyForms(ret: TaxReturnInput, res: TaxReturnResult
 
 export function downloadMassachusettsForms(ret: TaxReturnInput, res: TaxReturnResult, ma: MaResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildMaPacket(ret, res, ma, preparer).forms, '2025 Massachusetts Form 1 — USTaxes NextGen', `2025-Massachusetts-Form-1-${slug(ret)}.pdf`)
+}
+
+export function downloadArizonaForms(ret: TaxReturnInput, res: TaxReturnResult, az: AzResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildAzPacket(ret, res, az, preparer).forms, '2025 Arizona Form 140 — USTaxes NextGen', `2025-Arizona-Form-140-${slug(ret)}.pdf`)
+}
+
+export function downloadColoradoForms(ret: TaxReturnInput, res: TaxReturnResult, co: CoResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildCoPacket(ret, res, co, preparer).forms, '2025 Colorado Form DR 0104 — USTaxes NextGen', `2025-Colorado-DR-0104-${slug(ret)}.pdf`)
 }
