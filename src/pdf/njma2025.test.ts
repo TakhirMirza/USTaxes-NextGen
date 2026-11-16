@@ -35,7 +35,9 @@ const household = (state: 'NJ' | 'MA'): TaxReturnInput => {
     refundDeposit: { routingNumber: '011000015', accountNumber: '998877', accountType: 'checking' }
   }
   if (state === 'NJ') return { ...base, nj: { ...base.nj, municipalityCode: '1114', w2: { [w2.id]: { ein: '123456789', stateId: '', stateIncome: 52500, stateTax: 1400 } }, housing: 'own', propertyTax: 9800, veteran: { taxpayer: true, spouse: false }, donations: { '70': 10 } } }
-  return { ...base, ma: { ...base.ma, w2: { [w2.id]: { ein: '123456789', stateId: '', stateIncome: null, stateTax: 2300 } }, maBankInterest: 300, rentPaid: 18000, donations: { a: 5 }, electionFund: { taxpayer: true, spouse: false }, birthDate: { taxpayer: '03/02/1962', spouse: '07/19/1967' }, dependentBirthDates: { [kid.id]: '05/01/2021' }, health: { taxpayer: { ...base.ma.health.taxpayer, insurer: 'Blue Cross Blue Shield', subscriber: 'XYZ123456' }, spouse: { ...base.ma.health.spouse, coverage: 'part', months: [true, true, true, true, true, true, false, false, false, false, true, true] } } } }
+  const ira = { ...empty1099R(), owner: 'taxpayer' as const, payer: 'IRA Custodian', grossDistribution: 6000, taxableAmount: 6000, code: '7', ira: true }
+  const div = { ...empty1099Div(), payer: 'Fund', ordinaryDividends: 1200, capitalGainDistributions: 800 }
+  return { ...base, retirement: [pension, ira], dividends: [div], ma: { ...base.ma, commuter: { taxpayer: 650, spouse: 0 }, iraBasisRecovered: 2000, longTermCarryover: 300, w2: { [w2.id]: { ein: '123456789', stateId: '', stateIncome: null, stateTax: 2300 } }, maBankInterest: 300, rentPaid: 18000, donations: { a: 5 }, electionFund: { taxpayer: true, spouse: false }, birthDate: { taxpayer: '03/02/1962', spouse: '07/19/1967' }, dependentBirthDates: { [kid.id]: '05/01/2021' }, health: { taxpayer: { ...base.ma.health.taxpayer, insurer: 'Blue Cross Blue Shield', subscriber: 'XYZ123456' }, spouse: { ...base.ma.health.spouse, coverage: 'part', months: [true, true, true, true, true, true, false, false, false, false, true, true] } } } }
 }
 
 const run = (state: 'NJ' | 'MA') => {
@@ -50,7 +52,7 @@ test('NJ-1040 and Form 1: every key matches exactly one field', async () => {
     const problems: FillProblem[] = []
     for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
     assert.deepEqual(problems, [], state)
-    if (state === 'MA') assert.deepEqual(packet.forms.map((x) => x.id), ['ma1', 'maschhc', 'maschdi', 'maschb'])
+    if (state === 'MA') assert.deepEqual(packet.forms.map((x) => x.id), ['ma1', 'maschhc', 'maschdi', 'maschb', 'maschd', 'maschx', 'maschy'])
   }
 })
 

@@ -149,3 +149,23 @@ test('MA Schedule HC: 150% of the poverty level and the 4-month gap rule', () =>
   const ret2 = { ...r, ma: { ...r.ma, health: { ...r.ma.health, taxpayer: three } } }
   assert.equal(computeMassachusetts(ret2, computeReturn(ret2)).health.penaltyPossible.taxpayer, false)
 })
+
+test('MA Schedule D, X and Y', () => {
+  const r = base('MA', {
+    w2s: [w2(50000)],
+    dividends: [{ ...empty1099Div(), payer: 'Fund', ordinaryDividends: 0, capitalGainDistributions: 1000 }],
+    retirement: [{ ...empty1099R(), payer: 'IRA', grossDistribution: 5000, taxableAmount: 5000, code: '7', ira: true }]
+  })
+  const ret = { ...r, ma: { ...r.ma, longTermCarryover: 400, iraBasisRecovered: 1500, commuter: { taxpayer: 700, spouse: 0 }, alimonyPaid: 1200 } }
+  const v = computeMassachusetts(ret, computeReturn(ret))
+  const D = v.scheduleD.lines
+  assert.equal(D['6'], 1000)
+  assert.equal(D['8'], -400)
+  assert.equal(D['17'], 600)
+  assert.equal(D['22'], 30)
+  assert.equal(v.lines['24'], 30)
+  assert.equal(v.scheduleX['2'], 3500)
+  assert.equal(v.lines['9'], 3500)
+  assert.equal(v.scheduleY['15'], 550)
+  assert.equal(v.scheduleY['3'], 1200)
+})

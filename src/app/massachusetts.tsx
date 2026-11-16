@@ -132,7 +132,10 @@ export function MassachusettsStep({ ret, set, result, preparer }: StepProps & { 
           <MoneyField label="Rent paid for your Massachusetts home" value={d.rentPaid} onChange={(n) => put({ rentPaid: n })} />
           {owners.map((o) => <MoneyField key={o} label={`${names[o]}: MBTA fares, E-ZPass tolls, bike costs`} hint="The amount over $150 is deducted, up to $750" value={d.commuter[o]} onChange={(n) => put({ commuter: { ...d.commuter, [o]: n } })} />)}
           <MoneyField label="Massachusetts 529 contributions" hint="Up to $1,000 ($2,000 joint)" value={d.collegeSavings} onChange={(n) => put({ collegeSavings: n })} />
-          <MoneyField label="Other Schedule Y deductions" value={d.otherDeductions} onChange={(n) => put({ otherDeductions: n })} />
+          <MoneyField label="Alimony paid (deductible)" hint="Divorce before 2019" value={d.alimonyPaid} onChange={(n) => put({ alimonyPaid: n })} />
+          <MoneyField label="Penalty on early savings withdrawal" value={d.earlyWithdrawalPenalty} onChange={(n) => put({ earlyWithdrawalPenalty: n })} />
+          <MoneyField label="Undergraduate student loan interest" hint="Schedule Y line 12 — only if not the same interest as line 10" value={d.undergradLoanInterest} onChange={(n) => put({ undergradLoanInterest: n })} />
+          <MoneyField label="Other Schedule Y deductions" hint="Shown on line 9a; move to the matching line" value={d.otherDeductions} onChange={(n) => put({ otherDeductions: n })} />
         </div>
       </Section>
 
@@ -144,6 +147,11 @@ export function MassachusettsStep({ ret, set, result, preparer }: StepProps & { 
           {hasPension && <MoneyField label="Exempt government or military pensions" hint="Contributory U.S. or Massachusetts pensions, military retirement" value={d.governmentPension} onChange={(n) => put({ governmentPension: n })} />}
           {hasIra && <MoneyField label="IRA contributions recovered this year" hint="Massachusetts already taxed your contributions" value={d.iraBasisRecovered} onChange={(n) => put({ iraBasisRecovered: n })} />}
           <MoneyField label="Massachusetts lottery winnings" value={d.lotteryWinnings} onChange={(n) => put({ lotteryWinnings: n })} />
+          <MoneyField label="Other gambling winnings" hint="Casinos, sports betting (Schedule X)" value={d.otherGambling} onChange={(n) => put({ otherGambling: n })} />
+          <MoneyField label="Alimony received (taxable)" hint="Divorce before 2019" value={d.alimonyReceived} onChange={(n) => put({ alimonyReceived: n })} />
+          <MoneyField label="Fees and other 5.0% income" hint="Schedule X line 4" value={d.otherIncome} onChange={(n) => put({ otherIncome: n })} />
+          <MoneyField label="Massachusetts short-term losses from 2024" hint="2024 Schedule B line 40" value={d.shortTermCarryover} onChange={(n) => put({ shortTermCarryover: n })} />
+          <MoneyField label="Massachusetts long-term losses from 2024" hint="2024 Schedule D line 23" value={d.longTermCarryover} onChange={(n) => put({ longTermCarryover: n })} />
         </div>
       </Section>
 

@@ -56,7 +56,8 @@ export function maLicLimit(fs: TaxReturnInput['filingStatus'], dependents: numbe
 export interface MaResult {
   lines: Record<string, number>
   scheduleB: { lines: Record<string, number>; interest: number; dividends: number; lossApplied: number; fivePercent: number; shortTerm: number }
-  scheduleD: { longTerm: number }
+  scheduleD: { lines: Record<string, number>; longTerm: number }
+  scheduleX: Record<string, number>
   scheduleY: Record<string, number>
   excessExemptions: number
   noTaxStatus: boolean
@@ -107,7 +108,9 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
   L['8a'] = r(s1.unemployment)
   L['8b'] = r(pos(d.lotteryWinnings))
   const xIra = r(pos(retirements.filter((x) => x.ira).reduce((s, x) => s + pos(x.taxableAmount), 0) - pos(d.iraBasisRecovered)))
-  L['9'] = pos(xIra)
+  const X: Record<string, number> = { '1': r(pos(d.alimonyReceived)), '2': pos(xIra), '3': r(pos(d.otherGambling)), '4': r(pos(d.otherIncome)), '5': 0, '6': 0 }
+  X['7'] = pos(X['1'] + X['2'] + X['3'] + X['4'] + X['5'] + X['6'])
+  L['9'] = X['7']
   L['10'] = L['3'] + L['4'] + L['5'] + L['6a'] + L['7'] + L['8a'] + L['8b'] + L['9']
 
   // ── Deductions (lines 11–16) ──
@@ -119,13 +122,16 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
   L['14'] = Math.min(r(L['14a'] / 2), fs === 'mfs' ? 2000 : 4000)
   const adj = s1.adjustments
   const Y: Record<string, number> = {
+    '2': r(pos(d.earlyWithdrawalPenalty)),
+    '3': r(pos(d.alimonyPaid)),
     '7': r(adj.selfEmployedHealthInsurance ?? 0),
     '8': r(adj.hsaDeduction ?? 0),
     '9c': r(pos(ret.itemized.charityCash) + pos(ret.itemized.charityNonCash)),
     '10': Math.min(2500, r(adj.studentLoanInterest ?? 0)),
     '15': owners.reduce((s, o) => s + Math.min(750, pos(pos(d.commuter[o]) - 150)), 0),
     '18a': Math.min(r(pos(d.collegeSavings)), joint ? 2000 : 1000),
-    other: r(pos(d.otherDeductions))
+    '9a': r((adj.educatorExpenses ?? 0) + pos(d.otherDeductions)),
+    '12': r(pos(d.undergradLoanInterest))
   }
   Y['19'] = Object.values(Y).reduce((s, v) => s + v, 0)
   L['15'] = Y['19']
@@ -147,12 +153,22 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
   B['7'] = pos(B['4'] - B['5'] - B['6a'])
   B['8'] = 0
   B['9'] = B['7']
-  const st = r(res.scheduleD.shortTerm)
-  let lt = r(res.scheduleD.longTerm)
+  // Massachusetts uses its own loss carryovers, so the federal carryovers are taken back out.
+  const st = r(res.scheduleD.shortTerm + pos(ret.capitalLossCarryover.shortTerm))
+  const capGainDistributions = r(ret.dividends.reduce((s, x) => s + pos(x.capitalGainDistributions), 0))
+  const ltCurrent = r(res.scheduleD.longTerm + pos(ret.capitalLossCarryover.longTerm))
+  const D: Record<string, number> = { '1': ltCurrent - capGainDistributions, '6': capGainDistributions, '8': -r(pos(d.longTermCarryover)) }
+  D['9'] = D['1'] + D['6'] + D['8']
+  D['10c'] = 0
+  D['11'] = D['9'] - D['10c']
+  D['12'] = 0
+  D['13'] = D['11'] - D['12']
+  let lt = D['13']
   B['10'] = pos(st)
   B['13a'] = B['10']; B['13c'] = B['13a']; B['15'] = B['13c']
   B['16'] = st < 0 ? st : 0
-  B['19a'] = B['15'] + B['16']
+  B['18'] = -r(pos(d.shortTermCarryover))
+  B['19a'] = B['15'] + B['16'] + B['18']
   B['19c'] = B['19a']
   if (B['19c'] < 0) {
     B['20'] = Math.min(B['9'], -B['19c'], 2000)
@@ -193,6 +209,15 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
   const dExcess = Math.min(excess, ltGain)
   excess -= dExcess
   const longGain = ltGain - dExcess
+  D['14'] = D['13'] > 0 ? (B['22'] ?? 0) : (B['25'] ?? 0)
+  D['15'] = D['13'] > 0 ? D['13'] - D['14'] : D['13'] + D['14']
+  D['16'] = B['32']
+  D['17'] = D['15'] + D['16']
+  D['19'] = pos(D['17'])
+  D['20'] = dExcess
+  D['21'] = D['19'] - D['20']
+  D['22'] = r(D['21'] * MA_RATE)
+  D['23'] = D['17'] < 0 ? D['17'] : 0
   const shortGain = B['39']
   L['20'] = B['38']
   L['21'] = L['19'] + L['20']
@@ -200,14 +225,14 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
   L['23a'] = shortGain
   L['23aTax'] = r(shortGain * MA_SHORT_TERM_RATE)
   L['23'] = L['23aTax']
-  L['24'] = r(longGain * MA_RATE)
+  L['24'] = D['22']
   L['28a'] = L['22'] + L['23'] + L['24']
   const surtaxBase = L['21'] + shortGain + longGain
   L['28b'] = r(pos(surtaxBase - MA_SURTAX.threshold) * MA_SURTAX.rate)
 
   // ── No Tax Status and Limited Income Credit ──
   const deps = ret.dependents.length
-  const yEarly = Y['7'] + Y['8'] + Y['9c'] + Y['10']
+  const yEarly = Y['2'] + Y['3'] + Y['7'] + Y['8'] + Y['9a'] + Y['10']
   const agi = pos(L['10'] - yEarly) + B['35'] + ltGain
   const nts = maNoTaxThreshold(fs, deps)
   const noTaxStatus = nts !== null && agi <= nts
@@ -267,9 +292,6 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
   if (askLine6 && atOrBelowFpl) issues.push(`Schedule HC line 6: your federal AGI is at or below 150% of the poverty level (${fpl150.toLocaleString('en-US')} for a family of ${familySize}), so no health care penalty applies.`)
   if (owners.some((o) => d.health[o].plans.private && !d.health[o].subscriber.trim())) issues.push('Schedule HC line 4f/4g: enter your insurer and subscriber number from Form MA 1099-HC.')
   if (owners.some((o) => !d.birthDate[o])) issues.push('Schedule HC line 1 asks for date of birth.')
-  if (res.scheduleD.longTerm !== 0) attach.push(`Schedule D (long-term capital gains ${ltGain.toLocaleString('en-US')} taxed at 5%)`)
-  if (L['9'] > 0) attach.push('Schedule X (IRA/Keogh distributions and other income)')
-  if (L['15'] > 0) attach.push('Schedule Y (other deductions)')
   if (L['6a'] !== 0) attach.push('Massachusetts Schedule C')
   if (L['7'] !== 0) attach.push('Massachusetts Schedule E (computer-generated, from tax software)')
   if (L['28b'] > 0) attach.push('Schedule 4% Surtax')
@@ -280,14 +302,17 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
   if (L['9'] > 0 && d.iraBasisRecovered === 0) issues.push('IRA distributions: Massachusetts never allowed a deduction for IRA contributions, so contributions you made are recovered tax-free first. Enter them on the IRA line if they are not yet recovered.')
   if (retirements.some((x) => !x.ira && x.taxableAmount > 0) && d.governmentPension === 0) issues.push('Contributory pensions from the U.S. government or Massachusetts (and its cities and towns) and military retirement are not taxed; enter them as government pensions.')
   if (f['6b'] > 0) issues.push('Social Security is not taxed in Massachusetts.')
-  if (st !== 0 || res.scheduleD.longTerm !== 0) issues.push('Capital gains use the federal short- and long-term totals. Massachusetts has its own loss carryovers and collectibles rate (12%); adjust Schedules B and D if they apply.')
+  if (st !== 0 || ltCurrent !== 0) issues.push('Capital gains use this year’s federal short- and long-term totals; Massachusetts loss carryovers from 2024 are entered separately. Gains on collectibles (12%) and Form 4797 property are not split out — adjust Schedules B and D if you have them.')
+  if (B['40'] < 0 || D['23'] < 0) issues.push(`Massachusetts losses to carry to 2026: short-term ${(-B['40']).toLocaleString('en-US')}, long-term ${(-D['23']).toLocaleString('en-US')}. Keep this return for next year.`)
+  if (Y['10'] > 0 && Y['12'] > 0) issues.push('Schedule Y lines 10 and 12 cannot cover the same student loan interest.')
   if (older('taxpayer') || (joint && older('spouse'))) issues.push('Seniors who own or rent their home may qualify for the Senior Circuit Breaker Credit (up to $2,820) on Schedule CB.')
   if (Y['9c'] > 0) issues.push('Charitable deduction (Schedule Y line 9c): the federal amount without household goods or used clothing, allowed even if you do not itemize.')
 
   return {
     lines: L,
     scheduleB: { lines: B, interest, dividends, lossApplied, fivePercent: L['20'], shortTerm: L['23a'] },
-    scheduleD: { longTerm: longGain },
+    scheduleD: { lines: D, longTerm: longGain },
+    scheduleX: X,
     scheduleY: Y, excessExemptions: excessTotal, noTaxStatus,
     health: { familySize, fpl150, atOrBelowFpl, askLine6, penaltyPossible },
     agi, statements, issues, attach

@@ -1063,6 +1063,22 @@ export interface MaInput {
   dependentBirthDates: Record<string, string>
   /** Schedule HC: health coverage for 2025, by person. */
   health: Record<Owner, MaHealth>
+  /** Schedule X line 1: taxable alimony received. */
+  alimonyReceived: number
+  /** Schedule X line 3: gambling winnings other than the Massachusetts lottery. */
+  otherGambling: number
+  /** Schedule X line 4: fees and other 5.0% income. */
+  otherIncome: number
+  /** Schedule Y line 2: penalty on early savings withdrawal. */
+  earlyWithdrawalPenalty: number
+  /** Schedule Y line 3: deductible alimony paid. */
+  alimonyPaid: number
+  /** Schedule Y line 12: undergraduate student loan interest (instead of line 10). */
+  undergradLoanInterest: number
+  /** Unused Massachusetts short-term losses from 2024 (2024 Schedule B line 40). */
+  shortTermCarryover: number
+  /** Unused Massachusetts long-term losses from 2024 (2024 Schedule D line 23). */
+  longTermCarryover: number
 }
 /** Schedule HC coverage for one person. */
 export interface MaHealth {
@@ -1086,7 +1102,8 @@ export const emptyMa = (): MaInput => ({
   usObligationInterest: 0, otherStateBondInterest: 0, governmentPension: 0, iraBasisRecovered: 0, lotteryWinnings: 0, rentPaid: 0,
   commuter: { taxpayer: 0, spouse: 0 }, collegeSavings: 0, otherDeductions: 0, otherStateCredit: 0, otherCredits: 0, circuitBreaker: 0,
   extraFamilyCredit: 0, useTax: 0, creditForward: 0, donations: {}, veteran: { taxpayer: false, spouse: false }, electionFund: { taxpayer: false, spouse: false },
-  birthDate: { taxpayer: '', spouse: '' }, dependentBirthDates: {}, health: { taxpayer: emptyMaHealth(), spouse: emptyMaHealth() }
+  birthDate: { taxpayer: '', spouse: '' }, dependentBirthDates: {}, health: { taxpayer: emptyMaHealth(), spouse: emptyMaHealth() },
+  alimonyReceived: 0, otherGambling: 0, otherIncome: 0, earlyWithdrawalPenalty: 0, alimonyPaid: 0, undergradLoanInterest: 0, shortTermCarryover: 0, longTermCarryover: 0
 })
 
 export interface MiInput {

@@ -253,17 +253,76 @@ export function scheduleMaB(ret: TaxReturnInput, ma: MaResult): FormFill {
   const keep = new Set(['4', '7', '9', '29', '31', '33', '35', '37', '38'])
   for (const [k, v] of Object.entries(B)) values[`Line ${k}`] = amt(v, keep.has(k))
   for (const k of ['16', '19a', '19c', '21', '23', '40']) if ((B[k] ?? 0) < 0) values[`Line ${k} Checkbox`] = true
-  const hasPart2 = (B['10'] ?? 0) !== 0 || (B['16'] ?? 0) !== 0
+  const hasPart2 = (B['10'] ?? 0) !== 0 || (B['16'] ?? 0) !== 0 || (B['18'] ?? 0) !== 0
   if (!hasPart2) for (const k of Object.keys(B)) if (Number.parseInt(k, 10) >= 10 && Number.parseInt(k, 10) <= 28) delete values[`Line ${k}`]
   if (!hasPart2) delete values['Line 40']
   return { id: 'maschb', file: 'maschb.pdf', title: 'Massachusetts Schedule B', values }
+}
+
+const D_FIELDS: Record<string, string> = {
+  '1': 'Line 1. Enter amounts from U.S. Schedule D, lines 8a and 8b, column h. See instructions',
+  '6': 'Line 6. Enter amount from U.S. Schedule D, line 13, column h. If U.S. Schedule D not filed, enter he amount from U.S. Form 1040, line 7a. See instructions',
+  '8': 'Line 8. Massachusetts carryover losses from prior years (from 2024 Schedule D, line 23)',
+  '9': 'Line 9. Combine lines 1 through 8',
+  '10c': 'Line 10c.  Combine lines 10a and 10b',
+  '11': 'Line 11. Massachusetts capital gains and losses. Subtract line 10c from line 9. See instructions',
+  '12': 'Line 12. Long-term gains on collectibles and pre-1996 installment sales. See instructions. Also enter amount in Schedule B, Part 2, line 11',
+  '13': 'Line 13. Subtotal. Subtract line 12 from line 11. See instructions',
+  '14': 'Line 14. Capital losses applied against capital gains. See instructions',
+  '15': 'Line 15. Subtotal. If line 13 is greater than 0, subtract line 14 from line 13. If line 13 is less than 0, combine lines 13 and 14. If line 15 is a loss, see instructions',
+  '16': 'Line 16. Long-term capital losses applied against interest and dividends (from worksheet). Not more than $2,000',
+  '17': 'Line 17. Subtotal. Combine line 15 and line 16. See instructions',
+  '19': 'Line 19. Subtotal. Subtract line 18 from line 17. Not less than 0',
+  '20': 'Line 20. Excess exemptions (from worksheet), only if single, head of household or married filing jointly',
+  '21': 'Line 21. Taxable long-term capital gains. Subtract line 20 from line 19. Not less than 0',
+  '22': 'Line 22. Tax on long-term capital gains. Multiply line 21 by .05 and enter the result here and in Form 1, line 24 or Form 1-NR/PY, line 28. Note: If choosing the optional 5.85% tax rate, multiply line 21 by .0585',
+  '23': 'line 23. Massachusetts available losses for carryover. Enter the amount from Schedule D, line 17, only if it is a loss'
+}
+const X_FIELDS: Record<string, string> = {
+  '1': 'Line 1. Taxable alimony received (from U.S. return; full-and part-year residents only.) See instructions',
+  '2': 'Line 2. Taxable IRA/Keogh and Roth IRA conversion distributions (from worksheet',
+  '3': 'Line 3. Other gambling winnings (sources other than Massachusetts state lottery). Not less than 0. Note: Certain gambling losses are deductible under Massachusetts law. See Schedule Y, line 17. Do not report Massachusetts state lottery winnings here; instead, report them on Form 1, line 8b or Form 1-NR/PY, line 10b',
+  '4': 'Line 4. Fees and other 5.0% income. See instructions. Not less than 0',
+  '7': 'Line 7. Total other 5.0% income. Add lines 1 through 6. Not less than 0. Enter here and on Form 1,line 9 or Form 1-NR/PY, line 11'
+}
+const header = (ret: TaxReturnInput): Record<string, FieldValue> => {
+  const [first, mi] = firstAndInitial(ret.taxpayer)
+  return { 'First Name': upper(first), 'Middle Initial': mi, 'Last Name': upper(ret.taxpayer.lastName), 'Social Security Number': digits(ret.taxpayer.ssn) }
+}
+
+/** Schedule D: long-term capital gains and losses (excluding collectibles). */
+export function scheduleMaD(ret: TaxReturnInput, ma: MaResult): FormFill {
+  const D = ma.scheduleD.lines
+  const values = header(ret)
+  for (const [k, name] of Object.entries(D_FIELDS)) values[name] = amt(D[k], ['9', '11', '13', '17', '19', '21', '22'].includes(k))
+  const lossBox: Record<string, string> = { '1': 'line 1. If A Loss, Mark An X In Box', '8': 'line 8. If A Loss, Mark An X In Box', '9': 'line 9. If A Loss, Mark An X In Box', '11': 'line 11. If A Loss, Mark An X In Box', '13': 'line 13. If A Loss, Mark An X In Box', '15': 'line 15. If A Loss, Mark An X In Box', '17': 'line 17. If A Loss, Mark An X In Box', '23': 'line 23. If A Loss, Mark An X In Box' }
+  for (const [k, name] of Object.entries(lossBox)) values[name] = (D[k] ?? 0) < 0
+  return { id: 'maschd', file: 'maschd.pdf', title: 'Massachusetts Schedule D', values }
+}
+
+/** Schedule X: other income. */
+export function scheduleMaX(ret: TaxReturnInput, ma: MaResult): FormFill {
+  const values = header(ret)
+  for (const [k, name] of Object.entries(X_FIELDS)) values[name] = amt(ma.scheduleX[k], k === '7')
+  return { id: 'maschx', file: 'maschx.pdf', title: 'Massachusetts Schedule X', values }
+}
+
+/** Schedule Y: other deductions. */
+export function scheduleMaY(ret: TaxReturnInput, ma: MaResult): FormFill {
+  const values = header(ret)
+  for (const [k, v] of Object.entries(ma.scheduleY)) values[`Line ${k}`] = amt(v, k === '19')
+  return { id: 'maschy', file: 'maschy.pdf', title: 'Massachusetts Schedule Y', values }
 }
 
 export function buildMaPacket(ret: TaxReturnInput, res: TaxReturnResult, ma: MaResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formMa1(ret, res, ma, preparer), scheduleMaHc(ret, res, ma)]
   if (ret.dependents.length > 0 || ma.lines['43'] > 0) forms.push(scheduleMaDi(ret, res))
   const B = ma.scheduleB.lines
-  if (B['4'] - B['5'] > 0 || (B['10'] ?? 0) !== 0 || (B['16'] ?? 0) !== 0) forms.push(scheduleMaB(ret, ma))
+  if (B['4'] - B['5'] > 0 || (B['10'] ?? 0) !== 0 || (B['16'] ?? 0) !== 0 || (B['18'] ?? 0) !== 0) forms.push(scheduleMaB(ret, ma))
+  const D = ma.scheduleD.lines
+  if (D['1'] !== 0 || D['6'] !== 0 || D['8'] !== 0) forms.push(scheduleMaD(ret, ma))
+  if (ma.lines['9'] > 0) forms.push(scheduleMaX(ret, ma))
+  if (ma.lines['15'] > 0) forms.push(scheduleMaY(ret, ma))
   const notIncluded = [...ma.attach]
   if (ret.dependents.length > 10) notIncluded.push('A statement listing the dependents beyond the first ten (Schedule DI)')
   if (ma.health.penaltyPossible.taxpayer || ma.health.penaltyPossible.spouse) notIncluded.push('Schedule HC lines 8–12 and the Health Care Penalty Worksheet (penalty on Form 1, line 35)')
