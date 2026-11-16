@@ -1316,6 +1316,101 @@ export const emptyWi = (): WiInput => ({
   refundableCredits: 0, donations: {}, creditForward: 0
 })
 
+export interface InInput {
+  /** Indiana W-2 details by W-2 id: state tax withheld (box 17). */
+  w2: Record<string, StateStatement>
+  /** Indiana county tax withheld (W-2 box 19 and 1099s). */
+  countyWithheld: number
+  /** Indiana state tax withheld on 1099s. */
+  withholding1099: number
+  /** Schedule 5 line 4: 2025 estimated and extension payments. */
+  estimatedPayments: number
+  /** Two-digit county codes (Schedule CT-40) for where each person lived and worked on January 1, 2025. */
+  countyLived: Record<Owner, string>
+  countyWorked: Record<Owner, string>
+  /** Schedule 2 line 1: rent paid on your Indiana home, months and landlord. */
+  rentPaid: number
+  monthsRented: number
+  landlord: string
+  /** Schedule 2 line 2: Indiana property tax on your home. */
+  propertyTax: number
+  monthsLivedHome: number
+  /** Schedule 2 lines 3, 4, 7, 8. */
+  stateRefundInFagi: number
+  usObligationInterest: number
+  activeMilitaryPay: number
+  /** Number of dependent children in private school or homeschool ($1,000 each). */
+  privateSchoolChildren: number
+  otherDeductions: number
+  /** Schedule 1: out-of-state municipal bond interest and other add-backs. */
+  otherStateBondInterest: number
+  otherAddBacks: number
+  /** Schedule IN-DEP box F: dependent children claimed for the additional exemption for the first time. */
+  firstTimeChildren: number
+  /** Schedule 3 line 6: adopted children (Schedule IN-DEP-A). */
+  adoptedChildren: number
+  /** Schedule 4 line 1: use tax. */
+  useTax: number
+  /** Schedule 5 lines 7–11 and Schedule 6 credits. */
+  refundableCredits: number
+  otherStateCredit: number
+  collegeCredit: number
+  offsetCredits: number
+  /** Schedule IN-DONATE. */
+  donations: number
+  /** Line 19c: overpayment applied to 2026 estimated tax. */
+  creditForward: number
+}
+export const emptyIn = (): InInput => ({
+  w2: {}, countyWithheld: 0, withholding1099: 0, estimatedPayments: 0, countyLived: { taxpayer: '', spouse: '' }, countyWorked: { taxpayer: '', spouse: '' },
+  rentPaid: 0, monthsRented: 12, landlord: '', propertyTax: 0, monthsLivedHome: 12, stateRefundInFagi: 0, usObligationInterest: 0, activeMilitaryPay: 0,
+  privateSchoolChildren: 0, otherDeductions: 0, otherStateBondInterest: 0, otherAddBacks: 0, firstTimeChildren: 0, adoptedChildren: 0, useTax: 0,
+  refundableCredits: 0, otherStateCredit: 0, collegeCredit: 0, offsetCredits: 0, donations: 0, creditForward: 0
+})
+
+export interface ScInput {
+  /** South Carolina W-2 details by W-2 id (line 16). */
+  w2: Record<string, StateStatement>
+  /** Line 20: other SC withholding (1099s). */
+  withholding1099: number
+  /** Lines 17 and 18: estimated payments and extension payment. */
+  estimatedPayments: number
+  extensionPayment: number
+  /** County code from the SC1040 instructions, and dates of birth (MM/DD/YYYY). */
+  countyCode: string
+  birthDate: Record<Owner, string>
+  /** Line d: interest on other states’ obligations; line e: other additions (the QBI deduction is added automatically). */
+  otherStateBondInterest: number
+  otherAdditions: number
+  /** Line f: state tax refund in federal income. */
+  stateRefundInFagi: number
+  /** Line g: total and permanent disability retirement income. */
+  disabilityRetirement: number
+  /** Line k: contributions to Future Scholar or the SC Tuition Prepayment Program. */
+  collegeSavings: number
+  /** Line m: interest on U.S. government obligations. */
+  usObligationInterest: number
+  /** Lines p-4/p-5: military retirement income, by owner. */
+  militaryRetirement: Record<Owner, number>
+  /** Line s: workdays for the $16 subsistence allowance (police, firefighters, EMS). */
+  subsistenceDays: number
+  /** Line v: other subtractions. */
+  otherSubtractions: number
+  /** Line 13 (SC1040TC) other nonrefundable credits, line 21 tuition credit and line 22 other refundable credits. */
+  nonrefundableCredits: number
+  tuitionCredit: number
+  refundableCredits: number
+  /** Line 26 use tax, line 27 credit to 2026, line 28 check-off contributions (I-330). */
+  useTax: number
+  creditForward: number
+  checkoffs: number
+}
+export const emptySc = (): ScInput => ({
+  w2: {}, withholding1099: 0, estimatedPayments: 0, extensionPayment: 0, countyCode: '', birthDate: { taxpayer: '', spouse: '' }, otherStateBondInterest: 0,
+  otherAdditions: 0, stateRefundInFagi: 0, disabilityRetirement: 0, collegeSavings: 0, usObligationInterest: 0, militaryRetirement: { taxpayer: 0, spouse: 0 },
+  subsistenceDays: 0, otherSubtractions: 0, nonrefundableCredits: 0, tuitionCredit: 0, refundableCredits: 0, useTax: 0, creditForward: 0, checkoffs: 0
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -1473,6 +1568,10 @@ export interface TaxReturnInput {
   mn: MnInput
   /** Wisconsin resident return (Form 1). */
   wi: WiInput
+  /** Indiana resident return (Form IT-40). */
+  in: InInput
+  /** South Carolina resident return (SC1040). */
+  sc: ScInput
 }
 
 let counter = 0
@@ -1681,7 +1780,9 @@ export const emptyReturn = (): TaxReturnInput => ({
   az: emptyAz(),
   co: emptyCo(),
   mn: emptyMn(),
-  wi: emptyWi()
+  wi: emptyWi(),
+  in: emptyIn(),
+  sc: emptySc()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -1805,6 +1906,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     az: { ...emptyAz(), ...(r.az ?? {}), w2: normalizeStatements(r.az?.w2), governmentPension: { ...emptyAz().governmentPension, ...(r.az?.governmentPension ?? {}) }, militaryRetirement: { ...emptyAz().militaryRetirement, ...(r.az?.militaryRetirement ?? {}) }, donations: { ...(r.az?.donations ?? {}) } },
     co: { ...emptyCo(), ...(r.co ?? {}), w2: normalizeStatements(r.co?.w2), militaryRetirement: { ...emptyCo().militaryRetirement, ...(r.co?.militaryRetirement ?? {}) }, idState: { ...emptyCo().idState, ...(r.co?.idState ?? {}) }, idLast4: { ...emptyCo().idLast4, ...(r.co?.idLast4 ?? {}) }, idIssued: { ...emptyCo().idIssued, ...(r.co?.idIssued ?? {}) }, birthDate: { ...emptyCo().birthDate, ...(r.co?.birthDate ?? {}) } },
     mn: { ...emptyMn(), ...(r.mn ?? {}), w2: normalizeStatements(r.mn?.w2), birthDate: { ...emptyMn().birthDate, ...(r.mn?.birthDate ?? {}) }, campaignCode: { ...emptyMn().campaignCode, ...(r.mn?.campaignCode ?? {}) } },
-    wi: { ...emptyWi(), ...(r.wi ?? {}), w2: normalizeStatements(r.wi?.w2), donations: { ...(r.wi?.donations ?? {}) } }
+    wi: { ...emptyWi(), ...(r.wi ?? {}), w2: normalizeStatements(r.wi?.w2), donations: { ...(r.wi?.donations ?? {}) } },
+    in: { ...emptyIn(), ...(r.in ?? {}), w2: normalizeStatements(r.in?.w2), countyLived: { ...emptyIn().countyLived, ...(r.in?.countyLived ?? {}) }, countyWorked: { ...emptyIn().countyWorked, ...(r.in?.countyWorked ?? {}) } },
+    sc: { ...emptySc(), ...(r.sc ?? {}), w2: normalizeStatements(r.sc?.w2), birthDate: { ...emptySc().birthDate, ...(r.sc?.birthDate ?? {}) }, militaryRetirement: { ...emptySc().militaryRetirement, ...(r.sc?.militaryRetirement ?? {}) } }
   })
 }

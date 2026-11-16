@@ -76,6 +76,16 @@ export async function fillForm(lib: PdfLib, bytes: Uint8Array | ArrayBuffer, fil
     }
   }
   const font = await doc.embedFont(lib.StandardFonts.Helvetica)
+  if (fill.draw?.length) {
+    const pages = doc.getPages()
+    for (const t of fill.draw) {
+      const page = pages[t.page]
+      if (!page || !t.text) continue
+      const size = t.size ?? 9
+      const x = t.right ? t.x - font.widthOfTextAtSize(t.text, size) : t.x
+      page.drawText(t.text, { x, y: t.y, size, font, color: lib.rgb(0, 0, 0) })
+    }
+  }
   form.updateFieldAppearances(font)
   form.flatten()
   return doc

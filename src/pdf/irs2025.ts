@@ -20,6 +20,8 @@ export interface FormFill {
   values: Record<string, FieldValue>
   /** Zero-based pages to include; all pages when omitted. */
   pages?: number[]
+  /** Text printed onto pages of a form that has no fillable fields (PDF points from the bottom left; x is the right edge when right is set). */
+  draw?: { page: number; x: number; y: number; text: string; size?: number; right?: boolean }[]
 }
 /** Paid preparer details printed on Form 1040 page 2. Matches the app's preparer profile. */
 export interface PreparerInfo {

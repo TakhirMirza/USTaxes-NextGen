@@ -28,6 +28,10 @@ import type { MnResult } from '../engine/mn2025.ts'
 import { buildMnPacket } from './mn2025.ts'
 import type { WiResult } from '../engine/wi2025.ts'
 import { buildWiPacket } from './wi2025.ts'
+import type { InResult } from '../engine/in2025.ts'
+import { buildInPacket } from './in2025.ts'
+import type { ScResult } from '../engine/sc2025.ts'
+import { buildScPacket } from './sc2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -132,4 +136,12 @@ export function downloadMinnesotaForms(ret: TaxReturnInput, res: TaxReturnResult
 
 export function downloadWisconsinForms(ret: TaxReturnInput, res: TaxReturnResult, wi: WiResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildWiPacket(ret, res, wi, preparer).forms, '2025 Wisconsin Form 1 — USTaxes NextGen', `2025-Wisconsin-Form-1-${slug(ret)}.pdf`)
+}
+
+export function downloadIndianaForms(ret: TaxReturnInput, res: TaxReturnResult, it: InResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildInPacket(ret, res, it, preparer).forms, '2025 Indiana Form IT-40 — USTaxes NextGen', `2025-Indiana-IT-40-${slug(ret)}.pdf`)
+}
+
+export function downloadSouthCarolinaForms(ret: TaxReturnInput, res: TaxReturnResult, sc: ScResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildScPacket(ret, res, sc, preparer).forms, '2025 South Carolina SC1040 — USTaxes NextGen', `2025-South-Carolina-SC1040-${slug(ret)}.pdf`)
 }
