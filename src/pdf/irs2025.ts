@@ -8,7 +8,7 @@
 import type { Owner, Person, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import { careQualifyingPerson, ctcChild, eicChild } from '../engine/compute.ts'
-import * as R from '../engine/rules2025.ts'
+import * as R from '../engine/rules.ts'
 import { gainOf, groups8949, lineFor, scheduleDLines, withDefaults } from '../engine/capital.ts'
 import type { ScheduleDLine } from '../engine/capital.ts'
 

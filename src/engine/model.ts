@@ -1,4 +1,5 @@
-import type { FilingStatus } from './rules2025.ts'
+import type { FilingStatus, TaxYear } from './rules.ts'
+import { DEFAULT_TAX_YEAR, isTaxYear } from './rules.ts'
 
 export type Owner = 'taxpayer' | 'spouse'
 
@@ -1168,6 +1169,8 @@ export const emptyStateGeneric = (): StateGenericInput => ({ withholding: 0, est
 
 export interface TaxReturnInput {
   version: 1
+  /** The tax year this return is for (2025 return filed in 2026, 2026 return filed in 2027, ...). */
+  taxYear: TaxYear
   filingStatus: FilingStatus
   taxpayer: Person
   spouse: Person
@@ -1398,6 +1401,7 @@ export const emptySavings = (): RetirementSavings => ({ iraContributions: 0, ele
 
 export const emptyReturn = (): TaxReturnInput => ({
   version: 1,
+  taxYear: DEFAULT_TAX_YEAR,
   filingStatus: 'single',
   taxpayer: emptyPerson(),
   spouse: emptyPerson(),
@@ -1516,6 +1520,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     ...r,
     filingStatus: (['single', 'mfj', 'mfs', 'hoh', 'qss'] as const).includes(r.filingStatus as FilingStatus) ? (r.filingStatus as FilingStatus) : 'single',
     version: 1,
+    // Returns saved before years were added are 2025 returns.
+    taxYear: isTaxYear(r.taxYear) ? r.taxYear : 2025,
     taxpayer: person(r.taxpayer),
     spouse: person(r.spouse),
     dependents: Array.isArray(r.dependents) ? r.dependents.map(dependent) : [],

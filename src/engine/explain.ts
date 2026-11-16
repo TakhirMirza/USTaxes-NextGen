@@ -4,7 +4,7 @@
  */
 import type { Issue, TaxReturnResult } from './compute.ts'
 import type { TaxReturnInput } from './model.ts'
-import * as R from './rules2025.ts'
+import * as R from './rules.ts'
 
 export interface ExplainPart { label: string; amount: number; sign?: '+' | '−' }
 export interface Explanation {
@@ -89,7 +89,7 @@ export function explainLine(line: string, input: TaxReturnInput, res: TaxReturnR
       return {
         formula: 'Schedule D line 16 (or 21 for a loss): short-term plus long-term gains and losses.',
         parts: nz([{ label: 'Net short-term gain or loss', amount: d.shortTerm }, { label: 'Net long-term gain or loss (incl. 4797 and distributions)', amount: d.longTerm, sign: '+' }]),
-        notes: d.net < 0 && f['7a'] !== d.net ? [`A net capital loss is limited to ${usd(-f['7a'])} this year; ${usd(d.carryoverShort + d.carryoverLong)} carries to 2026.`] : [],
+        notes: d.net < 0 && f['7a'] !== d.net ? [`A net capital loss is limited to ${usd(-f['7a'])} this year; ${usd(d.carryoverShort + d.carryoverLong)} carries to ${R.TAX_YEAR + 1}.`] : [],
         refs: [about('Schedule D', 'schedule-d-form-1040')], step: 'income'
       }
     }
@@ -117,7 +117,7 @@ export function explainLine(line: string, input: TaxReturnInput, res: TaxReturnR
       return {
         formula: `The larger of the standard deduction and your itemized deductions, unless you chose one. Used: ${d.used}.`,
         parts: [{ label: 'Standard deduction', amount: d.standard }, { label: 'Itemized deductions (Schedule A)', amount: d.itemized }],
-        notes: d.used === 'itemized' ? [`State and local taxes counted: ${usd(res.scheduleA.taxes)} (the 2025 cap is ${usd(res.scheduleA.saltCap)}).`] : [],
+        notes: d.used === 'itemized' ? [`State and local taxes counted: ${usd(res.scheduleA.taxes)} (the ${R.TAX_YEAR} cap is ${usd(res.scheduleA.saltCap)}).`] : [],
         refs: [I1040, about('Schedule A', 'schedule-a-form-1040')], step: 'deductions'
       }
     }
@@ -126,13 +126,13 @@ export function explainLine(line: string, input: TaxReturnInput, res: TaxReturnR
       return {
         formula: `20% of qualified business income, limited to 20% of taxable income before this deduction less net capital gain (Form ${q.form === '8995a' ? '8995-A' : '8995'}).`,
         parts: nz([...q.businesses.map((b) => ({ label: `${b.name}: 20% of ${usd(b.line2)}`, amount: q.form === '8995a' ? b.line15 : b.line3 })), { label: 'REIT dividends (20%)', amount: q.reitComponent }, { label: 'Income limit', amount: q.incomeLimit }]),
-        notes: q.lossCarryforward > 0 ? [`Qualified business loss carried to 2026: ${usd(q.lossCarryforward)}.`] : [], refs: [about('Form 8995', 'form-8995')], step: 'income'
+        notes: q.lossCarryforward > 0 ? [`Qualified business loss carried to ${R.TAX_YEAR + 1}: ${usd(q.lossCarryforward)}.`] : [], refs: [about('Form 8995', 'form-8995')], step: 'income'
       }
     }
     case '13b': {
       const a = res.schedule1A
       return {
-        formula: 'Schedule 1-A (new for 2025): no tax on tips, no tax on overtime, car loan interest, and the enhanced deduction for seniors.',
+        formula: 'Schedule 1-A (from 2025): no tax on tips, no tax on overtime, car loan interest, and the enhanced deduction for seniors.',
         parts: nz([{ label: 'Qualified tips', amount: a.tips }, { label: 'Qualified overtime', amount: a.overtime }, { label: 'Car loan interest', amount: a.carLoanInterest }, { label: 'Enhanced deduction for seniors', amount: a.senior }]),
         notes: a.magi > 150000 ? [`Phase-outs apply at your modified AGI of ${usd(a.magi)}.`] : [], refs: [I1040], step: 'deductions'
       }
@@ -191,7 +191,7 @@ export function explainLine(line: string, input: TaxReturnInput, res: TaxReturnR
         notes: [], refs: [I1040], step: 'income'
       }
     case '26':
-      return { formula: 'Estimated tax payments for 2025, including any 2024 overpayment applied.', parts: input.payments.estimatedByQuarter.map((n, i) => ({ label: ['Paid by Apr 15, 2025', 'Paid by Jun 16, 2025', 'Paid by Sep 15, 2025', 'Paid by Jan 15, 2026'][i], amount: n })).filter((p) => p.amount), notes: [], refs: [I1040], step: 'credits' }
+      return { formula: `Estimated tax payments for ${R.TAX_YEAR}, including any ${R.TAX_YEAR - 1} overpayment applied.`, parts: input.payments.estimatedByQuarter.map((n, i) => ({ label: `Paid by ${R.INSTALLMENT_DUE_DATES[i]}`, amount: n })).filter((p) => p.amount), notes: [], refs: [I1040], step: 'credits' }
     case '27a': {
       const e = res.eic
       return { formula: 'Earned income credit, from the EIC tables, based on earned income, AGI and qualifying children.', parts: [{ label: `Earned income, ${e.qualifyingChildren} qualifying children`, amount: e.earnedIncome }, { label: 'Credit', amount: e.credit }], notes: [], refs: [about('Schedule EIC', 'schedule-eic-form-1040')], step: 'credits' }
@@ -201,7 +201,7 @@ export function explainLine(line: string, input: TaxReturnInput, res: TaxReturnR
     case '29':
       return { formula: '40% of the American opportunity credit is refundable (Form 8863).', parts: [{ label: 'Refundable AOTC', amount: res.form8863.aotcRefundable }], notes: [], refs: [about('Form 8863', 'form-8863')], step: 'credits' }
     case '31':
-      return { formula: 'Social Security tax withheld over the 2025 maximum when you had more than one employer (Schedule 3).', parts: [{ label: 'Excess withheld', amount: res.schedule3.excessSocialSecurity }], notes: [], refs: [S3], step: 'income' }
+      return { formula: `Social Security tax withheld over the ${R.TAX_YEAR} maximum when you had more than one employer (Schedule 3).`, parts: [{ label: 'Excess withheld', amount: res.schedule3.excessSocialSecurity }], notes: [], refs: [S3], step: 'income' }
     case '33':
       return { formula: 'Lines 25d, 26 and 32 (refundable credits) added together.', parts: nz([{ label: 'Withholding (25d)', amount: f['25d'] }, { label: 'Estimated payments (26)', amount: f['26'] }, { label: 'Refundable credits (32)', amount: f['32'] }]), notes: [], refs: [I1040] }
     case '34':

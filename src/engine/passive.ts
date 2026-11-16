@@ -8,8 +8,8 @@
  * allowance is spread over the rental losses (Part VI), the remaining unallowed loss over every loss
  * activity in proportion (Part VII), and the allowed loss per activity is Part VIII.
  */
-import type { FilingStatus } from './rules2025.ts'
-import * as R from './rules2025.ts'
+import type { FilingStatus } from './rules.ts'
+import * as R from './rules.ts'
 
 const r = (n: number): number => Math.round(n)
 const pos = (n: number): number => Math.max(0, n)

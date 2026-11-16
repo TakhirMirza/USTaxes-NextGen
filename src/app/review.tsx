@@ -5,7 +5,7 @@ import { normalizeReturn, emptyReturn } from '../engine/model.ts'
 import { buildPacket2025 } from '../pdf/irs2025.ts'
 import { groups8949 } from '../engine/capital.ts'
 import { explainLine } from '../engine/explain.ts'
-import { FILING_STATUS_LABELS } from '../engine/rules2025.ts'
+import { FILING_STATUS_LABELS, FEDERAL_FORMS_READY, TAX_YEAR } from '../engine/rules.ts'
 import { Check, DigitsField, Section, TextField, usd } from './fields'
 import { STATUS_LABELS, preparerReady } from './store.ts'
 import type { PreparerProfile, ReturnStatus } from './store.ts'
@@ -99,7 +99,7 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `ustaxes-2025-${(ret.taxpayer.lastName || 'return').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.json`
+    a.download = `ustaxes-${TAX_YEAR}-${(ret.taxpayer.lastName || 'return').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.json`
     a.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
     setMessage('Saved a copy of your return to your downloads.')
@@ -149,7 +149,7 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
         </div>
       </Section>
 
-      <Section title="IRS forms" intro="Your return on the official 2025 IRS forms, filled in and ready to print, sign and mail. The PDF is made on this device.">
+      <Section title="IRS forms" intro={`Your return on the official ${TAX_YEAR} IRS forms, filled in and ready to print, sign and mail. The PDF is made on this device.`}>
         <ul className="form-list">
           {packet.forms.map((f) => <li key={f.id}>{f.title}</li>)}
         </ul>
@@ -160,9 +160,10 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
           </div>
         )}
         {blocking.length > 0 && <p className="note is-warn">Some details are missing ({blocking.length}). You can still download, but finish them under “Things to look at” before you file.</p>}
+        {!FEDERAL_FORMS_READY[ret.taxYear] && <p className="note is-warn"><strong>The {TAX_YEAR} IRS forms are not in the app yet.</strong> The IRS publishes final forms in December–January; until then the numbers above are a preview using {TAX_YEAR} rates and law, and the PDF can’t be made.</p>}
         <div className="actions">
-          <button type="button" className="button" onClick={makePdf} disabled={pdfState.busy}>{pdfState.busy ? 'Preparing PDF…' : 'Download IRS forms (PDF)'}</button>
-          <a className="button is-quiet" href="#/letter">Letter with filing instructions</a>
+          <button type="button" className="button" onClick={makePdf} disabled={pdfState.busy || !FEDERAL_FORMS_READY[ret.taxYear]}>{pdfState.busy ? 'Preparing PDF…' : 'Download IRS forms (PDF)'}</button>
+          {FEDERAL_FORMS_READY[ret.taxYear] && <a className="button is-quiet" href="#/letter">Letter with filing instructions</a>}
         </div>
         {pdfState.note && <p className="note" role="status">{pdfState.note}</p>}
         <p className="why">Before mailing: sign and date page 2 of Form 1040, attach Copy B of your W-2s (and any 1099-R with tax withheld), and send to the IRS address for your state listed in the Form 1040 instructions.</p>
@@ -179,7 +180,7 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
         )
       })()}
 
-      <Section title="Form 1040" intro={`${FILING_STATUS_LABELS[ret.filingStatus]} · tax year 2025. Select any line to see how it was figured.`}>
+      <Section title="Form 1040" intro={`${FILING_STATUS_LABELS[ret.filingStatus]} · tax year ${TAX_YEAR}. Select any line to see how it was figured.`}>
         <table className="lines is-explainable">
           <tbody>
             {LINES.filter(([line]) => ALWAYS.has(line) || f[line] !== 0).map(([line, label]) => {
@@ -282,7 +283,7 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
                 <div><dt>Net short-term</dt><dd>{usd(result.scheduleD.shortTerm)}</dd></div>
                 <div><dt>Net long-term</dt><dd>{usd(result.scheduleD.longTerm)}</dd></div>
                 <div><dt>On Form 1040 line 7a</dt><dd>{usd(f['7a'])}</dd></div>
-                {result.scheduleD.carryoverShort + result.scheduleD.carryoverLong > 0 && <div><dt>Carryover to 2026</dt><dd>{usd(result.scheduleD.carryoverShort + result.scheduleD.carryoverLong)}</dd></div>}
+                {result.scheduleD.carryoverShort + result.scheduleD.carryoverLong > 0 && <div><dt>Carryover to {TAX_YEAR + 1}</dt><dd>{usd(result.scheduleD.carryoverShort + result.scheduleD.carryoverLong)}</dd></div>}
               </dl>
             </details>
           )}
@@ -351,8 +352,8 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
             <details><summary>Schedule E <span>Rental real estate and royalties</span></summary>
               <dl className="facts">
                 {result.scheduleE.properties.map((p) => <div key={p.id}><dt>{p.address}</dt><dd>{usd(p.net)}</dd></div>)}
-                {result.scheduleE.priorCarryover > 0 && <div><dt>Loss carried over from 2024</dt><dd>−{usd(result.scheduleE.priorCarryover)}</dd></div>}
-                {result.scheduleE.disallowed > 0 && <div><dt>Not allowed this year (carries to 2026)</dt><dd>{usd(result.scheduleE.disallowed)}</dd></div>}
+                {result.scheduleE.priorCarryover > 0 && <div><dt>Loss carried over from {TAX_YEAR - 1}</dt><dd>−{usd(result.scheduleE.priorCarryover)}</dd></div>}
+                {result.scheduleE.disallowed > 0 && <div><dt>Not allowed this year (carries to {TAX_YEAR + 1})</dt><dd>{usd(result.scheduleE.disallowed)}</dd></div>}
                 <div><dt>On Schedule 1 line 5</dt><dd>{usd(result.scheduleE.net)}</dd></div>
               </dl>
             </details>
@@ -366,7 +367,7 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
                 <div><dt>Operating expenses allowed (line 27)</dt><dd>{usd(c.homeOffice.line25)}</dd></div>
                 <div><dt>Depreciation allowed (line 33)</dt><dd>{usd(c.homeOffice.depreciationAllowed)}</dd></div>
                 <div><dt>Deduction (line 36, Schedule C line 30)</dt><dd>{usd(c.homeOffice.deduction)}</dd></div>
-                {c.homeOffice.carryover > 0 && <div><dt>Carryover to 2026 (lines 43–44)</dt><dd>{usd(c.homeOffice.carryover)}</dd></div>}
+                {c.homeOffice.carryover > 0 && <div><dt>Carryover to {TAX_YEAR + 1} (lines 43–44)</dt><dd>{usd(c.homeOffice.carryover)}</dd></div>}
               </dl>
             </details>
           ))}
@@ -389,7 +390,7 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
               <dl className="facts">
                 {result.k1.rows.map((x) => <div key={x.id}><dt>{x.name} ({x.kind === 'scorp' ? 'S' : 'P'}{x.passive ? ', passive' : ''})</dt><dd>{usd(x.h + x.k - x.g - x.i - x.j)}</dd></div>)}
                 <div><dt>Total (line 32)</dt><dd>{usd(result.k1.line32)}</dd></div>
-                {result.k1.disallowed > 0 && <div><dt>Passive loss carried to 2026</dt><dd>{usd(result.k1.disallowed)}</dd></div>}
+                {result.k1.disallowed > 0 && <div><dt>Passive loss carried to {TAX_YEAR + 1}</dt><dd>{usd(result.k1.disallowed)}</dd></div>}
               </dl>
             </details>
           )}
@@ -402,7 +403,7 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
                 ))}
                 {result.form8582.line9 > 0 && <div><dt>Special allowance (line 9)</dt><dd>{usd(result.form8582.line9)}</dd></div>}
                 <div><dt>Total losses allowed (line 11)</dt><dd>{usd(result.form8582.line11)}</dd></div>
-                {result.form8582.unallowed > 0 && <div><dt>Carried to 2026</dt><dd>{usd(result.form8582.unallowed)}</dd></div>}
+                {result.form8582.unallowed > 0 && <div><dt>Carried to {TAX_YEAR + 1}</dt><dd>{usd(result.form8582.unallowed)}</dd></div>}
               </dl>
             </details>
           )}
@@ -417,7 +418,7 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
               </dl>
             </details>
           )}
-          {result.section179.line13 > 0 && <p className="why">Section 179 carried to 2026: {usd(result.section179.line13)}.</p>}
+          {result.section179.line13 > 0 && <p className="why">Section 179 carried to {TAX_YEAR + 1}: {usd(result.section179.line13)}.</p>}
           {result.form8889.map((h) => (
             <details key={`8889-${h.owner}`}><summary>Form 8889 <span>HSA — {h.owner === 'spouse' ? ret.spouse.firstName || 'Spouse' : ret.taxpayer.firstName || 'You'}</span></summary>
               <dl className="facts">
@@ -447,12 +448,12 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
                   <div key={b.id}><dt>{b.name}{b.sstb ? ' (service business)' : ''}{b.excluded ? ' — not eligible at this income' : ''}</dt>
                     <dd>{usd(b.line2)}{result.qbi.form === '8995a' && !b.excluded ? ` → ${usd(b.line15)}` : ''}</dd></div>
                 ))}
-                {result.qbi.priorLoss > 0 && <div><dt>Loss carried from 2024</dt><dd>−{usd(result.qbi.priorLoss)}</dd></div>}
+                {result.qbi.priorLoss > 0 && <div><dt>Loss carried from {TAX_YEAR - 1}</dt><dd>−{usd(result.qbi.priorLoss)}</dd></div>}
                 {result.qbi.reitPtp > 0 && <div><dt>REIT dividends (20%)</dt><dd>{usd(result.qbi.reitComponent)}</dd></div>}
                 {result.qbi.form === '8995a' && result.qbi.phaseIn && <div><dt>Phase-in percentage</dt><dd>{(result.qbi.phaseIn.pct * 100).toFixed(2)}%</dd></div>}
                 <div><dt>Income limit (20% of taxable income less net capital gain)</dt><dd>{usd(result.qbi.incomeLimit)}</dd></div>
                 <div><dt>Deduction (Form 1040 line 13a)</dt><dd>{usd(result.qbi.deduction)}</dd></div>
-                {result.qbi.lossCarryforward > 0 && <div><dt>Loss carried to 2026</dt><dd>{usd(result.qbi.lossCarryforward)}</dd></div>}
+                {result.qbi.lossCarryforward > 0 && <div><dt>Loss carried to {TAX_YEAR + 1}</dt><dd>{usd(result.qbi.lossCarryforward)}</dd></div>}
               </dl>
             </details>
           )}

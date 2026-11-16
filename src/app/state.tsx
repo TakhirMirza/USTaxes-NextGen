@@ -1,5 +1,5 @@
 /**
- * The State step: choose the state you lived in all of 2025, then prepare its return if the app supports
+ * The State step: choose the state you lived in all year, then prepare its return if the app supports
  * it, or see what that state requires. Each supported state has its own step body (Virginia: virginia.tsx).
  */
 import { ReactElement } from 'react'
@@ -22,6 +22,7 @@ import { OhioStep } from './ohio'
 import { NewJerseyStep } from './newjersey'
 import { MassachusettsStep } from './massachusetts'
 import { StateEstimateView } from './stateEstimate'
+import { STATE_RETURNS_READY, TAX_YEAR } from '../engine/rules.ts'
 
 const GROUPS: { label: string; support: StateInfo['support'] }[] = [
   { label: 'Prepared by this app', support: 'supported' },
@@ -36,13 +37,14 @@ export function StateStep(props: StepProps & { preparer: PreparerInfo | null }):
   const { ret, set, result } = props
   const info = stateInfo(ret.residentState)
   const addressState = stateInfo(ret.contact.state ?? '')
+  const ready = STATE_RETURNS_READY[TAX_YEAR]
   // A local rate and state adjustments belong to one state, so they start over when the state changes.
   const choose = (code: string): void => set((r) => ({ ...r, residentState: code, virginia: { ...r.virginia, enabled: code === 'VA' }, stateGeneric: code === r.residentState ? r.stateGeneric : { ...r.stateGeneric, localRate: 0, adjustments: 0, otherCredits: 0 } }))
   const ltcg = result.scheduleD.longTerm
 
   return (
     <div className="state-step">
-      <Section title="Your state" intro="Pick the state you lived in for all of 2025. Its return starts from your federal return, so finish the federal steps first.">
+      <Section title="Your state" intro={`Pick the state you lived in for all of ${TAX_YEAR}. Its return starts from your federal return, so finish the federal steps first.`}>
         <div className="grid">
           <div className="field">
             <label htmlFor="resident-state"><span>State of residence</span></label>
@@ -66,7 +68,7 @@ export function StateStep(props: StepProps & { preparer: PreparerInfo | null }):
 
       {info?.support === 'no-tax' && (
         <Section title={`${info.name}: no state return`}>
-          <p>{info.note} You do not file a state income tax return for 2025.</p>
+          <p>{info.note} You do not file a state income tax return for {TAX_YEAR}.</p>
           {info.code === 'WA' && ltcg > 250000 && (
             <div className="note is-warn">
               <strong>Check Washington’s capital gains tax.</strong> You have {usd(ltcg)} of long-term gains. Washington taxes long-term gains above its yearly deduction (7%, and 9.9% on the part over $1 million starting with 2025), on its own return filed with the Department of Revenue.
@@ -75,21 +77,27 @@ export function StateStep(props: StepProps & { preparer: PreparerInfo | null }):
         </Section>
       )}
 
-      {info?.support === 'estimate' && <StateEstimateView {...props} />}
+      {info && info.support !== 'no-tax' && !ready && (
+        <Section title={`${info.name}: ${TAX_YEAR} return not ready yet`}>
+          <p className="note is-warn">States publish their {TAX_YEAR} forms and rates from December through February. This app adds each state when its official {TAX_YEAR} forms are out. Until then, the federal return is a preview and no {info.name} figures are shown, so nothing here uses last year’s state rules by mistake.</p>
+        </Section>
+      )}
 
-      {info?.code === 'VA' && <VirginiaStep {...props} />}
-      {info?.code === 'MD' && <MarylandStep {...props} />}
-      {info?.code === 'DC' && <DcStep {...props} />}
-      {info?.code === 'CA' && <CaliforniaStep {...props} />}
-      {info?.code === 'NY' && <NewYorkStep {...props} />}
-      {info?.code === 'IL' && <IllinoisStep {...props} />}
-      {info?.code === 'PA' && <PennsylvaniaStep {...props} />}
-      {info?.code === 'NC' && <NorthCarolinaStep {...props} />}
-      {info?.code === 'MI' && <MichiganStep {...props} />}
-      {info?.code === 'GA' && <GeorgiaStep {...props} />}
-      {info?.code === 'OH' && <OhioStep {...props} />}
-      {info?.code === 'NJ' && <NewJerseyStep {...props} />}
-      {info?.code === 'MA' && <MassachusettsStep {...props} />}
+      {ready && info?.support === 'estimate' && <StateEstimateView {...props} />}
+
+      {ready && info?.code === 'VA' && <VirginiaStep {...props} />}
+      {ready && info?.code === 'MD' && <MarylandStep {...props} />}
+      {ready && info?.code === 'DC' && <DcStep {...props} />}
+      {ready && info?.code === 'CA' && <CaliforniaStep {...props} />}
+      {ready && info?.code === 'NY' && <NewYorkStep {...props} />}
+      {ready && info?.code === 'IL' && <IllinoisStep {...props} />}
+      {ready && info?.code === 'PA' && <PennsylvaniaStep {...props} />}
+      {ready && info?.code === 'NC' && <NorthCarolinaStep {...props} />}
+      {ready && info?.code === 'MI' && <MichiganStep {...props} />}
+      {ready && info?.code === 'GA' && <GeorgiaStep {...props} />}
+      {ready && info?.code === 'OH' && <OhioStep {...props} />}
+      {ready && info?.code === 'NJ' && <NewJerseyStep {...props} />}
+      {ready && info?.code === 'MA' && <MassachusettsStep {...props} />}
     </div>
   )
 }

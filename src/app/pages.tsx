@@ -2,8 +2,8 @@ import { ChangeEvent, ReactElement, ReactNode, useMemo, useRef, useState } from 
 import { computeReturn } from '../engine/compute.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { TaxReturnInput } from '../engine/model.ts'
-import { FILING_STATUS_LABELS } from '../engine/rules2025.ts'
-import * as R from '../engine/rules2025.ts'
+import { FILING_STATUS_LABELS, TAX_YEAR } from '../engine/rules.ts'
+import * as R from '../engine/rules.ts'
 import { STATUS_LABELS, displayName, loadReturn, preparerReady } from './store.ts'
 import type { KV, PreparerProfile, ReturnIndex, ReturnMeta, ReturnStatus } from './store.ts'
 import { decryptBackup, encryptBackup, makeBackup, parseBackupText } from './backup.ts'
@@ -35,7 +35,7 @@ export function Masthead({ current, status, page, onExample }: {
       <nav className="masthead-side" aria-label="App">
         {page === 'return'
           ? <span className="current-return">{current}{status && <span className={`status-pill is-${status}`}>{STATUS_LABELS[status]}</span>}</span>
-          : <p className="masthead-note">2025 federal returns · private, runs in your browser</p>}
+          : <p className="masthead-note">{TAX_YEAR} federal returns · private, runs in your browser</p>}
         <a className={`nav-link ${page === 'returns' ? 'is-active' : ''}`} href="#/returns">All returns</a>
         <a className={`nav-link ${page === 'settings' ? 'is-active' : ''}`} href="#/settings">Settings</a>
         <a className={`nav-link ${page === 'privacy' ? 'is-active' : ''}`} href="#/privacy">Privacy</a>
@@ -289,7 +289,7 @@ export function LetterPage({ ret, result, preparer, usePreparer }: { ret: TaxRet
     <>Attach Copy B of every Form W-2{ret.retirement.some((r) => r.federalWithholding > 0) ? ', and any Form 1099-R that shows tax withheld,' : ''} to the front of page 1.</>,
     <>Mail the return to the IRS address for your state, listed at irs.gov/filingaddress. The address is different when you enclose a payment.</>
   ]
-  if (s.amountOwed > 0) steps.push(<>Pay {usd(s.amountOwed)} by April 15, 2026: online at irs.gov/payments (IRS Direct Pay), or by check payable to “United States Treasury” with the enclosed Form 1040-V. Write your SSN and “2025 Form 1040” on the check.</>)
+  if (s.amountOwed > 0) steps.push(<>Pay {usd(s.amountOwed)} by April 15, {TAX_YEAR + 1}: online at irs.gov/payments (IRS Direct Pay), or by check payable to “United States Treasury” with the enclosed Form 1040-V. Write your SSN and “{TAX_YEAR} Form 1040” on the check.</>)
   steps.push(<>Keep a copy of this return and your records for at least three years.</>)
 
   return (
@@ -306,7 +306,7 @@ export function LetterPage({ ret, result, preparer, usePreparer }: { ret: TaxRet
               {preparer.firmAddress && <div>{preparer.firmAddress}</div>}
               {preparer.phone && <div>{preparer.phone}</div>}
             </div>
-          ) : <div><strong>2025 federal income tax return</strong></div>}
+          ) : <div><strong>{TAX_YEAR} federal income tax return</strong></div>}
           <div className="letter-date">{fmtDate(today())}</div>
         </header>
         <address className="letter-to">
@@ -315,14 +315,14 @@ export function LetterPage({ ret, result, preparer, usePreparer }: { ret: TaxRet
           {[ret.contact.city, ret.contact.state].filter(Boolean).join(', ')} {ret.contact.zip.replace(/\D/g, '').slice(0, 5)}
         </address>
 
-        <h1>Your 2025 federal income tax return</h1>
+        <h1>Your {TAX_YEAR} federal income tax return</h1>
         <p>Dear {joint ? `${ret.taxpayer.firstName} and ${ret.spouse.firstName}` : ret.taxpayer.firstName || 'taxpayer'},</p>
         <p>
           {s.amountOwed > 0
-            ? <>Your 2025 federal return shows a balance due of <strong>{usd(s.amountOwed)}</strong>{f['38'] > 0 ? `, including an estimated tax penalty of ${usd(f['38'])}` : ''}. It must be paid by April 15, 2026 to avoid further interest and penalties.</>
+            ? <>Your {TAX_YEAR} federal return shows a balance due of <strong>{usd(s.amountOwed)}</strong>{f['38'] > 0 ? `, including an estimated tax penalty of ${usd(f['38'])}` : ''}. It must be paid by April 15, {TAX_YEAR + 1} to avoid further interest and penalties.</>
             : s.refund > 0
-              ? <>Your 2025 federal return shows a refund of <strong>{usd(s.refund)}</strong>{deposit ? `, to be deposited to your ${ret.refundDeposit.accountType} account ending in ${account.slice(-4)}` : ', to be mailed as a paper check'}.</>
-              : <>Your 2025 federal return shows no refund and no balance due.</>}
+              ? <>Your {TAX_YEAR} federal return shows a refund of <strong>{usd(s.refund)}</strong>{deposit ? `, to be deposited to your ${ret.refundDeposit.accountType} account ending in ${account.slice(-4)}` : ', to be mailed as a paper check'}.</>
+              : <>Your {TAX_YEAR} federal return shows no refund and no balance due.</>}
         </p>
 
         <table className="letter-figures">
@@ -343,11 +343,11 @@ export function LetterPage({ ret, result, preparer, usePreparer }: { ret: TaxRet
 
         {quarterly > 0 && (
           <>
-            <h2>Estimated tax for 2026</h2>
+            <h2>Estimated tax for {TAX_YEAR + 1}</h2>
             <p>
-              Your withholding did not cover your 2025 tax. To avoid a penalty next year, consider paying about <strong>{usd(quarterly)}</strong> on
-              each of these dates: April 15, 2026; June 15, 2026; September 15, 2026; and January 15, 2027 (Form 1040-ES or irs.gov/payments).
-              Raising the withholding on your W-4 works too. This assumes your 2026 income and withholding are similar to 2025.
+              Your withholding did not cover your {TAX_YEAR} tax. To avoid a penalty next year, consider paying about <strong>{usd(quarterly)}</strong> on
+              each of these dates: April 15, {TAX_YEAR + 1}; June 15, {TAX_YEAR + 1}; September 15, {TAX_YEAR + 1}; and January 15, {TAX_YEAR + 2} (Form 1040-ES or irs.gov/payments).
+              Raising the withholding on your W-4 works too. This assumes your {TAX_YEAR + 1} income and withholding are similar to {TAX_YEAR}.
             </p>
           </>
         )}

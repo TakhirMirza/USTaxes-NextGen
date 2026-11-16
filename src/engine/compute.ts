@@ -1,11 +1,11 @@
 /**
- * Form 1040 (tax year 2025) calculation engine.
+ * Form 1040 calculation engine (the tax year's amounts come from rules.ts).
  *
  * One pure function: TaxReturnInput → TaxReturnResult. Every Form 1040 line and supporting
  * schedule is derived here, in IRS order, with whole-dollar rounding at each line.
  */
 import type { Dependent, HomeOffice, HsaAccount, Owner, Person, ScheduleCBusiness, TaxReturnInput } from './model.ts'
-import * as R from './rules2025.ts'
+import * as R from './rules.ts'
 import { qbiDeduction } from './qbi.ts'
 import { gainOf, holdingTermFromDates, isAggregated, parseDate, withDefaults } from './capital.ts'
 import { NONRES_FIRST_YEAR, assetDepreciation, form4562For, isPersonalProperty, midQuarterApplies, section179 } from './depreciation.ts'
@@ -17,7 +17,7 @@ import type { Form8582Result, PassiveActivity } from './passive.ts'
 import type { K1Totals } from './k1.ts'
 import type { Form4797Result } from './sales.ts'
 import type { QbiResult } from './qbi.ts'
-import type { FilingStatus } from './rules2025.ts'
+import type { FilingStatus } from './rules.ts'
 
 export type IssueLevel = 'error' | 'warning' | 'info'
 export interface Issue {
@@ -69,6 +69,8 @@ export interface TaxReturnResult {
     carCapped: number; carExcess: number; carReduction: number; carLoanInterest: number
     seniorExcess: number; seniorEach: number; seniorTaxpayer: number; seniorSpouse: number; senior: number
     total: number
+    /** From 2026: cash gifts to charity deducted with the standard deduction (part of line 13b here, not of Schedule 1-A). */
+    charityNonItemizer: number
   }
   scheduleA: { medical: number; taxes: number; saltBeforeCap: number; saltCap: number; interest: number; charity: number; other: number; total: number }
   scheduleB: { interest: number; ordinaryDividends: number; required: boolean }
@@ -263,12 +265,12 @@ export function homeOfficeDeduction(h: HomeOffice, tentativeProfit: number, item
   L['28'] = L['15'] - L['27']
   // Part III — depreciation of the home (39-year, mid-month).
   const first = parseDate(h.firstUsed ?? '')
-  const firstUsedThisYear = !!first && first.getUTCFullYear() === 2025
+  const firstUsedThisYear = !!first && first.getUTCFullYear() === R.TAX_YEAR
   const firstUsedMonth = first ? first.getUTCMonth() + 1 : 0
   if ((h.homeBasis ?? 0) > 0) {
     L['37'] = r(h.homeBasis); L['38'] = r(pos(h.landValue ?? 0)); L['39'] = pos(L['37'] - L['38'])
     L['40'] = r(L['39'] * pct)
-    L['41'] = first && first.getUTCFullYear() > 2025 ? 0 : firstUsedThisYear ? NONRES_FIRST_YEAR[firstUsedMonth - 1] : 2.564
+    L['41'] = first && first.getUTCFullYear() > R.TAX_YEAR ? 0 : firstUsedThisYear ? NONRES_FIRST_YEAR[firstUsedMonth - 1] : 2.564
     L['42'] = r(L['40'] * L['41'] / 100)
   } else {
     L['42'] = r(pos(h.depreciation))
@@ -441,6 +443,7 @@ export function estimatedTaxPenalty(a: {
 }
 
 export function computeReturn(input: TaxReturnInput): TaxReturnResult {
+  R.useTaxYear(input.taxYear)
   // Form 8829 depends on whether you itemize: mortgage interest and real estate taxes go on lines 10–11
   // only for itemizers. Figure it with the standard deduction first, then again if the return itemizes.
   const first = computeCore(input, false)
@@ -520,7 +523,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
     const byDates = holdingTermFromDates(t.dateAcquired, t.dateSold)
     if (byDates && byDates !== t.term) issues.push({ level: 'warning', step: 'income', message: `${label}: the dates show a ${byDates}-term holding period, but it is marked ${t.term}-term.` })
     const sold = parseDate(t.dateSold)
-    if (sold && sold.getUTCFullYear() !== 2025) issues.push({ level: 'warning', step: 'income', message: `${label}: the sale date is not in 2025.` })
+    if (sold && sold.getUTCFullYear() !== R.TAX_YEAR) issues.push({ level: 'warning', step: 'income', message: `${label}: the sale date is not in ${R.TAX_YEAR}.` })
     if ((t.adjustment || 0) !== 0 && !t.adjustmentCode.trim()) issues.push({ level: 'warning', step: 'income', message: `${label}: enter the Form 8949 code for the adjustment (for example W for a wash sale).` })
     if (!isAggregated(t) && (!t.dateSold.trim() || !t.dateAcquired.trim())) issues.push({ level: 'warning', step: 'income', message: `${label}: Form 8949 needs the dates acquired and sold (VARIOUS or INHERITED are allowed for the acquired date).` })
   })
@@ -543,14 +546,14 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
     carryoverShort = pos(stLoss - usedByShort)
     const ltLoss = pos(-longTerm) - pos(shortTerm)
     carryoverLong = pos(ltLoss - (lossLimit - usedByShort))
-    issues.push({ level: 'info', step: 'income', message: `Your net capital loss exceeds the $${lossLimit.toLocaleString()} limit. About $${(carryoverShort + carryoverLong).toLocaleString()} carries over to 2026.` })
+    issues.push({ level: 'info', step: 'income', message: `Your net capital loss exceeds the $${lossLimit.toLocaleString()} limit. About $${(carryoverShort + carryoverLong).toLocaleString()} carries over to ${R.TAX_YEAR + 1}.` })
   }
   const preferentialGain = pos(Math.min(longTerm, netCapital))
 
   // Depreciation (Form 4562) and the section 179 election
   const rentalsOwned = input.rentals.filter((p) => ownedBy(p.owner))
   const midQuarter = midQuarterApplies([...businesses.flatMap((b) => b.assets ?? []), ...rentalsOwned.flatMap((p) => p.assets ?? [])])
-  if (midQuarter) issues.push({ level: 'info', step: 'income', message: 'More than 40% of the equipment placed in service in 2025 was placed in service in October–December, so the mid-quarter convention applies to it (Form 4562, column (e) “MQ”).' })
+  if (midQuarter) issues.push({ level: 'info', step: 'income', message: `More than 40% of the equipment placed in service in ${R.TAX_YEAR} was placed in service in October–December, so the mid-quarter convention applies to it (Form 4562, column (e) “MQ”).` })
   const bizAssets = new Map(businesses.map((b) => [b.id, (b.assets ?? []).map((a) => assetDepreciation(a, { midQuarter, allow179: true }))]))
   const rentAssets = new Map(rentalsOwned.map((p) => [p.id, (p.assets ?? []).map((a) => assetDepreciation(a, { midQuarter, allow179: false }))]))
   ;[...bizAssets.values(), ...rentAssets.values()].flat().forEach((a) => a.issues.forEach((m) => issues.push({ level: 'warning', step: 'income', message: m })))
@@ -566,7 +569,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
   const electedTotal = sum(electedBy)
   const s179Alloc = businesses.map((_, i) => electedTotal > 0 ? r(s179.line12 * electedBy[i] / electedTotal) : i === 0 ? s179.line12 : 0)
   if (s179Alloc.length) s179Alloc[0] += s179.line12 - sum(s179Alloc)
-  if (s179.line13 > 0) issues.push({ level: 'info', step: 'income', message: `Section 179 deduction of $${s179.line13.toLocaleString()} is limited by business income and carries over to 2026 (Form 4562 line 13).` })
+  if (s179.line13 > 0) issues.push({ level: 'info', step: 'income', message: `Section 179 deduction of $${s179.line13.toLocaleString()} is limited by business income and carries over to ${R.TAX_YEAR + 1} (Form 4562 line 13).` })
 
   // Schedule C
   const scheduleCResults = businesses.map((b, i) => scheduleC(b, bizAssets.get(b.id) ?? [], s179Alloc[i] ?? 0, homeItemizing))
@@ -654,7 +657,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
   hsaResults.forEach((x) => {
     const p = x.owner === 'spouse' ? input.spouse : input.taxpayer
     const name = p.firstName || (x.owner === 'spouse' ? 'Your spouse' : 'You')
-    if (x.excess > 0) issues.push({ level: 'warning', step: 'deductions', message: `${name}: HSA contributions are $${x.excess.toLocaleString()} over the 2025 limit. Withdraw the excess by the filing deadline or a 6% excise tax applies each year (Form 5329).` })
+    if (x.excess > 0) issues.push({ level: 'warning', step: 'deductions', message: `${name}: HSA contributions are $${x.excess.toLocaleString()} over the ${R.TAX_YEAR} limit. Withdraw the excess by the filing deadline or a 6% excise tax applies each year (Form 5329).` })
     if (x.line16 > 0) issues.push({ level: 'info', step: 'deductions', message: `${name}: $${x.line16.toLocaleString()} of HSA distributions was not used for medical expenses, so it is taxable${x.line17b ? ` plus a 20% additional tax of $${x.line17b.toLocaleString()}` : ''}.` })
   })
   if (hsaFamilyBoth) issues.push({ level: 'info', step: 'deductions', message: 'Both spouses have family HSA coverage, so the family limit is split equally between you. You may agree to a different split on Form 8889.' })
@@ -694,7 +697,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
     const name = (f.owner === 'spouse' ? input.spouse.firstName : input.taxpayer.firstName) || (f.owner === 'spouse' ? 'Your spouse' : 'You')
     if (f.line4 > 0) issues.push({ level: 'warning', step: 'income', message: `${name}: a 10% additional tax of $${f.line4.toLocaleString()} applies to early retirement distributions (code 1).${f.line2 > 0 ? '' : ' If an exception applies (disability, first home, medical costs and others), enter it on the 1099-R.'}` })
     if (f.line49 > 0) issues.push({ level: 'warning', step: 'deductions', message: `${name}: 6% excise tax of $${f.line49.toLocaleString()} on excess HSA contributions (Form 5329, Part VII).` })
-    if (f.line48 > 0 && !(input.hsa[f.owner].yearEndValue > 0)) issues.push({ level: 'info', step: 'deductions', message: `${name}: enter the HSA value on December 31, 2025. The 6% tax applies to the smaller of the excess or that value.` })
+    if (f.line48 > 0 && !(input.hsa[f.owner].yearEndValue > 0)) issues.push({ level: 'info', step: 'deductions', message: `${name}: enter the HSA value on December 31, ${R.TAX_YEAR}. The 6% tax applies to the smaller of the excess or that value.` })
   })
   input.retirement.forEach((d, i) => {
     if ((d.earlyExceptionAmount ?? 0) > 0 && !/^\d{1,2}$/.test((d.earlyExceptionCode ?? '').trim())) issues.push({ level: 'warning', step: 'income', message: `1099-R #${i + 1}: choose the Form 5329 exception that applies to the early distribution.` })
@@ -738,7 +741,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
     sum(k1In.filter((k) => !k.materialParticipation && k.kind === 'partnership').map((k) => pos(k.guaranteedPayments)))
   const nonpassiveRental = sum(rentalResults.filter((x) => !activities.some((a) => a.id === x.id)).map((x) => x.net))
   const magiPassive = line1z + line2b + line3b + line4b + line5b + line7 + businessIncome + f4797.line18b + nonpassiveK1 + nonpassiveRental + pos(passiveNetAll) +
-    unemployment + otherIncome + hsaTaxable - (Math.min(pos(input.adjustments.educatorExpenses), joint ? 600 : 300) + hsaDeduction)
+    unemployment + otherIncome + hsaTaxable - (Math.min(pos(input.adjustments.educatorExpenses), (joint ? 2 : 1) * R.EDUCATOR_MAX) + hsaDeduction)
   const f8582 = form8582(activities, fs, magiPassive)
   const passiveBy = new Map(f8582.activities.map((x) => [x.id, x]))
   // Schedule E Part I, line 22: the deductible loss of each property.
@@ -750,8 +753,8 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
   const rentalLine25 = sum(rentalResults.map((x) => x.line22))
   const rentalNet = rentalLine24 - rentalLine25
   const rentalDisallowed = sum(rentalResults.map((x) => passiveBy.get(x.id)?.unallowed ?? 0))
-  if (f8582.unallowed > 0) issues.push({ level: 'info', step: 'income', message: `$${f8582.unallowed.toLocaleString()} of passive losses is not allowed this year and carries to 2026 (Form 8582).` })
-  if (fs === 'mfs' && f8582.line1d < 0) issues.push({ level: 'info', step: 'income', message: 'Married filing separately: the $25,000 rental loss allowance is $0 if you lived with your spouse at any time in 2025 ($12,500 if you lived apart all year — not figured here).' })
+  if (f8582.unallowed > 0) issues.push({ level: 'info', step: 'income', message: `$${f8582.unallowed.toLocaleString()} of passive losses is not allowed this year and carries to ${R.TAX_YEAR + 1} (Form 8582).` })
+  if (fs === 'mfs' && f8582.line1d < 0) issues.push({ level: 'info', step: 'income', message: `Married filing separately: the $25,000 rental loss allowance is $0 if you lived with your spouse at any time in ${R.TAX_YEAR} ($12,500 if you lived apart all year — not figured here).` })
   // Schedule E Part II — K-1 income
   const k1 = k1Totals(k1In, new Map([...passiveBy].map(([id, a]) => [id, { allowed: a.allowed, unallowed: a.unallowed }])))
   k1.issues.forEach((m) => issues.push({ level: 'warning', step: 'income', message: m }))
@@ -764,7 +767,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
 
   // Schedule 1, Part II (adjustments other than student loan interest)
   const a = input.adjustments
-  const educatorCap = joint ? 600 : 300
+  const educatorCap = (joint ? 2 : 1) * R.EDUCATOR_MAX
   const educator = Math.min(pos(a.educatorExpenses), educatorCap)
   if (a.educatorExpenses > educatorCap) issues.push({ level: 'info', step: 'deductions', message: `Educator expenses are limited to $${educatorCap}.` })
   const seHealthLimit = pos(businessIncome - halfSeTax)
@@ -785,7 +788,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
     const combined = half + otherIncomeForSs + line2a - adjustmentsBeforeSli
     if (fs === 'mfs') {
       line6b = r(Math.min(pos(combined) * 0.85, line6a * 0.85))
-      issues.push({ level: 'info', step: 'income', message: 'Married filing separately: Social Security was figured as if you lived with your spouse in 2025. If you lived apart all year, the $25,000 base applies instead.' })
+      issues.push({ level: 'info', step: 'income', message: `Married filing separately: Social Security was figured as if you lived with your spouse in ${R.TAX_YEAR}. If you lived apart all year, the $25,000 base applies instead.` })
     } else {
       const overBase = pos(combined - R.SS_BASE_AMOUNT[fs])
       if (overBase > 0) {
@@ -835,15 +838,24 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
   const saltBeforeCap = r(it.stateLocalIncomeOrSalesTax + it.realEstateTax + it.personalPropertyTax)
   const saltCap = Math.max(R.SALT_FLOOR[fs], R.SALT_CAP[fs] - pos(magi - R.SALT_PHASEDOWN_THRESHOLD[fs]) * R.SALT_PHASEDOWN_RATE)
   const taxes = r(Math.min(saltBeforeCap, saltCap))
-  const charity = r(it.charityCash + it.charityNonCash)
+  // From 2026 itemized charitable gifts count only above 0.5% of AGI.
+  const charity = r(pos(it.charityCash + it.charityNonCash - agi * R.CHARITY_AGI_FLOOR))
   if (it.charityCash > agi * 0.6 && it.charityCash > 0) issues.push({ level: 'warning', step: 'deductions', message: 'Cash gifts above 60% of AGI are limited; the excess carries forward. This return does not apply that limit.' })
   if (it.charityNonCash > 500) issues.push({ level: 'info', step: 'deductions', message: 'Noncash gifts over $500 require Form 8283 with your return.' })
-  const itemizedTotal = r(medical + taxes + it.mortgageInterest + charity + it.other)
+  const itemizedBeforeLimit = r(medical + taxes + it.mortgageInterest + charity + it.other)
+  // From 2026: itemized deductions are reduced by 2/37 of the lesser of the deductions or the income taxed at 37%
+  // (figured before Schedule 1-A and QBI deductions, a close approximation of the statute's ordering).
+  const top37 = R.BRACKETS[fs][R.BRACKETS[fs].length - 1][0]
+  const itemizedLimit = R.ITEMIZED_LIMIT_RATE > 0 ? r(R.ITEMIZED_LIMIT_RATE * Math.min(itemizedBeforeLimit, pos(agi - top37))) : 0
+  const itemizedTotal = itemizedBeforeLimit - itemizedLimit
+  if (itemizedLimit > 0) issues.push({ level: 'info', step: 'deductions', message: `In the 37% bracket, itemized deductions are reduced by 2/37 (${'$'}${itemizedLimit.toLocaleString()}).` })
+  // From 2026 people who take the standard deduction can also deduct cash gifts to charity, up to $1,000 ($2,000 joint).
+  const charityNonItemizer = r(Math.min(pos(it.charityCash), R.CHARITY_NONITEMIZER_MAX[fs]))
 
   let used: 'standard' | 'itemized'
   if (input.deductionChoice === 'standard') used = 'standard'
   else if (input.deductionChoice === 'itemized') used = 'itemized'
-  else used = itemizedTotal > standard ? 'itemized' : 'standard'
+  else used = itemizedTotal > standard + charityNonItemizer ? 'itemized' : 'standard'
   if (fs === 'mfs' && input.deductionChoice === 'auto') issues.push({ level: 'info', step: 'deductions', message: 'If your spouse itemizes on a separate return, you must itemize too. Choose “Itemize” in that case.' })
   if (input.deductionChoice !== 'auto' && used === 'itemized' && itemizedTotal < standard) issues.push({ level: 'info', step: 'deductions', message: 'Your itemized deductions are lower than the standard deduction.' })
   const line12 = used === 'itemized' ? itemizedTotal : standard
@@ -872,7 +884,9 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
   const senior = seniorTaxpayer + seniorSpouse
   if (marriedNotJoint && is65(input.taxpayer)) issues.push({ level: 'info', step: 'deductions', message: 'The $6,000 senior deduction is not available when married filing separately.' })
   if (s.carLoanInterest > 0) issues.push({ level: 'info', step: 'deductions', message: 'Car loan interest qualifies only for a new personal-use vehicle assembled in the U.S., bought after 2024. Keep the VIN for Schedule 1-A.' })
-  const line13b = tips + overtime + carLoan + senior
+  const charityStandard = used === 'standard' ? charityNonItemizer : 0
+  if (charityStandard > 0) issues.push({ level: 'info', step: 'deductions', message: `Cash gifts to charity: ${'$'}${charityStandard.toLocaleString()} is deducted along with the standard deduction (new for 2026; gifts to donor-advised funds do not count).` })
+  const line13b = tips + overtime + carLoan + senior + charityStandard
 
   // QBI deduction (Form 8995 or 8995-A)
   const tiBeforeQbi = pos(agi - line12 - line13b)
@@ -900,12 +914,16 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
     priorLoss: input.qbiCarryforward.business, priorReitLoss: input.qbiCarryforward.reitPtp,
     reitPtp: sum(input.dividends.map((d) => pos(d.section199ADividends)))
   })
-  const line13a = qbi.deduction
+  // From 2026: at least $400 when active QBI (Schedule C and K-1s with material participation) is $1,000 or more.
+  const activeQbi = sum(qbiInputs.map((b) => b.qbi)) + sum(k1In.filter((k) => k.materialParticipation).map((k) => k.qbi.income))
+  const qbiMinimum = R.QBI_MINIMUM_DEDUCTION > 0 && activeQbi >= R.QBI_MINIMUM_ACTIVE ? Math.min(R.QBI_MINIMUM_DEDUCTION, tiBeforeQbi) : 0
+  const line13a = Math.max(qbi.deduction, qbiMinimum)
+  if (qbiMinimum > qbi.deduction) issues.push({ level: 'info', step: 'review', message: `The QBI deduction is raised to the ${'$'}${R.QBI_MINIMUM_DEDUCTION} minimum (new for 2026).` })
   if (qbi.form === '8995a') {
     if (qbi.businesses.some((b) => b.sstb && b.excluded)) issues.push({ level: 'info', step: 'review', message: 'Specified service businesses get no QBI deduction at this taxable income (Form 8995-A, Schedule A).' })
     if (qbi.businesses.some((b) => !b.excluded && b.line2 > 0 && b.line4 === 0 && b.line7 === 0)) issues.push({ level: 'warning', step: 'income', message: 'Your taxable income is above the QBI threshold, so the deduction depends on W-2 wages paid and property (UBIA) for each business. Enter them under the business if it had employees or property; otherwise the deduction may be limited or zero.' })
   }
-  if (qbi.lossCarryforward > 0) issues.push({ level: 'info', step: 'review', message: `Qualified business loss of $${qbi.lossCarryforward.toLocaleString()} carries forward to 2026 (Form 8995 line 16).` })
+  if (qbi.lossCarryforward > 0) issues.push({ level: 'info', step: 'review', message: `Qualified business loss of $${qbi.lossCarryforward.toLocaleString()} carries forward to ${R.TAX_YEAR + 1} (Form 8995 line 16).` })
   if (input.rentals.some((x) => x.rents > 0)) issues.push({ level: 'info', step: 'income', message: 'Rental income is not included in the QBI deduction. A rental that qualifies as a trade or business (for example under the Rev. Proc. 2019-38 safe harbor) needs to be added by hand.' })
   const line14 = line12 + line13a + line13b
   const line15 = pos(line11 - line14)
@@ -944,7 +962,10 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
         f2441.line3 = r(Math.min(care.expenses, limit))
       }
       f2441.line6 = pos(Math.min(f2441.line3, f2441.line4, f2441.line5))
-      f2441.rate = Math.max(R.CARE_MIN_RATE, R.CARE_MAX_RATE - 0.01 * Math.ceil(pos(agi - R.CARE_RATE_STEP_START) / R.CARE_RATE_STEP))
+      // First step: down to CARE_FIRST_FLOOR; from 2026 a second step above CARE_SECOND_TIER_START lowers it to CARE_MIN_RATE.
+      const firstRate = Math.max(R.CARE_FIRST_FLOOR, R.CARE_MAX_RATE - 0.01 * Math.ceil(pos(agi - R.CARE_RATE_STEP_START) / R.CARE_RATE_STEP))
+      const tier2 = pos(agi - R.CARE_SECOND_TIER_START[fs])
+      f2441.rate = Math.round(Math.max(R.CARE_MIN_RATE, firstRate - (tier2 > 0 ? 0.01 * Math.ceil(tier2 / R.CARE_SECOND_STEP[fs]) : 0)) * 100) / 100
       f2441.line9a = r(f2441.line6 * f2441.rate)
       if (joint && Math.min(earnedTaxpayer, earnedSpouse) <= 0) issues.push({ level: 'info', step: 'credits', message: 'Both spouses need earned income for the child care credit, unless one was a full-time student or disabled (not figured here).' })
       const providerTotal = sum(care.providers.map((p) => p.amountPaid))
@@ -1062,7 +1083,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
   let eic = 0
   const eicReasons: string[] = []
   if (earnedIncome <= 0) eicReasons.push('no earned income')
-  if (fs === 'mfs') eicReasons.push('married filing separately (allowed only if you lived apart from your spouse for the last 6 months of 2025)')
+  if (fs === 'mfs') eicReasons.push('married filing separately (allowed only if you lived apart from your spouse for the last 6 months of ${R.TAX_YEAR})')
   if (input.canBeClaimedAsDependent) eicReasons.push('someone can claim you as a dependent')
   if (investmentIncome > R.EIC_INVESTMENT_INCOME_LIMIT) eicReasons.push(`investment income is over $${R.EIC_INVESTMENT_INCOME_LIMIT.toLocaleString()}`)
   if (eicChildren === 0) {
@@ -1118,7 +1139,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
   const line37 = balance > 0 ? pos(line38 - balance) : pos(-balance) + line38
 
   // ── Coverage notes ────────────────────────────────────────────────────────
-  if (eic > 0) issues.push({ level: 'info', step: 'credits', message: 'Earned Income Credit is included. Attach Schedule EIC for each qualifying child, and confirm each child lived with you in the U.S. for more than half of 2025.' })
+  if (eic > 0) issues.push({ level: 'info', step: 'credits', message: `Earned Income Credit is included. Attach Schedule EIC for each qualifying child, and confirm each child lived with you in the U.S. for more than half of ${R.TAX_YEAR}.` })
   if (scheduleSE.length && businesses.length) issues.push({ level: 'info', step: 'income', message: 'Schedule C is figured from the totals you enter. Inventory (Part III) is not itemized; enter equipment under Depreciation so it goes through Form 4562.' })
   if (w2s.some((w) => w.wages > 0 && (w.medicareWages === 0 || w.socialSecurityWages === 0))) issues.push({ level: 'info', step: 'income', message: 'For W-2s where box 3 or box 5 is blank, box 1 wages were used instead.' })
   if (input.dependents.some((d) => !d.name.trim())) issues.push({ level: 'warning', step: 'about', message: 'Enter a name for each dependent.' })
@@ -1144,7 +1165,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
     schedule1A: {
       magi, tipsCapped, tipOtExcess, tipOtReduction, tips, overtimeCapped, overtime,
       carCapped, carExcess, carReduction, carLoanInterest: carLoan,
-      seniorExcess, seniorEach, seniorTaxpayer, seniorSpouse, senior, total: line13b
+      seniorExcess, seniorEach, seniorTaxpayer, seniorSpouse, senior, total: line13b - charityStandard, charityNonItemizer: charityStandard
     },
     scheduleA: { medical, taxes, saltBeforeCap, saltCap: r(saltCap), interest: r(it.mortgageInterest), charity, other: r(it.other), total: itemizedTotal },
     scheduleB: { interest: line2b, ordinaryDividends: line3b, required: line2b > 1500 || line3b > 1500 },

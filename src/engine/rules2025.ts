@@ -233,3 +233,30 @@ export const AMT_28_THRESHOLD: Record<FilingStatus, number> = {
 }
 export const AMT_RATE_LOW = 0.26
 export const AMT_RATE_HIGH = 0.28
+
+/** Educator expense deduction (Schedule 1 line 11), per eligible educator. */
+export const EDUCATOR_MAX = 300
+
+/** Child and dependent care credit rate schedule (Form 2441 line 8). The first step lowers the rate from
+ *  CARE_MAX_RATE to CARE_FIRST_FLOOR; above CARE_SECOND_TIER_START a second step lowers it to CARE_MIN_RATE. */
+export const CARE_FIRST_FLOOR = 0.20
+export const CARE_SECOND_TIER_START: Record<FilingStatus, number> = {
+  single: Infinity, mfj: Infinity, mfs: Infinity, hoh: Infinity, qss: Infinity
+}
+export const CARE_SECOND_STEP: Record<FilingStatus, number> = { single: 2000, mfj: 2000, mfs: 2000, hoh: 2000, qss: 2000 }
+
+/** Charitable contributions: deduction for non-itemizers (starts 2026) and the 0.5%-of-AGI floor for itemizers. */
+export const CHARITY_NONITEMIZER_MAX: Record<FilingStatus, number> = { single: 0, mfj: 0, mfs: 0, hoh: 0, qss: 0 }
+export const CHARITY_AGI_FLOOR = 0
+
+/** Limitation on itemized deductions for the 37% bracket (starts 2026): reduction rate (2/37). */
+export const ITEMIZED_LIMIT_RATE = 0
+
+/** Minimum QBI deduction (starts 2026) when active QBI is at least QBI_MINIMUM_ACTIVE. */
+export const QBI_MINIMUM_DEDUCTION = 0
+export const QBI_MINIMUM_ACTIVE = 1000
+
+/** Section 179 (Form 4562 Part I): maximum, investment phase-out threshold and the limit for SUVs over 6,000 pounds. */
+export const SECTION_179_LIMIT = 2500000
+export const SECTION_179_THRESHOLD = 4000000
+export const HEAVY_SUV_179_LIMIT = 31300

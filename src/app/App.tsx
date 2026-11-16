@@ -1,4 +1,5 @@
 import { ReactElement, useEffect, useMemo, useRef, useState } from 'react'
+import { STATE_RETURNS_READY, TAX_YEAR } from '../engine/rules.ts'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { computeReturn } from '../engine/compute.ts'
 import type { Issue, TaxReturnResult } from '../engine/compute.ts'
@@ -42,7 +43,7 @@ import './app.css'
 const STEPS = [
   { path: 'about', title: 'About you', blurb: 'Filing status and household' },
   { path: 'income', title: 'Income', blurb: 'W-2, 1099, retirement, business, rentals, K-1' },
-  { path: 'deductions', title: 'Deductions', blurb: 'HSA, adjustments, 2025 deductions, Schedule A' },
+  { path: 'deductions', title: 'Deductions', blurb: `HSA, adjustments, ${TAX_YEAR} deductions, Schedule A` },
   { path: 'payments', title: 'Credits & payments', blurb: 'EIC, child, care, education, saver’s credits' },
   { path: 'state', title: 'State', blurb: 'State return' },
   { path: 'review', title: 'Review', blurb: 'Form 1040, IRS forms, letter' },
@@ -101,8 +102,8 @@ function Summary({ ret, result, open, onToggle }: { ret: TaxReturnInput; result:
             <div key={label}><dt>{label}</dt><dd>{usd(value)}</dd></div>
           ))}
         </dl>
-        {ret.residentState === 'VA' ? <VirginiaSummary ret={ret} result={result} /> : ret.residentState === 'MD' ? <MarylandSummary ret={ret} result={result} /> : ret.residentState === 'DC' ? <DcSummary ret={ret} result={result} /> : ret.residentState === 'CA' ? <CaliforniaSummary ret={ret} result={result} /> : ret.residentState === 'NY' ? <NewYorkSummary ret={ret} result={result} /> : ret.residentState === 'IL' ? <SimpleSummary name="Illinois" owed={computeIllinois(ret, result).lines['41']} refund={computeIllinois(ret, result).lines['38']} /> : ret.residentState === 'PA' ? <SimpleSummary name="Pennsylvania" owed={computePennsylvania(ret, result).lines['28']} refund={computePennsylvania(ret, result).lines['30']} /> : ret.residentState === 'NC' ? <SimpleSummary name="North Carolina" owed={computeNorthCarolina(ret, result).lines['27']} refund={computeNorthCarolina(ret, result).lines['34']} /> : ret.residentState === 'MI' ? <SimpleSummary name="Michigan" owed={computeMichigan(ret, result).lines['36']} refund={computeMichigan(ret, result).lines['39']} /> : ret.residentState === 'GA' ? <SimpleSummary name="Georgia" owed={computeGeorgia(ret, result).lines['45']} refund={computeGeorgia(ret, result).lines['46']} /> : ret.residentState === 'OH' ? <SimpleSummary name="Ohio" owed={computeOhio(ret, result).lines['22']} refund={computeOhio(ret, result).lines['26']} /> : ret.residentState === 'NJ' ? <SimpleSummary name="New Jersey" owed={computeNewJersey(ret, result).lines['79']} refund={computeNewJersey(ret, result).lines['80']} /> : ret.residentState === 'MA' ? <SimpleSummary name="Massachusetts" owed={computeMassachusetts(ret, result).lines['55']} refund={computeMassachusetts(ret, result).lines['54']} /> : ret.residentState ? <EstimateSummary ret={ret} result={result} /> : null}
-        <p className="summary-foot">Federal return, tax year 2025. Estimate only: check every number before you file.</p>
+        {!STATE_RETURNS_READY[ret.taxYear] ? null : ret.residentState === 'VA' ? <VirginiaSummary ret={ret} result={result} /> : ret.residentState === 'MD' ? <MarylandSummary ret={ret} result={result} /> : ret.residentState === 'DC' ? <DcSummary ret={ret} result={result} /> : ret.residentState === 'CA' ? <CaliforniaSummary ret={ret} result={result} /> : ret.residentState === 'NY' ? <NewYorkSummary ret={ret} result={result} /> : ret.residentState === 'IL' ? <SimpleSummary name="Illinois" owed={computeIllinois(ret, result).lines['41']} refund={computeIllinois(ret, result).lines['38']} /> : ret.residentState === 'PA' ? <SimpleSummary name="Pennsylvania" owed={computePennsylvania(ret, result).lines['28']} refund={computePennsylvania(ret, result).lines['30']} /> : ret.residentState === 'NC' ? <SimpleSummary name="North Carolina" owed={computeNorthCarolina(ret, result).lines['27']} refund={computeNorthCarolina(ret, result).lines['34']} /> : ret.residentState === 'MI' ? <SimpleSummary name="Michigan" owed={computeMichigan(ret, result).lines['36']} refund={computeMichigan(ret, result).lines['39']} /> : ret.residentState === 'GA' ? <SimpleSummary name="Georgia" owed={computeGeorgia(ret, result).lines['45']} refund={computeGeorgia(ret, result).lines['46']} /> : ret.residentState === 'OH' ? <SimpleSummary name="Ohio" owed={computeOhio(ret, result).lines['22']} refund={computeOhio(ret, result).lines['26']} /> : ret.residentState === 'NJ' ? <SimpleSummary name="New Jersey" owed={computeNewJersey(ret, result).lines['79']} refund={computeNewJersey(ret, result).lines['80']} /> : ret.residentState === 'MA' ? <SimpleSummary name="Massachusetts" owed={computeMassachusetts(ret, result).lines['55']} refund={computeMassachusetts(ret, result).lines['54']} /> : ret.residentState ? <EstimateSummary ret={ret} result={result} /> : null}
+        <p className="summary-foot">Federal return, tax year {TAX_YEAR}. Estimate only: check every number before you file.</p>
       </div>
     </aside>
   )

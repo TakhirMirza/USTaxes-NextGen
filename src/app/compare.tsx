@@ -7,8 +7,8 @@ import { ReactElement, useMemo } from 'react'
 import { applyScenario, emptyScenario, isEmptyScenario, summarize } from '../engine/scenarios.ts'
 import type { ScenarioRow } from '../engine/scenarios.ts'
 import type { Scenario, TaxReturnInput } from '../engine/model.ts'
-import { FILING_STATUS_LABELS } from '../engine/rules2025.ts'
-import type { FilingStatus } from '../engine/rules2025.ts'
+import { FILING_STATUS_LABELS, TAX_YEAR } from '../engine/rules.ts'
+import type { FilingStatus } from '../engine/rules.ts'
 import { MoneyField, Section, TextField, usd } from './fields'
 import { SelectField } from './steps'
 import type { StepProps } from './steps'
@@ -62,7 +62,7 @@ export function CompareStep({ ret, set, onSaveAsReturn }: StepProps & { onSaveAs
 
   return (
     <div className="whatif">
-      <p className="lede">Try changes side by side without touching your return: a bigger 401(k) contribution, a donation, selling stock, another filing status. Scenarios are saved with this return and figured with 2025 rules.</p>
+      <p className="lede">Try changes side by side without touching your return: a bigger 401(k) contribution, a donation, selling stock, another filing status. Scenarios are saved with this return and figured with {TAX_YEAR} rules.</p>
 
       <div className="compare-table-wrap">
         <table className="compare-table">

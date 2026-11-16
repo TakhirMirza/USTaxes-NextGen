@@ -59,6 +59,15 @@ See the in-app page *Privacy* for live checks, and [SECURITY.md](SECURITY.md) fo
 print-ready file: Form 1040, Schedules 1, 1-A, 2, 3, A, B, C, D, E, SE, EIC, 8812, Forms 2441, 4562, 4797, 5329, 8582, 6251, 8829, 8863, 8880, 8889, 8949, 8995-A, 8959, 8960, 8995, and the
 1040-V payment voucher when tax is owed. The blank forms live in `public/forms/2025` (official IRS PDFs).
 
+## Tax years
+
+Every tax year has its own rules file: `src/engine/rules2025.ts`, `src/engine/rules2026.ts`. They export the same names, and `src/engine/rules.ts` switches between them, so the engine is written once and `computeReturn()` uses the year saved in the return (About you → Tax year).
+
+- **2025** — federal and state returns on the official forms.
+- **2026** — federal tax with the 2026 rates and limits (Rev. Proc. 2025-32 and the 2025 tax law: $16,100 / $32,200 standard deduction, charity deduction for non-itemizers, 50% child care credit rate, $400 minimum QBI deduction, $350 educator limit, 2/37 limit on itemized deductions). The PDF and state returns turn on when the IRS and the states publish final 2026 forms (`FEDERAL_FORMS_READY` and `STATE_RETURNS_READY` in `rules.ts`).
+
+Adding a new year: copy the newest `rulesYYYY.ts`, update the numbers from the IRS revenue procedure, add it to `rules.ts`, put the blank forms in `public/forms/YYYY/`, map any changed form fields, and add tests.
+
 ## Every line explained
 
 On the Review step, select any Form 1040 line to see how it was figured: the formula, each entry or

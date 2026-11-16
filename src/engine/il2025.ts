@@ -9,7 +9,7 @@
 import type { TaxReturnInput } from './model.ts'
 import type { TaxReturnResult } from './compute.ts'
 import { eicChild, eicFromTable } from './compute.ts'
-import * as R from './rules2025.ts'
+import * as R from './rules.ts'
 
 export const IL_RATE = 0.0495
 export const IL_EXEMPTION = 2850

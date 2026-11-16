@@ -5,8 +5,9 @@ import type { BasisReporting, CapitalTransaction, DepreciableAsset, K1, Property
 import { boxFor, gainOf, holdingTermFromDates, isAggregated } from '../engine/capital.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import { careQualifyingPerson, ctcChild, eicChild } from '../engine/compute.ts'
-import { FILING_STATUS_LABELS } from '../engine/rules2025.ts'
-import type { FilingStatus } from '../engine/rules2025.ts'
+import { FILING_STATUS_LABELS, INSTALLMENT_DUE_DATES, TAX_YEAR, TAX_YEARS, TAX_YEAR_STATUS } from '../engine/rules.ts'
+import type { TaxYear } from '../engine/rules.ts'
+import type { FilingStatus } from '../engine/rules.ts'
 import { Check, Choice, DigitsField, DocList, MoneyField, NumberField, Section, Tags, TextField, usd } from './fields'
 
 export type Setter = (fn: (r: TaxReturnInput) => TaxReturnInput) => void
@@ -38,15 +39,20 @@ export function AboutStep({ ret, set }: StepProps): ReactElement {
   const deps = listOps(set, 'dependents')
   const married = ret.filingStatus === 'mfj' || ret.filingStatus === 'mfs'
   const statusHints: Record<FilingStatus, string> = {
-    single: 'Unmarried on December 31, 2025',
+    single: `Unmarried on December 31, ${TAX_YEAR}`,
     mfj: 'Married, one return for both of you',
     mfs: 'Married, each files their own return',
     hoh: 'Unmarried and paid over half the cost of a home for a qualifying person',
-    qss: 'Spouse died in 2023 or 2024 and you have a dependent child'
+    qss: `Spouse died in ${TAX_YEAR - 2} or ${TAX_YEAR - 1} and you have a dependent child`
   }
   return (
     <>
-      <Section title="Filing status" intro="Your status on December 31, 2025 sets your tax brackets and standard deduction.">
+      <Section title="Tax year" intro="Each year has its own rates, limits and forms. A 2026 return is filed in early 2027.">
+        <Choice legend="Tax year" columns={2} value={String(ret.taxYear)} onChange={(v) => set((r) => ({ ...r, taxYear: Number(v) as TaxYear }))}
+          options={TAX_YEARS.map((y) => ({ value: String(y), label: String(y), hint: TAX_YEAR_STATUS[y] }))} />
+      </Section>
+
+      <Section title="Filing status" intro={`Your status on December 31, ${TAX_YEAR} sets your tax brackets and standard deduction.`}>
         <Choice legend="Filing status" value={ret.filingStatus} onChange={(v) => set((r) => ({ ...r, filingStatus: v }))}
           options={(Object.keys(FILING_STATUS_LABELS) as FilingStatus[]).map((k) => ({ value: k, label: FILING_STATUS_LABELS[k], hint: statusHints[k] }))} />
       </Section>
@@ -55,7 +61,7 @@ export function AboutStep({ ret, set }: StepProps): ReactElement {
         <div className="grid-3">
           <TextField label="First name" value={ret.taxpayer.firstName} onChange={(v) => person('taxpayer', { firstName: v })} />
           <TextField label="Last name" value={ret.taxpayer.lastName} onChange={(v) => person('taxpayer', { lastName: v })} />
-          <NumberField label="Age" hint="On Dec 31, 2025" value={ret.taxpayer.age} onChange={(n) => person('taxpayer', { age: n, age65OrOlder: n >= 65 })} />
+          <NumberField label="Age" hint={`On Dec 31, ${TAX_YEAR}`} value={ret.taxpayer.age} onChange={(n) => person('taxpayer', { age: n, age65OrOlder: n >= 65 })} />
         </div>
         <div className="grid" style={{ marginTop: 16 }}>
           <DigitsField label="Social Security number" length={9} groups={[3, 2, 4]} placeholder="123-45-6789" value={ret.taxpayer.ssn} onChange={(v) => person('taxpayer', { ssn: v })} />
@@ -63,7 +69,7 @@ export function AboutStep({ ret, set }: StepProps): ReactElement {
         </div>
         <div className="checks">
           <Check label="I am blind" checked={ret.taxpayer.blind} onChange={(v) => person('taxpayer', { blind: v })} />
-          <Check label="I was a full-time student for at least 5 months of 2025" checked={ret.taxpayer.fullTimeStudent} onChange={(v) => person('taxpayer', { fullTimeStudent: v })} />
+          <Check label={`I was a full-time student for at least 5 months of ${TAX_YEAR}`} checked={ret.taxpayer.fullTimeStudent} onChange={(v) => person('taxpayer', { fullTimeStudent: v })} />
           <Check label="Someone can claim me as a dependent" checked={ret.canBeClaimedAsDependent} onChange={(v) => set((r) => ({ ...r, canBeClaimedAsDependent: v }))} />
         </div>
       </Section>
@@ -73,7 +79,7 @@ export function AboutStep({ ret, set }: StepProps): ReactElement {
           <div className="grid-3">
             <TextField label="First name" value={ret.spouse.firstName} onChange={(v) => person('spouse', { firstName: v })} />
             <TextField label="Last name" value={ret.spouse.lastName} onChange={(v) => person('spouse', { lastName: v })} />
-            <NumberField label="Age" hint="On Dec 31, 2025" value={ret.spouse.age} onChange={(n) => person('spouse', { age: n, age65OrOlder: n >= 65 })} />
+            <NumberField label="Age" hint={`On Dec 31, ${TAX_YEAR}`} value={ret.spouse.age} onChange={(n) => person('spouse', { age: n, age65OrOlder: n >= 65 })} />
           </div>
           <div className="grid" style={{ marginTop: 16 }}>
             <DigitsField label="Spouse’s Social Security number" length={9} groups={[3, 2, 4]} placeholder="123-45-6789" value={ret.spouse.ssn} onChange={(v) => person('spouse', { ssn: v })} />
@@ -81,7 +87,7 @@ export function AboutStep({ ret, set }: StepProps): ReactElement {
           </div>
           <div className="checks">
             <Check label="My spouse is blind" checked={ret.spouse.blind} onChange={(v) => person('spouse', { blind: v })} />
-            <Check label="My spouse was a full-time student for at least 5 months of 2025" checked={ret.spouse.fullTimeStudent} onChange={(v) => person('spouse', { fullTimeStudent: v })} />
+            <Check label={`My spouse was a full-time student for at least 5 months of ${TAX_YEAR}`} checked={ret.spouse.fullTimeStudent} onChange={(v) => person('spouse', { fullTimeStudent: v })} />
           </div>
         </Section>
       )}
@@ -98,7 +104,7 @@ export function AboutStep({ ret, set }: StepProps): ReactElement {
           <TextField label="Email" value={ret.contact.email} onChange={(v) => contact({ email: v })} />
         </div>
         <div className="checks">
-          <Check label={ret.filingStatus === 'mfj' ? 'Our main home was in the U.S. for more than half of 2025' : 'My main home was in the U.S. for more than half of 2025'}
+          <Check label={ret.filingStatus === 'mfj' ? `Our main home was in the U.S. for more than half of ${TAX_YEAR}` : `My main home was in the U.S. for more than half of ${TAX_YEAR}`}
             checked={ret.contact.livedInUsHalfYear} onChange={(v) => contact({ livedInUsHalfYear: v })} />
           <Check label="Send $3 to the Presidential Election Campaign Fund" hint="Does not change your tax or refund." checked={ret.taxpayer.presidentialFund} onChange={(v) => person('taxpayer', { presidentialFund: v })} />
           {ret.filingStatus === 'mfj' && <Check label="My spouse also wants to send $3" checked={ret.spouse.presidentialFund} onChange={(v) => person('spouse', { presidentialFund: v })} />}
@@ -115,12 +121,12 @@ export function AboutStep({ ret, set }: StepProps): ReactElement {
               <TextField label="Relationship" placeholder="Son, daughter, parent…" value={d.relationship} onChange={(v) => deps.patch(d.id, { relationship: v })} />
               <DigitsField label="Social Security number" length={9} groups={[3, 2, 4]} placeholder="123-45-6789" value={d.ssn} onChange={(v) => deps.patch(d.id, { ssn: v })} />
               <span />
-              <NumberField label="Age on Dec 31, 2025" hint="Enter 0 for a baby born in 2025" value={d.age} onChange={(n) => deps.patch(d.id, { age: n })} />
-              <NumberField label="Months lived with you in 2025" max={12} suffix="of 12" value={d.monthsLivedWithYou} onChange={(n) => deps.patch(d.id, { monthsLivedWithYou: n })} />
+              <NumberField label={`Age on Dec 31, ${TAX_YEAR}`} hint={`Enter 0 for a baby born in ${TAX_YEAR}`} value={d.age} onChange={(n) => deps.patch(d.id, { age: n })} />
+              <NumberField label={`Months lived with you in ${TAX_YEAR}`} max={12} suffix="of 12" value={d.monthsLivedWithYou} onChange={(n) => deps.patch(d.id, { monthsLivedWithYou: n })} />
               <div className="span-2 checks">
                 <Check label="Child, stepchild, foster child, brother or sister, or a descendant of one" checked={d.childRelationship} onChange={(v) => deps.patch(d.id, { childRelationship: v })} />
                 <Check label="Has a Social Security number valid for work" checked={d.hasSsn} onChange={(v) => deps.patch(d.id, { hasSsn: v })} />
-                <Check label="Full-time student for at least 5 months of 2025" checked={d.student} onChange={(v) => deps.patch(d.id, { student: v })} />
+                <Check label={`Full-time student for at least 5 months of ${TAX_YEAR}`} checked={d.student} onChange={(v) => deps.patch(d.id, { student: v })} />
                 <Check label="Permanently and totally disabled" checked={d.disabled} onChange={(v) => deps.patch(d.id, { disabled: v })} />
               </div>
               <div className="span-2">
@@ -158,7 +164,7 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
   const bizResult = (id: string) => result.scheduleC.find((b) => b.id === id)
   return (
     <>
-      <Section title="Digital assets" intro="Form 1040 asks every filer. Answer Yes if at any time in 2025 you received crypto or other digital assets as a reward, award or payment, or sold, exchanged or otherwise disposed of them. Simply holding them is No.">
+      <Section title="Digital assets" intro={`Form 1040 asks every filer. Answer Yes if at any time in ${TAX_YEAR} you received crypto or other digital assets as a reward, award or payment, or sold, exchanged or otherwise disposed of them. Simply holding them is No.`}>
         <Choice legend="Digital assets" value={ret.digitalAssets === null ? '' : ret.digitalAssets ? 'yes' : 'no'}
           onChange={(v) => set((r) => ({ ...r, digitalAssets: v === 'yes' }))}
           options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes', hint: 'Report sales as investment sales below' }]} />
@@ -214,7 +220,7 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
 
       {result.scheduleB.required && (
         <Section title="Foreign accounts" intro="Your interest or dividends are over $1,500, so Schedule B asks this question.">
-          <Check label="In 2025 I had a financial account in a foreign country, or received a distribution from or was involved with a foreign trust"
+          <Check label={`In ${TAX_YEAR} I had a financial account in a foreign country, or received a distribution from or was involved with a foreign trust`}
             hint="Leave unchecked to answer No on Schedule B, Part III." checked={ret.foreignAccounts} onChange={(v) => set((r) => ({ ...r, foreignAccounts: v }))} />
         </Section>
       )}
@@ -255,7 +261,7 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
             </>
           )} />
         <details className="more">
-          <summary>Capital loss carried over from 2024</summary>
+          <summary>Capital loss carried over from {TAX_YEAR - 1}</summary>
           <div className="grid">
             <MoneyField label="Short-term carryover" value={ret.capitalLossCarryover.shortTerm} onChange={(n) => set((r) => ({ ...r, capitalLossCarryover: { ...r.capitalLossCarryover, shortTerm: n } }))} />
             <MoneyField label="Long-term carryover" value={ret.capitalLossCarryover.longTerm} onChange={(n) => set((r) => ({ ...r, capitalLossCarryover: { ...r.capitalLossCarryover, longTerm: n } }))} />
@@ -289,8 +295,8 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
                     options={[{ value: 'cash', label: 'Cash', hint: 'Income when received, expenses when paid' }, { value: 'accrual', label: 'Accrual' }]} />
                 </div>
                 <div className="span-2 checks">
-                  <Check label="I materially participated in this business in 2025" hint="You worked in it regularly, continuously and substantially" checked={b.materiallyParticipated} onChange={(v) => biz.patch(b.id, { materiallyParticipated: v })} />
-                  <Check label="I started or acquired this business in 2025" checked={b.startedThisYear} onChange={(v) => biz.patch(b.id, { startedThisYear: v })} />
+                  <Check label={`I materially participated in this business in ${TAX_YEAR}`} hint="You worked in it regularly, continuously and substantially" checked={b.materiallyParticipated} onChange={(v) => biz.patch(b.id, { materiallyParticipated: v })} />
+                  <Check label={`I started or acquired this business in ${TAX_YEAR}`} checked={b.startedThisYear} onChange={(v) => biz.patch(b.id, { startedThisYear: v })} />
                 </div>
                 <div className="span-2">
                   <Choice legend="Did you pay anyone $600 or more (contractors, rent) that would require you to file a Form 1099?" value={b.required1099s === null ? '' : b.required1099s ? 'yes' : 'no'}
@@ -327,7 +333,7 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
                     <summary>Vehicle details (Schedule C, Part IV)</summary>
                     <div className="grid">
                       <TextField label="Date placed in service for business" placeholder="MM/DD/YYYY" value={b.vehicle.placedInService} onChange={(v) => biz.patch(b.id, { vehicle: { ...b.vehicle, placedInService: v.replace(/[^0-9/]/g, '').slice(0, 10) } })} />
-                      <NumberField label="Business miles in 2025" max={999999} value={b.vehicle.businessMiles} onChange={(n) => biz.patch(b.id, { vehicle: { ...b.vehicle, businessMiles: n } })} />
+                      <NumberField label={`Business miles in ${TAX_YEAR}`} max={999999} value={b.vehicle.businessMiles} onChange={(n) => biz.patch(b.id, { vehicle: { ...b.vehicle, businessMiles: n } })} />
                       <NumberField label="Commuting miles" max={999999} value={b.vehicle.commutingMiles} onChange={(n) => biz.patch(b.id, { vehicle: { ...b.vehicle, commutingMiles: n } })} />
                       <NumberField label="Other personal miles" max={999999} value={b.vehicle.otherMiles} onChange={(n) => biz.patch(b.id, { vehicle: { ...b.vehicle, otherMiles: n } })} />
                     </div>
@@ -430,7 +436,7 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
                   <Check label="I actively participate (I approve tenants, set rents, or approve repairs)" hint="Needed to deduct up to $25,000 of rental losses" checked={x.activeParticipation} onChange={(v) => rent.patch(x.id, { activeParticipation: v })} />
                 </div>
                 {x.type !== 'royalties' && x.type !== 'selfrental' && (
-                  <MoneyField label="Loss not allowed in earlier years" hint="This property’s unallowed loss from your 2024 Form 8582" value={x.priorUnallowed} onChange={(n) => rent.patch(x.id, { priorUnallowed: n })} />
+                  <MoneyField label="Loss not allowed in earlier years" hint={`This property’s unallowed loss from your ${TAX_YEAR - 1} Form 8582`} value={x.priorUnallowed} onChange={(n) => rent.patch(x.id, { priorUnallowed: n })} />
                 )}
                 {rr && <p className={`span-2 result-line ${rr.net < 0 ? 'is-loss' : ''}`}>Net {rr.net < 0 ? 'loss' : 'income'} <strong>{usd(rr.net)}</strong></p>}
                 {rr && rr.line22 > 0 && rr.line22 !== -rr.net && <p className="why span-2">Deductible this year after the passive loss limit: {usd(rr.line22)} (Schedule E line 22).</p>}
@@ -440,12 +446,12 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
         {ret.rentals.length > 0 && (
           <>
             <div style={{ marginTop: 16 }}>
-              <Choice legend="Did you make rental payments in 2025 that require Forms 1099 (for example, $600+ to a contractor)?" value={ret.rentalForms1099.required === null ? '' : ret.rentalForms1099.required ? 'yes' : 'no'}
+              <Choice legend={`Did you make rental payments in ${TAX_YEAR} that require Forms 1099 (for example, $600+ to a contractor)?`} value={ret.rentalForms1099.required === null ? '' : ret.rentalForms1099.required ? 'yes' : 'no'}
                 onChange={(v) => set((r) => ({ ...r, rentalForms1099: { ...r.rentalForms1099, required: v === 'yes' } }))}
                 options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
               {ret.rentalForms1099.required && <div className="checks"><Check label="I filed (or will file) them" checked={ret.rentalForms1099.filed} onChange={(v) => set((r) => ({ ...r, rentalForms1099: { ...r.rentalForms1099, filed: v } }))} /></div>}
             </div>
-            {result.scheduleE.disallowed > 0 && <p className="note is-warn">{usd(result.scheduleE.disallowed)} of rental loss can’t be used this year (special allowance {usd(result.scheduleE.allowance)} at your income, Form 8582). It carries over to 2026.</p>}
+            {result.scheduleE.disallowed > 0 && <p className="note is-warn">{usd(result.scheduleE.disallowed)} of rental loss can’t be used this year (special allowance {usd(result.scheduleE.allowance)} at your income, Form 8582). It carries over to {TAX_YEAR + 1}.</p>}
           </>
         )}
       </Section>
@@ -502,13 +508,13 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
                 )}
                 {!x.materialParticipation && (
                   <div className="grid" style={{ marginTop: 10 }}>
-                    <MoneyField label="Passive loss carried from 2024" hint="Unallowed loss from your 2024 Form 8582 worksheets" value={x.priorPassiveCarryover} onChange={(n) => k1s.patch(x.id, { priorPassiveCarryover: n })} />
+                    <MoneyField label={`Passive loss carried from ${TAX_YEAR - 1}`} hint={`Unallowed loss from your ${TAX_YEAR - 1} Form 8582 worksheets`} value={x.priorPassiveCarryover} onChange={(n) => k1s.patch(x.id, { priorPassiveCarryover: n })} />
                   </div>
                 )}
                 {row && (
                   <p className="why">
                     On Schedule E: {usd(row.h + row.k - row.g - row.i - row.j)}{row.passive ? ' (passive)' : ''}
-                    {row.disallowed > 0 ? ` · ${usd(row.disallowed)} of passive loss carries to 2026` : ''}
+                    {row.disallowed > 0 ? ` · ${usd(row.disallowed)} of passive loss carries to ${TAX_YEAR + 1}` : ''}
                   </p>
                 )}
               </div>
@@ -556,7 +562,7 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
           }} />
         {ret.propertySales.length > 0 && (
           <div className="grid" style={{ marginTop: 12 }}>
-            <MoneyField label="Section 1231 losses from 2020–2024 not yet recaptured" hint="Form 4797 line 8; only if you had net 1231 losses then" value={ret.prior1231Losses} onChange={(n) => set((r) => ({ ...r, prior1231Losses: n }))} />
+            <MoneyField label={`Section 1231 losses from 2020–${TAX_YEAR - 1} not yet recaptured`} hint="Form 4797 line 8; only if you had net 1231 losses then" value={ret.prior1231Losses} onChange={(n) => set((r) => ({ ...r, prior1231Losses: n }))} />
           </div>
         )}
       </Section>
@@ -570,16 +576,16 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
 
       <Section title="Less common items" intro="Only if they apply to you.">
         <details className="more" style={{ marginTop: 0 }} open={ret.section179Carryover > 0}>
-          <summary>Section 179 deduction carried from 2024</summary>
+          <summary>Section 179 deduction carried from {TAX_YEAR - 1}</summary>
           <div className="grid">
-            <MoneyField label="Disallowed section 179 deduction" hint="2024 Form 4562 line 13" value={ret.section179Carryover} onChange={(n) => set((r) => ({ ...r, section179Carryover: n }))} />
+            <MoneyField label="Disallowed section 179 deduction" hint={`${TAX_YEAR - 1} Form 4562 line 13`} value={ret.section179Carryover} onChange={(n) => set((r) => ({ ...r, section179Carryover: n }))} />
           </div>
         </details>
         <details className="more" open={ret.qbiCarryforward.business + ret.qbiCarryforward.reitPtp > 0}>
-          <summary>Qualified business losses carried from 2024</summary>
+          <summary>Qualified business losses carried from {TAX_YEAR - 1}</summary>
           <div className="grid">
-            <MoneyField label="Qualified business loss carryforward" hint="2024 Form 8995 line 16 or 8995-A line 16 (Schedule C)" value={ret.qbiCarryforward.business} onChange={(n) => set((r) => ({ ...r, qbiCarryforward: { ...r.qbiCarryforward, business: n } }))} />
-            <MoneyField label="REIT/PTP loss carryforward" hint="2024 Form 8995 line 17 or 8995-A line 40" value={ret.qbiCarryforward.reitPtp} onChange={(n) => set((r) => ({ ...r, qbiCarryforward: { ...r.qbiCarryforward, reitPtp: n } }))} />
+            <MoneyField label="Qualified business loss carryforward" hint={`${TAX_YEAR - 1} Form 8995 line 16 or 8995-A line 16 (Schedule C)`} value={ret.qbiCarryforward.business} onChange={(n) => set((r) => ({ ...r, qbiCarryforward: { ...r.qbiCarryforward, business: n } }))} />
+            <MoneyField label="REIT/PTP loss carryforward" hint={`${TAX_YEAR - 1} Form 8995 line 17 or 8995-A line 40`} value={ret.qbiCarryforward.reitPtp} onChange={(n) => set((r) => ({ ...r, qbiCarryforward: { ...r.qbiCarryforward, reitPtp: n } }))} />
           </div>
         </details>
         <details className="more" style={{ marginTop: 0 }} open={ret.amt.isoBargainElement + ret.amt.privateActivityBondInterest + Math.abs(ret.amt.otherAdjustments) > 0}>
@@ -627,7 +633,7 @@ export function DeductionsStep({ ret, set, result }: StepProps): ReactElement {
         ))}
       </Section>
 
-      <Section title="New deductions for 2025" intro="Schedule 1-A. You can take these whether or not you itemize."
+      <Section title={`New deductions for ${TAX_YEAR}`} intro="Schedule 1-A. You can take these whether or not you itemize."
         aside={result.schedule1A.total > 0 ? <span className="pill">{usd(result.schedule1A.total)}</span> : undefined}>
         <div className="grid">
           <MoneyField label="Qualified tips" hint="Up to $25,000; reported on your W-2 or 1099" value={ret.schedule1A.qualifiedTips} onChange={(n) => s1a('qualifiedTips', n)} />
@@ -708,7 +714,7 @@ export function PaymentsStep({ ret, set, result }: StepProps): ReactElement {
       <Section title="Child and dependent care" intro="Daycare, after-school care or a caregiver so you (and your spouse) could work. For children under 13 or a disabled dependent."
         aside={result.form2441.credit > 0 ? <span className="pill">{usd(result.schedule3.dependentCare)}</span> : undefined}>
         <div className="grid">
-          <MoneyField label="Care expenses you paid in 2025" hint="For the children or dependents who qualify" value={ret.dependentCare.expenses} onChange={(n) => care('expenses', n)} />
+          <MoneyField label={`Care expenses you paid in ${TAX_YEAR}`} hint="For the children or dependents who qualify" value={ret.dependentCare.expenses} onChange={(n) => care('expenses', n)} />
           <MoneyField label="Dependent care benefits from your employer" box="W-2 box 10" value={ret.dependentCare.employerBenefits} onChange={(n) => care('employerBenefits', n)} />
         </div>
         {(ret.dependentCare.expenses > 0 || ret.dependentCare.providers.length > 0) && (
@@ -722,7 +728,7 @@ export function PaymentsStep({ ret, set, result }: StepProps): ReactElement {
                   <TextField label="Provider name" placeholder="Daycare, school, or person" value={x.name} onChange={(v) => patchProvider(x.id, { name: v })} />
                   <DigitsField label="SSN or EIN" length={9} value={x.tin} onChange={(v) => patchProvider(x.id, { tin: v })} hint="From the provider or your receipt" />
                   <div className="span-2"><TextField label="Address" placeholder="Street, city, state, ZIP" value={x.address} onChange={(v) => patchProvider(x.id, { address: v })} /></div>
-                  <MoneyField label="Amount paid in 2025" value={x.amountPaid} onChange={(n) => patchProvider(x.id, { amountPaid: n })} />
+                  <MoneyField label={`Amount paid in ${TAX_YEAR}`} value={x.amountPaid} onChange={(n) => patchProvider(x.id, { amountPaid: n })} />
                   <div className="span-2"><Check label="This provider is my household employee (for example, a nanny)" checked={x.householdEmployee} onChange={(v) => patchProvider(x.id, { householdEmployee: v })} /></div>
                 </>
               )} />
@@ -750,7 +756,7 @@ export function PaymentsStep({ ret, set, result }: StepProps): ReactElement {
               <DigitsField label="School’s EIN" length={9} groups={[2, 7]} hint="On Form 1098-T; required for the AOTC" value={x.institutionEin} onChange={(v) => stu.patch(x.id, { institutionEin: v })} />
               <div className="span-2"><TextField label="School address" placeholder="Street, city, state, ZIP" value={x.institutionAddress} onChange={(v) => stu.patch(x.id, { institutionAddress: v })} /></div>
               <MoneyField label="Qualified expenses" value={x.qualifiedExpenses} onChange={(n) => stu.patch(x.id, { qualifiedExpenses: n })} />
-              <div><Check label="Received Form 1098-T from this school for 2025" checked={x.received1098T} onChange={(v) => stu.patch(x.id, { received1098T: v })} /></div>
+              <div><Check label={`Received Form 1098-T from this school for ${TAX_YEAR}`} checked={x.received1098T} onChange={(v) => stu.patch(x.id, { received1098T: v })} /></div>
               <div className="span-2">
                 <Check label="In the first four years of college, at least half-time"
                   hint="American Opportunity Credit, up to $2,500 (40% refundable). Otherwise the Lifetime Learning Credit applies, 20% of up to $10,000."
@@ -781,9 +787,9 @@ export function PaymentsStep({ ret, set, result }: StepProps): ReactElement {
             <div key={who} className="doc" style={{ marginBottom: 12 }}>
               <header><h3>{name}</h3></header>
               <div className="grid">
-                <MoneyField label="IRA contributions for 2025" hint="Traditional and Roth" value={sv.iraContributions} onChange={(n) => setSv({ iraContributions: n })} />
+                <MoneyField label={`IRA contributions for ${TAX_YEAR}`} hint="Traditional and Roth" value={sv.iraContributions} onChange={(n) => setSv({ iraContributions: n })} />
                 <MoneyField label="401(k), 403(b), 457 or TSP deferrals" box="W-2 box 12" hint="Codes D, E, G, H, S, AA, BB, EE" value={sv.electiveDeferrals} onChange={(n) => setSv({ electiveDeferrals: n })} />
-                <MoneyField label="Retirement distributions 2023–2025" hint="Withdrawals reduce the credit; rollovers don’t count" value={sv.distributions} onChange={(n) => setSv({ distributions: n })} />
+                <MoneyField label={`Retirement distributions ${TAX_YEAR - 2}–${TAX_YEAR}`} hint="Withdrawals reduce the credit; rollovers don’t count" value={sv.distributions} onChange={(n) => setSv({ distributions: n })} />
               </div>
             </div>
           )
@@ -818,10 +824,10 @@ export function PaymentsStep({ ret, set, result }: StepProps): ReactElement {
         <div className="grid">
           <MoneyField label="Other federal withholding" hint="1099-G, 1099-NEC, 1099-MISC and similar" value={ret.payments.otherWithholding} onChange={(n) => set((r) => ({ ...r, payments: { ...r.payments, otherWithholding: n } }))} />
         </div>
-        <h3 className="subhead">2025 estimated tax payments</h3>
-        <p className="why" style={{ marginTop: 0 }}>Enter each payment under the deadline it was paid by. Include any 2024 overpayment applied to 2025 in the first one.</p>
+        <h3 className="subhead">{TAX_YEAR} estimated tax payments</h3>
+        <p className="why" style={{ marginTop: 0 }}>Enter each payment under the deadline it was paid by. Include any {TAX_YEAR - 1} overpayment applied to {TAX_YEAR} in the first one.</p>
         <div className="grid">
-          {(['April 15, 2025', 'June 16, 2025', 'September 15, 2025', 'January 15, 2026'] as const).map((label, i) => (
+          {INSTALLMENT_DUE_DATES.map((iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })).map((label, i) => (
             <MoneyField key={label} label={`Paid by ${label}`} value={ret.payments.estimatedByQuarter[i]}
               onChange={(n) => set((r) => {
                 const q = [...r.payments.estimatedByQuarter] as [number, number, number, number]
@@ -831,14 +837,14 @@ export function PaymentsStep({ ret, set, result }: StepProps): ReactElement {
           ))}
         </div>
 
-        <h3 className="subhead">Your 2024 return</h3>
+        <h3 className="subhead">Your {TAX_YEAR - 1} return</h3>
         <p className="why" style={{ marginTop: 0 }}>Used only to check the estimated tax penalty. If you paid at least last year’s tax (110% if your AGI was over $150,000), there is no penalty.</p>
         <div className="grid">
-          <MoneyField label="2024 total tax" hint="2024 Form 1040 line 24 minus lines 27–30" value={ret.priorYear.tax ?? 0} onChange={(n) => set((r) => ({ ...r, priorYear: { ...r.priorYear, tax: n } }))} />
-          <MoneyField label="2024 adjusted gross income" hint="2024 Form 1040 line 11" value={ret.priorYear.agi} onChange={(n) => set((r) => ({ ...r, priorYear: { ...r.priorYear, agi: n } }))} />
+          <MoneyField label={`${TAX_YEAR - 1} total tax`} hint={`${TAX_YEAR - 1} Form 1040 line 24 minus lines 27–30`} value={ret.priorYear.tax ?? 0} onChange={(n) => set((r) => ({ ...r, priorYear: { ...r.priorYear, tax: n } }))} />
+          <MoneyField label={`${TAX_YEAR - 1} adjusted gross income`} hint={`${TAX_YEAR - 1} Form 1040 line 11`} value={ret.priorYear.agi} onChange={(n) => set((r) => ({ ...r, priorYear: { ...r.priorYear, agi: n } }))} />
         </div>
         <div className="checks">
-          <Check label="I had no tax liability for 2024 (and was a U.S. citizen or resident all year)" checked={ret.priorYear.noLiability} onChange={(v) => set((r) => ({ ...r, priorYear: { ...r.priorYear, noLiability: v } }))} />
+          <Check label={`I had no tax liability for ${TAX_YEAR - 1} (and was a U.S. citizen or resident all year)`} checked={ret.priorYear.noLiability} onChange={(v) => set((r) => ({ ...r, priorYear: { ...r.priorYear, noLiability: v } }))} />
         </div>
         {result.form2210.penalty > 0
           ? <p className="note is-warn">Estimated tax penalty: <strong>{usd(result.form2210.penalty)}</strong> (Form 1040 line 38), figured quarter by quarter at 7% a year. It is included in your amount owed.</p>
@@ -881,7 +887,7 @@ function HomeOfficeEditor({ ho, result, onChange }: { ho: HomeOffice; result?: T
       )}
       {ho.method === 'regular' && (
         <>
-          <p className="why">Enter whole-home amounts for 2025; the business share ({ho.homeSqFt > 0 ? `${Math.round(Math.min(1, ho.officeSqFt / ho.homeSqFt) * 1000) / 10}%` : '—'}) is applied for you.</p>
+          <p className="why">Enter whole-home amounts for {TAX_YEAR}; the business share ({ho.homeSqFt > 0 ? `${Math.round(Math.min(1, ho.officeSqFt / ho.homeSqFt) * 1000) / 10}%` : '—'}) is applied for you.</p>
           <div className="grid">
             <MoneyField label="Mortgage interest" value={ho.mortgageInterest} onChange={(n) => onChange({ mortgageInterest: n })} />
             <MoneyField label="Real estate taxes" value={ho.realEstateTaxes} onChange={(n) => onChange({ realEstateTaxes: n })} />
@@ -901,13 +907,13 @@ function HomeOfficeEditor({ ho, result, onChange }: { ho: HomeOffice; result?: T
               : <MoneyField label="Or depreciation already figured" hint="Form 8829 line 42" value={ho.depreciation} onChange={(n) => onChange({ depreciation: n })} />}
           </div>
           <details className="more" open={ho.priorOperatingCarryover + ho.priorExcessCarryover > 0}>
-            <summary>Amounts carried over from 2024</summary>
+            <summary>Amounts carried over from {TAX_YEAR - 1}</summary>
             <div className="grid">
-              <MoneyField label="Operating expenses" hint="2024 Form 8829 line 43" value={ho.priorOperatingCarryover} onChange={(n) => onChange({ priorOperatingCarryover: n })} />
-              <MoneyField label="Excess casualty losses and depreciation" hint="2024 Form 8829 line 44" value={ho.priorExcessCarryover} onChange={(n) => onChange({ priorExcessCarryover: n })} />
+              <MoneyField label="Operating expenses" hint={`${TAX_YEAR - 1} Form 8829 line 43`} value={ho.priorOperatingCarryover} onChange={(n) => onChange({ priorOperatingCarryover: n })} />
+              <MoneyField label="Excess casualty losses and depreciation" hint={`${TAX_YEAR - 1} Form 8829 line 44`} value={ho.priorExcessCarryover} onChange={(n) => onChange({ priorExcessCarryover: n })} />
             </div>
           </details>
-          {result && result.carryover > 0 && <p className="note">{usd(result.carryover)} can’t be deducted this year because it is more than the business profit. It carries over to 2026.</p>}
+          {result && result.carryover > 0 && <p className="note">{usd(result.carryover)} can’t be deducted this year because it is more than the business profit. It carries over to {TAX_YEAR + 1}.</p>}
         </>
       )}
       {ho.method === 'amount' && (
@@ -923,7 +929,7 @@ function HsaEditor({ who, name, h, result, onChange }: { who: 'taxpayer' | 'spou
   return (
     <div className="doc" style={{ marginBottom: 12 }}>
       <header><h3>{name}</h3>{result && <span className="why" style={{ margin: 0 }}>Limit {usd(result.line8)}</span>}</header>
-      <Choice legend={`${name}: high-deductible health plan coverage in 2025`} value={h.coverage} onChange={(v) => onChange({ coverage: v })}
+      <Choice legend={`${name}: high-deductible health plan coverage in ${TAX_YEAR}`} value={h.coverage} onChange={(v) => onChange({ coverage: v })}
         options={[{ value: 'none', label: 'No HSA' }, { value: 'self', label: 'Self-only' }, { value: 'family', label: 'Family' }]} />
       {h.coverage !== 'none' && (
         <>
@@ -944,8 +950,8 @@ function HsaEditor({ who, name, h, result, onChange }: { who: 'taxpayer' | 'spou
           <details className="more" open={h.priorExcess > 0 || ((result?.excess ?? 0) > 0 && !h.excessWithdrawn)}>
             <summary>Excess contributions (Form 5329)</summary>
             <div className="grid">
-              <MoneyField label="Excess carried from 2024" hint="2024 Form 5329 line 48" value={h.priorExcess} onChange={(n) => onChange({ priorExcess: n })} />
-              <MoneyField label="HSA value on December 31, 2025" hint="Including 2025 contributions made in 2026" value={h.yearEndValue} onChange={(n) => onChange({ yearEndValue: n })} />
+              <MoneyField label={`Excess carried from ${TAX_YEAR - 1}`} hint={`${TAX_YEAR - 1} Form 5329 line 48`} value={h.priorExcess} onChange={(n) => onChange({ priorExcess: n })} />
+              <MoneyField label={`HSA value on December 31, ${TAX_YEAR}`} hint={`Including ${TAX_YEAR} contributions made in ${TAX_YEAR + 1}`} value={h.yearEndValue} onChange={(n) => onChange({ yearEndValue: n })} />
             </div>
           </details>
         </>
@@ -984,7 +990,7 @@ function AssetsEditor({ assets, results, allow179, total, defaultClass = '5', on
       <summary>Depreciation and equipment (Form 4562){total > 0 ? ` · ${usd(total)}` : ''}</summary>
       {assets.map((a, i) => {
         const res = results.find((x) => x.id === a.id)
-        const thisYear = /\/2025$/.test(a.placedInService.trim())
+        const thisYear = a.placedInService.trim().endsWith(`/${TAX_YEAR}`)
         const personal = !['27.5', '39'].includes(a.propertyClass)
         return (
           <div className="asset" key={a.id}>
@@ -1001,14 +1007,14 @@ function AssetsEditor({ assets, results, allow179, total, defaultClass = '5', on
               {thisYear && personal && (
                 <div className={allow179 ? '' : 'span-2'}>
                   <SelectField label="Bonus depreciation" value={a.bonus} onChange={(v) => patch(a.id, { bonus: v as DepreciableAsset['bonus'] })} options={[
-                    { value: 'auto', label: 'Take it (100%, or 40% if acquired before Jan 20, 2025)' },
+                    { value: 'auto', label: `Take it (100%, or ${TAX_YEAR <= 2025 ? 40 : 20}% if acquired before Jan 20, 2025)` },
                     { value: '40', label: 'Elect 40% instead of 100%' },
                     { value: 'none', label: 'Elect out' }
                   ]} />
                 </div>
               )}
               {thisYear && personal && a.bonus === 'auto' && (
-                <div className="span-2"><Check label="Acquired, or under a binding contract, before January 20, 2025" hint="Bonus is 40% for such property" checked={a.acquiredBeforeJan20} onChange={(v) => patch(a.id, { acquiredBeforeJan20: v })} /></div>
+                <div className="span-2"><Check label="Acquired, or under a binding contract, before January 20, 2025" hint={`Bonus is ${TAX_YEAR <= 2025 ? 40 : 20}% for such property`} checked={a.acquiredBeforeJan20} onChange={(v) => patch(a.id, { acquiredBeforeJan20: v })} /></div>
               )}
               {!thisYear && personal && a.placedInService.length === 10 && (
                 <MoneyField label="Bonus and section 179 taken in earlier years" hint="Reduces the basis left to depreciate" value={a.priorSpecial} onChange={(n) => patch(a.id, { priorSpecial: n })} />
@@ -1025,7 +1031,7 @@ function AssetsEditor({ assets, results, allow179, total, defaultClass = '5', on
               )}
               {(a.listed === 'auto' || a.listed === 'heavy') && (
                 <>
-                  <NumberField label="Business miles in 2025" max={300000} value={a.vehicle.businessMiles} onChange={(n) => patch(a.id, { vehicle: { ...a.vehicle, businessMiles: n } })} />
+                  <NumberField label={`Business miles in ${TAX_YEAR}`} max={300000} value={a.vehicle.businessMiles} onChange={(n) => patch(a.id, { vehicle: { ...a.vehicle, businessMiles: n } })} />
                   <NumberField label="Commuting miles" max={300000} value={a.vehicle.commutingMiles} onChange={(n) => patch(a.id, { vehicle: { ...a.vehicle, commutingMiles: n } })} />
                   <NumberField label="Other personal miles" max={300000} value={a.vehicle.otherMiles} onChange={(n) => patch(a.id, { vehicle: { ...a.vehicle, otherMiles: n } })} />
                   <div />
@@ -1036,12 +1042,12 @@ function AssetsEditor({ assets, results, allow179, total, defaultClass = '5', on
                   </div>
                 </>
               )}
-              <div className="span-2"><Check label="Enter the 2025 depreciation myself" hint="For assets on another method or convention" checked={a.manual} onChange={(v) => patch(a.id, { manual: v })} /></div>
-              {a.manual && <MoneyField label="2025 depreciation" value={a.manualAmount} onChange={(n) => patch(a.id, { manualAmount: n })} />}
+              <div className="span-2"><Check label={`Enter the ${TAX_YEAR} depreciation myself`} hint="For assets on another method or convention" checked={a.manual} onChange={(v) => patch(a.id, { manual: v })} /></div>
+              {a.manual && <MoneyField label={`${TAX_YEAR} depreciation`} value={a.manualAmount} onChange={(n) => patch(a.id, { manualAmount: n })} />}
             </div>
             {res && !a.manual && (res.depreciation + res.section179Elected > 0) && (
               <p className="why">
-                2025: {res.section179Elected > 0 ? `section 179 ${usd(res.section179Elected)} · ` : ''}{res.bonus > 0 ? `bonus ${usd(res.bonus)} · ` : ''}{res.listed !== 'none' && !res.qualifiedUse ? 'straight line (ADS)' : 'MACRS'} {usd(res.macrs)} ({res.convention}){res.autoLimit !== null ? ` · limited to ${usd(res.autoLimit)}` : ''}
+                {TAX_YEAR}: {res.section179Elected > 0 ? `section 179 ${usd(res.section179Elected)} · ` : ''}{res.bonus > 0 ? `bonus ${usd(res.bonus)} · ` : ''}{res.listed !== 'none' && !res.qualifiedUse ? 'straight line (ADS)' : 'MACRS'} {usd(res.macrs)} ({res.convention}){res.autoLimit !== null ? ` · limited to ${usd(res.autoLimit)}` : ''}
               </p>
             )}
           </div>

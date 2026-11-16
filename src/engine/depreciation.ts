@@ -1,5 +1,5 @@
 /**
- * Depreciation for tax year 2025: MACRS (GDS), the section 179 election, the special
+ * Depreciation for the tax year being prepared (rules.ts): MACRS (GDS), the section 179 election, the special
  * depreciation allowance (bonus) restored to 100% by P.L. 119-21, and Form 4562 lines.
  *
  * Rates follow the optional tables in the 2025 Instructions for Form 4562 (Tables A–C) and
@@ -8,16 +8,16 @@
  */
 import type { DepreciableAsset, PropertyClass } from './model.ts'
 import { parseDate } from './capital.ts'
+import * as R from './rules.ts'
 
 const r = (n: number): number => Math.round(n)
 const pos = (n: number): number => Math.max(0, n)
 
-export const SECTION_179_LIMIT = 2500000
-export const SECTION_179_THRESHOLD = 4000000
-export const TAX_YEAR = 2025
-/** Property acquired after January 19, 2025 gets 100% bonus; before that, 40%. */
+/** Property acquired after January 19, 2025 gets 100% bonus; property acquired earlier keeps the TCJA phase-down:
+ *  40% if placed in service in 2025, 20% in 2026, none after. */
 export const BONUS_RATE_NEW = 1.0
 export const BONUS_RATE_PHASED = 0.40
+export const phasedBonusRate = (placedYear: number): number => (placedYear <= 2025 ? 0.40 : placedYear === 2026 ? 0.20 : 0)
 
 const PERSONAL: PropertyClass[] = ['3', '5', '7', '10', '15', '20']
 export const isPersonalProperty = (c: PropertyClass): boolean => PERSONAL.includes(c)
@@ -105,17 +105,24 @@ export interface AssetResult {
   issues: string[]
 }
 
-/** Limits for passenger automobiles (Table 2 of the 2025 Form 4562 instructions), for the 2025 tax year. */
-export function autoLimit2025(placedYear: number, bonusTaken: boolean): number {
-  if (placedYear === 2025) return bonusTaken ? 20200 : 12200
-  if (placedYear === 2024) return 19800
-  if (placedYear === 2023) return 11700
+/** Section 280F limits by year placed in service: [1st year with bonus, 1st year without, 2nd, 3rd, each later year].
+ *  Rev. Procs. 2023-14, 2024-13, 2025-16 and 2026-15. */
+const AUTO_LIMITS: Record<number, readonly [number, number, number, number, number]> = {
+  2023: [20200, 12200, 19500, 11700, 6960],
+  2024: [20400, 12400, 19800, 11900, 7160],
+  2025: [20200, 12200, 19600, 11800, 7060],
+  2026: [20300, 12300, 19800, 11900, 7160]
+}
+/** Depreciation limit for a passenger automobile in the tax year being prepared. */
+export function autoLimit(placedYear: number, bonusTaken: boolean, taxYear: number = R.TAX_YEAR): number {
+  const t = AUTO_LIMITS[placedYear]
+  const n = taxYear - placedYear + 1
+  if (t) return n <= 1 ? (bonusTaken ? t[0] : t[1]) : n === 2 ? t[2] : n === 3 ? t[3] : t[4]
   if (placedYear === 2022) return 6460
   if (placedYear === 2021) return 5860
   if (placedYear >= 2018) return 5760
   return 1875
 }
-export const HEAVY_SUV_179_LIMIT = 31300
 
 /** ADS recovery period used for listed property with 50% or less business use. */
 const adsPeriod = (c: PropertyClass): number => (c === '5' ? 5 : c === '7' ? 10 : c === '3' ? 4 : Number(c) + 5)
@@ -131,18 +138,18 @@ export function assetDepreciation(a: DepreciableAsset, opts: { midQuarter: boole
   const pct = Math.min(100, pos(a.businessPct)) / 100
   const businessBasis = r(pos(a.cost) * pct)
   const base: AssetResult = {
-    id: a.id, description: label, propertyClass: a.propertyClass, placedYear, placedMonth, currentYear: placedYear === TAX_YEAR,
+    id: a.id, description: label, propertyClass: a.propertyClass, placedYear, placedMonth, currentYear: placedYear === R.TAX_YEAR,
     businessBasis, section179Elected: 0, bonusRate: 0, bonus: 0, depreciableBasis: businessBasis, convention: 'HY', macrs: 0,
     manual: false, depreciation: 0, listed: a.listed ?? 'none', qualifiedUse: (a.businessPct ?? 100) > 50, autoLimit: null,
     recoveryPeriod: `${a.propertyClass} yrs.`, methodConvention: '', issues
   }
   if (a.manual) return { ...base, manual: true, depreciation: r(pos(a.manualAmount)), depreciableBasis: 0 }
   if (!date) { issues.push(`${label}: enter the date placed in service (MM/DD/YYYY).`); return base }
-  if (placedYear > TAX_YEAR) { issues.push(`${label}: placed in service after 2025, so there is no 2025 depreciation.`); return base }
+  if (placedYear > R.TAX_YEAR) { issues.push(`${label}: placed in service after ${R.TAX_YEAR}, so there is no ${R.TAX_YEAR} depreciation.`); return base }
   if ((a.listed ?? 'none') !== 'none') return listedDepreciation(a, base, date, opts)
   if (a.businessPct > 0 && a.businessPct <= 50 && isPersonalProperty(a.propertyClass)) issues.push(`${label}: business use of 50% or less. If this is listed property (a vehicle, for example), MACRS 200% DB, bonus and section 179 are not allowed; use straight line under ADS.`)
   const convention: Convention = !isPersonalProperty(a.propertyClass) ? 'MM' : (base.currentYear && opts.midQuarter ? 'MQ' : 'HY')
-  const year = TAX_YEAR - placedYear + 1
+  const year = R.TAX_YEAR - placedYear + 1
   if (base.currentYear) {
     const s179 = opts.allow179 && isPersonalProperty(a.propertyClass) ? Math.min(r(pos(a.section179)), businessBasis) : 0
     if (a.section179 > 0 && !opts.allow179) issues.push(`${label}: section 179 is not allowed for property used in a residential rental.`)
@@ -150,7 +157,7 @@ export function assetDepreciation(a: DepreciableAsset, opts: { midQuarter: boole
     let bonusRate = 0
     if (isPersonalProperty(a.propertyClass) && a.bonus !== 'none') {
       const beforeCutoff = placedMonth === 1 && date.getUTCDate() <= 19
-      bonusRate = a.bonus === '40' || a.acquiredBeforeJan20 || beforeCutoff ? BONUS_RATE_PHASED : BONUS_RATE_NEW
+      bonusRate = a.bonus === '40' || a.acquiredBeforeJan20 || beforeCutoff ? phasedBonusRate(placedYear) : BONUS_RATE_NEW
     }
     const bonus = r((businessBasis - s179) * bonusRate)
     const depreciableBasis = businessBasis - s179 - bonus
@@ -167,7 +174,7 @@ function listedDepreciation(a: DepreciableAsset, base: AssetResult, date: Date, 
   const { issues, businessBasis, placedYear, placedMonth } = base
   const label = base.description
   const pct = Math.min(100, pos(a.businessPct)) / 100
-  const year = TAX_YEAR - placedYear + 1
+  const year = R.TAX_YEAR - placedYear + 1
   const v = a.vehicle
   if (a.listed !== 'other' && v && v.businessMiles + v.commutingMiles + v.otherMiles > 0) {
     const milesPct = Math.round((v.businessMiles / (v.businessMiles + v.commutingMiles + v.otherMiles)) * 100)
@@ -178,7 +185,7 @@ function listedDepreciation(a: DepreciableAsset, base: AssetResult, date: Date, 
     const n = adsPeriod(a.propertyClass)
     let dep = r(pos(businessBasis - r(pos(a.priorSpecial))) * slHalfYear(n, year) / 100)
     let limit: number | null = null
-    if (a.listed === 'auto') { limit = r(autoLimit2025(placedYear, false) * pct); dep = Math.min(dep, limit) }
+    if (a.listed === 'auto') { limit = r(autoLimit(placedYear, false) * pct); dep = Math.min(dep, limit) }
     return {
       ...base, depreciableBasis: pos(businessBasis - r(pos(a.priorSpecial))), convention: 'HY', macrs: dep, depreciation: dep, autoLimit: limit,
       recoveryPeriod: `${n} yrs.`, methodConvention: 'S/L/HY'
@@ -187,15 +194,15 @@ function listedDepreciation(a: DepreciableAsset, base: AssetResult, date: Date, 
   const convention: Convention = base.currentYear && opts.midQuarter ? 'MQ' : 'HY'
   if (base.currentYear) {
     let s179 = opts.allow179 ? Math.min(r(pos(a.section179)), businessBasis) : 0
-    if (a.listed === 'heavy' && s179 > HEAVY_SUV_179_LIMIT) { issues.push(`${label}: section 179 for an SUV over 6,000 pounds is limited to $${HEAVY_SUV_179_LIMIT.toLocaleString()}.`); s179 = HEAVY_SUV_179_LIMIT }
+    if (a.listed === 'heavy' && s179 > R.HEAVY_SUV_179_LIMIT) { issues.push(`${label}: section 179 for an SUV over 6,000 pounds is limited to $${R.HEAVY_SUV_179_LIMIT.toLocaleString()}.`); s179 = R.HEAVY_SUV_179_LIMIT }
     let bonusRate = 0
-    if (a.bonus !== 'none') bonusRate = a.bonus === '40' || a.acquiredBeforeJan20 || (placedMonth === 1 && date.getUTCDate() <= 19) ? BONUS_RATE_PHASED : BONUS_RATE_NEW
+    if (a.bonus !== 'none') bonusRate = a.bonus === '40' || a.acquiredBeforeJan20 || (placedMonth === 1 && date.getUTCDate() <= 19) ? phasedBonusRate(placedYear) : BONUS_RATE_NEW
     let bonus = r((businessBasis - s179) * bonusRate)
     const depreciableBasis = businessBasis - s179 - bonus
     let macrs = r(depreciableBasis * macrsRate(a.propertyClass, 1, placedMonth, convention) / 100)
     let limit: number | null = null
     if (a.listed === 'auto') {
-      limit = r(autoLimit2025(2025, bonus > 0) * pct)
+      limit = r(autoLimit(R.TAX_YEAR, bonus > 0) * pct)
       s179 = Math.min(s179, limit)
       bonus = Math.min(bonus, limit - s179)
       macrs = Math.min(macrs, limit - s179 - bonus)
@@ -208,7 +215,7 @@ function listedDepreciation(a: DepreciableAsset, base: AssetResult, date: Date, 
   const depreciableBasis = pos(businessBasis - r(pos(a.priorSpecial)))
   let macrs = r(depreciableBasis * macrsRate(a.propertyClass, year, placedMonth, convention) / 100)
   let limit: number | null = null
-  if (a.listed === 'auto') { limit = r(autoLimit2025(placedYear, false) * pct); macrs = Math.min(macrs, limit) }
+  if (a.listed === 'auto') { limit = r(autoLimit(placedYear, false) * pct); macrs = Math.min(macrs, limit) }
   return { ...base, depreciableBasis, convention, macrs, depreciation: macrs, autoLimit: limit, methodConvention: `200 DB/${convention}` }
 }
 
@@ -219,7 +226,7 @@ export function midQuarterApplies(assets: DepreciableAsset[]): boolean {
   for (const a of assets) {
     if (a.manual || !isPersonalProperty(a.propertyClass)) continue
     const d = parseDate(a.placedInService)
-    if (!d || d.getUTCFullYear() !== TAX_YEAR) continue
+    if (!d || d.getUTCFullYear() !== R.TAX_YEAR) continue
     const basis = pos(pos(a.cost) * Math.min(100, pos(a.businessPct)) / 100 - pos(a.section179))
     total += basis
     if (d.getUTCMonth() >= 9) q4 += basis
@@ -235,9 +242,9 @@ export interface Section179Result {
 }
 
 export function section179(args: { costOfProperty: number; elected: number; carryover: number; businessIncome: number; mfs: boolean }): Section179Result {
-  const line1 = args.mfs ? SECTION_179_LIMIT / 2 : SECTION_179_LIMIT
+  const line1 = args.mfs ? R.SECTION_179_LIMIT / 2 : R.SECTION_179_LIMIT
   const line2 = r(args.costOfProperty)
-  const line3 = SECTION_179_THRESHOLD
+  const line3 = R.SECTION_179_THRESHOLD
   const line4 = pos(line2 - line3)
   const line5 = pos(line1 - line4)
   const line8 = r(args.elected)
@@ -295,12 +302,12 @@ export function form4562For(args: {
     }
   }
   for (const a of current.filter((x) => !isPersonalProperty(x.propertyClass))) {
-    rows.push({ propertyClass: a.propertyClass, placed: `${two(a.placedMonth)}/${TAX_YEAR}`, basis: a.depreciableBasis, period: `${a.propertyClass} yrs.`, convention: 'MM', method: 'S/L', deduction: a.macrs })
+    rows.push({ propertyClass: a.propertyClass, placed: `${two(a.placedMonth)}/${R.TAX_YEAR}`, basis: a.depreciableBasis, period: `${a.propertyClass} yrs.`, convention: 'MM', method: 'S/L', deduction: a.macrs })
   }
   const line14 = assets.filter((a) => a.currentYear).reduce((s, a) => s + a.bonus, 0)
   const line16 = assets.filter((a) => a.manual && a.currentYear).reduce((s, a) => s + a.depreciation, 0)
   const line17 = assets.filter((a) => !a.currentYear).reduce((s, a) => s + a.depreciation, 0)
-  const home = args.home && args.home.deduction > 0 ? { placed: `${two(args.home.month)}/${TAX_YEAR}`, basis: args.home.basis, deduction: args.home.deduction } : null
+  const home = args.home && args.home.deduction > 0 ? { placed: `${two(args.home.month)}/${R.TAX_YEAR}`, basis: args.home.basis, deduction: args.home.deduction } : null
   const elected = assets.filter((a) => a.section179Elected > 0).map((a) => ({ description: a.description, cost: a.businessBasis, elected: a.section179Elected }))
   const listed = listedAssets.map((a) => {
     const src = args.source?.find((x) => x.id === a.id)

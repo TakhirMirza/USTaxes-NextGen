@@ -6,8 +6,8 @@
  * specified service trades or businesses (SSTB). Losses from one business (and a loss carried
  * from 2024) reduce the others in proportion to their income, as in Schedule C (Form 8995-A).
  */
-import * as R from './rules2025.ts'
-import type { FilingStatus } from './rules2025.ts'
+import * as R from './rules.ts'
+import type { FilingStatus } from './rules.ts'
 
 const r = (n: number): number => Math.round(n)
 const pos = (n: number): number => Math.max(0, n)
