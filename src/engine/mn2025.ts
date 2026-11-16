@@ -127,6 +127,8 @@ export interface MnResult {
   cwfc: Record<string, number>
   deduction: { method: 'standard' | 'itemized'; standard: number; itemized: number; boxes: number }
   dependents: { count: number; children: number; older: number }
+  /** Schedule M1DQC rows. */
+  dqc: { first: string; last: string; ssn: string; relationship: string; months: number; student: boolean; disabled: boolean; child: boolean; older: boolean }[]
   statements: { owner: Owner; employer: string; ein: string; stateId: string; wages: number; tax: number }[]
   issues: string[]
   attach: string[]
@@ -202,8 +204,15 @@ export function computeMinnesota(ret: TaxReturnInput, res: TaxReturnResult): MnR
 
   // ── Refundable credits: Schedule M1CWFC (qualifying children from Schedule M1DQC) ──
   const lived = (x: TaxReturnInput['dependents'][number]): boolean => x.monthsLivedWithYou > 6
-  const children = ret.dependents.filter((x) => x.childRelationship && x.age < 18 && lived(x)).length
-  const older = ret.dependents.filter((x) => x.childRelationship && lived(x) && x.age >= 18 && (x.age < 19 || (x.student && x.age < 24) || x.disabled)).length
+  const isChild = (x: TaxReturnInput['dependents'][number]): boolean => x.childRelationship && x.age < 18 && lived(x)
+  const isOlder = (x: TaxReturnInput['dependents'][number]): boolean => x.childRelationship && lived(x) && x.age >= 18 && (x.age < 19 || (x.student && x.age < 24) || x.disabled)
+  const children = ret.dependents.filter(isChild).length
+  const older = ret.dependents.filter(isOlder).length
+  const dqc = ret.dependents.map((x) => {
+    const parts = x.name.trim().split(/\s+/)
+    const last = parts.length > 1 ? parts.pop() ?? '' : ''
+    return { first: parts.join(' '), last, ssn: x.ssn, relationship: x.relationship.trim(), months: x.monthsLivedWithYou, student: x.student && x.age >= 18 && x.age < 24, disabled: x.disabled, child: isChild(x), older: isOlder(x) }
+  })
   const earned = Math.max(pos(f['1z']), pos(res.eic.earnedIncome))
   const investment = pos(f['2b']) + pos(f['3b']) + pos(f['2a']) + pos(f['7a'])
   const cwfcEligible = !ret.canBeClaimedAsDependent && status !== 'mfs' && investment < 11950 && (children + older > 0 || people.some((p) => p.age >= 19 && p.age <= 64))
@@ -253,6 +262,6 @@ export function computeMinnesota(ret: TaxReturnInput, res: TaxReturnResult): MnR
   return {
     status, lines: L, m: M, ref: REF, cwfc: CW,
     deduction: { method: itemizes ? 'itemized' : 'standard', standard: standardLimited, itemized, boxes },
-    dependents: { count: depCount, children, older }, statements, issues, attach
+    dependents: { count: depCount, children, older }, dqc, statements, issues, attach
   }
 }

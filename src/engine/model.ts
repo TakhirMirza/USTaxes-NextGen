@@ -1260,6 +1260,62 @@ export const emptyMn = (): MnInput => ({
   militaryPension: 0, otherSubtractions: 0, itemized: null, spouseItemizes: false, nonrefundableCredits: 0, refundableCredits: 0, nongame: 0, creditForward: 0
 })
 
+export interface WiInput {
+  /** Wisconsin W-2 details by W-2 id (line 28). */
+  w2: Record<string, StateStatement>
+  withholding1099: number
+  /** Line 29: 2025 estimated payments and 2024 overpayment applied. */
+  estimatedPayments: number
+  /** Tax district: city, village or town, its name and county; 4-digit school district number. */
+  districtType: '' | 'city' | 'village' | 'town'
+  districtName: string
+  county: string
+  schoolDistrict: string
+  /** Head of household while married (fill in the spouse’s name and SSN). */
+  hohMarried: boolean
+  /** Line 2 (Schedule I): adjustments for federal law Wisconsin has not adopted. */
+  scheduleIAdjustment: number
+  /** Schedule AD: other states’ bond interest and other additions. */
+  otherStateBondInterest: number
+  otherAdditions: number
+  /** Schedule SB subtractions. */
+  stateRefundInFagi: number
+  usObligationInterest: number
+  /** Retirement benefits Wisconsin exempts (military, certain federal, state and local plans) and the retirement income subtraction. */
+  retirementSubtraction: number
+  /** Edvest / Tomorrow’s Scholar and ABLE contributions (Schedule SB). */
+  collegeSavings: number
+  medicalInsurance: number
+  privateSchoolTuition: number
+  otherSubtractions: number
+  /** Line 14 (Schedule WI-2441): additional child and dependent care credit. */
+  additionalCareCredit: number
+  /** Line 16: rent paid (heat included / not included) and property taxes on your home. */
+  rentHeatIncluded: number
+  rentHeatNotIncluded: number
+  propertyTaxes: number
+  /** Line 19 (Schedule CR) and line 20 (Schedule OS). */
+  nonrefundableCredits: number
+  otherStateCredit: number
+  otherStateCode: string
+  /** Line 23: use tax on untaxed out-of-state purchases. */
+  useTax: number
+  /** Line 33 homestead credit and line 35 Schedule CR refundable credits. */
+  homesteadCredit: number
+  refundableCredits: number
+  /** Schedule 3 donations 1a–1h. */
+  donations: Record<string, number>
+  /** Line 42: overpayment applied to 2026 estimated tax. */
+  creditForward: number
+}
+export const emptyWi = (): WiInput => ({
+  w2: {}, withholding1099: 0, estimatedPayments: 0, districtType: '', districtName: '', county: '', schoolDistrict: '', hohMarried: false,
+  scheduleIAdjustment: 0, otherStateBondInterest: 0, otherAdditions: 0, stateRefundInFagi: 0, usObligationInterest: 0, retirementSubtraction: 0,
+  collegeSavings: 0, medicalInsurance: 0, privateSchoolTuition: 0, otherSubtractions: 0, additionalCareCredit: 0, rentHeatIncluded: 0,
+  rentHeatNotIncluded: 0, propertyTaxes: 0, nonrefundableCredits: 0, otherStateCredit: 0, otherStateCode: '', useTax: 0, homesteadCredit: 0,
+  refundableCredits: 0, donations: {}, creditForward: 0
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -1415,6 +1471,8 @@ export interface TaxReturnInput {
   co: CoInput
   /** Minnesota resident return (Form M1). */
   mn: MnInput
+  /** Wisconsin resident return (Form 1). */
+  wi: WiInput
 }
 
 let counter = 0
@@ -1622,7 +1680,8 @@ export const emptyReturn = (): TaxReturnInput => ({
   ma: emptyMa(),
   az: emptyAz(),
   co: emptyCo(),
-  mn: emptyMn()
+  mn: emptyMn(),
+  wi: emptyWi()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -1745,6 +1804,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     ma: { ...emptyMa(), ...(r.ma ?? {}), w2: normalizeStatements(r.ma?.w2), commuter: { ...emptyMa().commuter, ...(r.ma?.commuter ?? {}) }, veteran: { ...emptyMa().veteran, ...(r.ma?.veteran ?? {}) }, electionFund: { ...emptyMa().electionFund, ...(r.ma?.electionFund ?? {}) }, donations: { ...(r.ma?.donations ?? {}) }, birthDate: { ...emptyMa().birthDate, ...(r.ma?.birthDate ?? {}) }, dependentBirthDates: { ...(r.ma?.dependentBirthDates ?? {}) }, health: { taxpayer: normalizeMaHealth(r.ma?.health?.taxpayer), spouse: normalizeMaHealth(r.ma?.health?.spouse) } },
     az: { ...emptyAz(), ...(r.az ?? {}), w2: normalizeStatements(r.az?.w2), governmentPension: { ...emptyAz().governmentPension, ...(r.az?.governmentPension ?? {}) }, militaryRetirement: { ...emptyAz().militaryRetirement, ...(r.az?.militaryRetirement ?? {}) }, donations: { ...(r.az?.donations ?? {}) } },
     co: { ...emptyCo(), ...(r.co ?? {}), w2: normalizeStatements(r.co?.w2), militaryRetirement: { ...emptyCo().militaryRetirement, ...(r.co?.militaryRetirement ?? {}) }, idState: { ...emptyCo().idState, ...(r.co?.idState ?? {}) }, idLast4: { ...emptyCo().idLast4, ...(r.co?.idLast4 ?? {}) }, idIssued: { ...emptyCo().idIssued, ...(r.co?.idIssued ?? {}) }, birthDate: { ...emptyCo().birthDate, ...(r.co?.birthDate ?? {}) } },
-    mn: { ...emptyMn(), ...(r.mn ?? {}), w2: normalizeStatements(r.mn?.w2), birthDate: { ...emptyMn().birthDate, ...(r.mn?.birthDate ?? {}) }, campaignCode: { ...emptyMn().campaignCode, ...(r.mn?.campaignCode ?? {}) } }
+    mn: { ...emptyMn(), ...(r.mn ?? {}), w2: normalizeStatements(r.mn?.w2), birthDate: { ...emptyMn().birthDate, ...(r.mn?.birthDate ?? {}) }, campaignCode: { ...emptyMn().campaignCode, ...(r.mn?.campaignCode ?? {}) } },
+    wi: { ...emptyWi(), ...(r.wi ?? {}), w2: normalizeStatements(r.wi?.w2), donations: { ...(r.wi?.donations ?? {}) } }
   })
 }

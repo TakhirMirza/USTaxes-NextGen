@@ -101,7 +101,7 @@ test('MN forms: every value lands on one field and the PDF builds', async () => 
     refundDeposit: { routingNumber: '091000019', accountNumber: '12345', accountType: 'checking' } }),
   { w2: withheld(w, 900), birthDate: { taxpayer: '01/02/1985', spouse: '03/04/1986' }, county: 'St. Louis', campaignCode: { taxpayer: '99', spouse: '' }, usObligationInterest: 50 })
   const packet = buildMnPacket(ret, res, r)
-  assert.deepEqual(packet.forms.map((x) => x.id), ['mnm1', 'mnm1m', 'mnm1ref', 'mnm1cwfc'])
+  assert.deepEqual(packet.forms.map((x) => x.id), ['mnm1', 'mnm1m', 'mnm1ref', 'mnm1cwfc', 'mnm1dqc1', 'mnm1w'])
   assert.equal(r.m['11'], 500) // half of (1,500 − 500)
   const formsDir = new URL('../../public/forms/2025/', import.meta.url)
   const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))

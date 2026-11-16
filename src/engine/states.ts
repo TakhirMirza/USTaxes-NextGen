@@ -74,7 +74,7 @@ export const STATES: readonly StateInfo[] = [
   S('VA', 'Virginia', 'supported', 'Form 760', 'Virginia Department of Taxation'),
   S('WA', 'Washington', 'no-tax', '', 'Washington Department of Revenue', 'Washington has no tax on wages, but it taxes large long-term capital gains (capital gains excise tax, its own return).'),
   S('WV', 'West Virginia', 'estimate', 'Form IT-140', 'West Virginia State Tax Department'),
-  S('WI', 'Wisconsin', 'estimate', 'Form 1', 'Wisconsin Department of Revenue'),
+  S('WI', 'Wisconsin', 'supported', 'Form 1', 'Wisconsin Department of Revenue'),
   S('WY', 'Wyoming', 'no-tax', '', 'Wyoming Department of Revenue', 'Wyoming has no individual income tax.')
 ]
 
