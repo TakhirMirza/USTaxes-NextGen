@@ -1215,6 +1215,51 @@ export const emptyCo = (): CoInput => ({
   idState: { taxpayer: '', spouse: '' }, idLast4: { taxpayer: '', spouse: '' }, idIssued: { taxpayer: '', spouse: '' }, birthDate: { taxpayer: '', spouse: '' }
 })
 
+export interface MnInput {
+  /** Minnesota W-2 details by W-2 id (Schedule M1W, line 20). */
+  w2: Record<string, StateStatement>
+  withholding1099: number
+  /** Line 21: 2025 estimated and extension payments. */
+  estimatedPayments: number
+  birthDate: Record<Owner, string>
+  county: string
+  /** State Elections Campaign Fund party codes (11, 12, 14, 16, 17, 18, 99). */
+  campaignCode: Record<Owner, string>
+  /** Schedule M1M line 1/2: other states’ bond interest and fund dividends. */
+  otherStateBondInterest: number
+  otherAdditions: number
+  /** Line 6: state income tax refund in federal AGI. */
+  stateRefundInFagi: number
+  /** Schedule M1M line 14: interest on U.S. bonds. */
+  usObligationInterest: number
+  /** Line 13: K–12 education expenses for qualifying children. */
+  k12Expenses: number
+  /** Line 15 (Schedule M1529): contributions to a 529 plan. */
+  contributions529: number
+  /** Line 20: active-duty military pay. */
+  activeMilitaryPay: number
+  /** Line 25: military pension or retirement pay in federal AGI. */
+  militaryPension: number
+  otherSubtractions: number
+  /** Schedule M1SA total when you itemize in Minnesota (null = estimate from federal Schedule A). */
+  itemized: number | null
+  /** Married filing separately and the spouse itemizes. */
+  spouseItemizes: boolean
+  /** Line 16 (Schedule M1C): marriage credit and other nonrefundable credits. */
+  nonrefundableCredits: number
+  /** Schedule M1REF lines 1, 3–13 (care credit, K–12 credit, renter’s credit…). */
+  refundableCredits: number
+  /** Line 18: Nongame Wildlife Fund. */
+  nongame: number
+  /** Line 30: refund applied to 2026 estimated tax. */
+  creditForward: number
+}
+export const emptyMn = (): MnInput => ({
+  w2: {}, withholding1099: 0, estimatedPayments: 0, birthDate: { taxpayer: '', spouse: '' }, county: '', campaignCode: { taxpayer: '', spouse: '' },
+  otherStateBondInterest: 0, otherAdditions: 0, stateRefundInFagi: 0, usObligationInterest: 0, k12Expenses: 0, contributions529: 0, activeMilitaryPay: 0,
+  militaryPension: 0, otherSubtractions: 0, itemized: null, spouseItemizes: false, nonrefundableCredits: 0, refundableCredits: 0, nongame: 0, creditForward: 0
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -1368,6 +1413,8 @@ export interface TaxReturnInput {
   az: AzInput
   /** Colorado resident return (DR 0104). */
   co: CoInput
+  /** Minnesota resident return (Form M1). */
+  mn: MnInput
 }
 
 let counter = 0
@@ -1574,7 +1621,8 @@ export const emptyReturn = (): TaxReturnInput => ({
   nj: emptyNj(),
   ma: emptyMa(),
   az: emptyAz(),
-  co: emptyCo()
+  co: emptyCo(),
+  mn: emptyMn()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -1696,6 +1744,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     nj: { ...emptyNj(), ...(r.nj ?? {}), w2: normalizeStatements(r.nj?.w2), disabled: { ...emptyNj().disabled, ...(r.nj?.disabled ?? {}) }, veteran: { ...emptyNj().veteran, ...(r.nj?.veteran ?? {}) }, electionFund: { ...emptyNj().electionFund, ...(r.nj?.electionFund ?? {}) }, donations: { ...(r.nj?.donations ?? {}) }, dependentBirthYears: { ...(r.nj?.dependentBirthYears ?? {}) }, pensionTaxable: typeof r.nj?.pensionTaxable === 'number' ? r.nj.pensionTaxable : null, pensionExcludable: typeof r.nj?.pensionExcludable === 'number' ? r.nj.pensionExcludable : null },
     ma: { ...emptyMa(), ...(r.ma ?? {}), w2: normalizeStatements(r.ma?.w2), commuter: { ...emptyMa().commuter, ...(r.ma?.commuter ?? {}) }, veteran: { ...emptyMa().veteran, ...(r.ma?.veteran ?? {}) }, electionFund: { ...emptyMa().electionFund, ...(r.ma?.electionFund ?? {}) }, donations: { ...(r.ma?.donations ?? {}) }, birthDate: { ...emptyMa().birthDate, ...(r.ma?.birthDate ?? {}) }, dependentBirthDates: { ...(r.ma?.dependentBirthDates ?? {}) }, health: { taxpayer: normalizeMaHealth(r.ma?.health?.taxpayer), spouse: normalizeMaHealth(r.ma?.health?.spouse) } },
     az: { ...emptyAz(), ...(r.az ?? {}), w2: normalizeStatements(r.az?.w2), governmentPension: { ...emptyAz().governmentPension, ...(r.az?.governmentPension ?? {}) }, militaryRetirement: { ...emptyAz().militaryRetirement, ...(r.az?.militaryRetirement ?? {}) }, donations: { ...(r.az?.donations ?? {}) } },
-    co: { ...emptyCo(), ...(r.co ?? {}), w2: normalizeStatements(r.co?.w2), militaryRetirement: { ...emptyCo().militaryRetirement, ...(r.co?.militaryRetirement ?? {}) }, idState: { ...emptyCo().idState, ...(r.co?.idState ?? {}) }, idLast4: { ...emptyCo().idLast4, ...(r.co?.idLast4 ?? {}) }, idIssued: { ...emptyCo().idIssued, ...(r.co?.idIssued ?? {}) }, birthDate: { ...emptyCo().birthDate, ...(r.co?.birthDate ?? {}) } }
+    co: { ...emptyCo(), ...(r.co ?? {}), w2: normalizeStatements(r.co?.w2), militaryRetirement: { ...emptyCo().militaryRetirement, ...(r.co?.militaryRetirement ?? {}) }, idState: { ...emptyCo().idState, ...(r.co?.idState ?? {}) }, idLast4: { ...emptyCo().idLast4, ...(r.co?.idLast4 ?? {}) }, idIssued: { ...emptyCo().idIssued, ...(r.co?.idIssued ?? {}) }, birthDate: { ...emptyCo().birthDate, ...(r.co?.birthDate ?? {}) } },
+    mn: { ...emptyMn(), ...(r.mn ?? {}), w2: normalizeStatements(r.mn?.w2), birthDate: { ...emptyMn().birthDate, ...(r.mn?.birthDate ?? {}) }, campaignCode: { ...emptyMn().campaignCode, ...(r.mn?.campaignCode ?? {}) } }
   })
 }
