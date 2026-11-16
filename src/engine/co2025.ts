@@ -193,9 +193,10 @@ export function computeColorado(ret: TaxReturnInput, res: TaxReturnResult): CoRe
   K['5'] = r(res.form2441.credit)
   K['6'] = r(f['18'])
   K['8'] = r(res.schedule3.dependentCare)
+  K['2f'] = r(res.form2441.line4)
+  K['2g'] = joint ? r(res.form2441.line5) : 0
+  K['3'] = pos(Math.min(K['2e'], K['2f'], joint ? K['2g'] : Infinity))
   if (fagi <= CO_CARE_AGI && K['8'] > 0) { K['7'] = CO_CARE_RATE; K['9'] = r(K['8'] * CO_CARE_RATE); CR['2'] = K['9'] } else if (fagi <= 25000 && K['2e'] > 0 && K['8'] === 0) {
-    const earned = Math.min(...owners.map((o) => res.form2441[o === 'taxpayer' ? 'line4' : 'line5']))
-    K['3'] = Math.min(K['2e'], earned)
     K['10'] = 0.25
     K['11'] = r(K['3'] * 0.25)
     const kidsUnder13 = ret.dependents.filter((x) => x.age < 13).length

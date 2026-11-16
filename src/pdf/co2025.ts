@@ -97,15 +97,66 @@ export function formCo104CR(ret: TaxReturnInput, co: CoResult): FormFill {
   return { id: 'co104cr', file: 'co104cr.pdf', title: 'Colorado DR 0104CR (credits)', values, pages: CR['65'] > 0 ? [0, 1, 2, 3, 8] : [0, 1, 2, 3] }
 }
 
+export function formCo104CN(ret: TaxReturnInput, co: CoResult): FormFill {
+  const N = co.cn
+  const [first, mi] = firstAndInitial(ret.taxpayer)
+  const values: Record<string, FieldValue> = {
+    'Last Name': upper(ret.taxpayer.lastName), 'First Name': upper(first), 'Middle Initial': mi, 'SSN or ITIN': digits(ret.taxpayer.ssn),
+    [q(1)]: amt(N['1'], true), [q(11)]: amt(N['11'], true)
+  }
+  if (N['4'] > 0) Object.assign(values, { [q(2)]: String(N['2']), [q(3)]: amt(N['3']), [q(4)]: amt(N['4']) })
+  if (N['7'] > 0) Object.assign(values, { [q(5)]: String(N['5']), [q(6)]: amt(N['6']), [q(7)]: amt(N['7']) })
+  if (N['10'] > 0) Object.assign(values, { [q(8)]: String(N['8']), [q(9)]: amt(N['9']), [q(10)]: amt(N['10']) })
+  return { id: 'co104cn', file: 'co104cn.pdf', title: 'Colorado DR 0104CN (child tax credit)', values, pages: [4, 5] }
+}
+
+export function formCo0347(ret: TaxReturnInput, co: CoResult): FormFill {
+  const K = co.care
+  const values: Record<string, FieldValue> = {
+    'For Tax Year': '2025', 'Taxpayer Name': `${upper(ret.taxpayer.firstName)} ${upper(ret.taxpayer.lastName)}`.trim(), 'SSN or ITIN': digits(ret.taxpayer.ssn),
+    '2(e). Sum of all child care expenses': amt(K['2e'], true), '2(f). Enter earned income': amt(K['2f'], true),
+    '2(g). Earned Income for joint return': amt(K['2g']),
+    [q(3)]: amt(K['3'], true), [q(4)]: amt(K['4'], true), [q(5)]: amt(K['5'], true), [q(6)]: amt(K['6'], true)
+  }
+  if (K['9'] !== undefined) Object.assign(values, { [q(8)]: amt(K['8'], true), [q(9)]: amt(K['9'], true) })
+  if (K['12'] !== undefined) Object.assign(values, { [q(11)]: amt(K['11'], true), [q(12)]: amt(K['12'], true) })
+  const providers = ret.dependentCare.providers.slice(0, 2)
+  const P = [
+    { name: '1(a) Care Providers First Name or Business Name', tin: '(b) SSN, ITIN or FEIN', street: 'Street Address of Care Provider', paid: '(d) Amount Paid' },
+    { name: '1(e) Care Providers First Name or Business Name 1', tin: '(f) SSN, ITIN or FEIN', street: '(g) Street Address of Care Provider', paid: '(h) Amount Paid' }
+  ]
+  providers.forEach((x, i) => {
+    values[P[i].name] = upper(x.name)
+    values[P[i].tin] = digits(x.tin)
+    values[P[i].street] = upper(x.address)
+    values[P[i].paid] = amt(x.amountPaid)
+  })
+  const kids = ret.dependents.filter((x) => x.age < 13 || x.disabled).slice(0, 4)
+  kids.forEach((x, i) => {
+    const s = 'abcd'[i]
+    const parts = x.name.trim().split(/\s+/)
+    const last = parts.length > 1 ? parts.pop() ?? '' : ''
+    values[`2(${s}). Child's First Name`] = upper(parts.join(' '))
+    values[`Last Name of Child (2${s})`] = upper(last)
+    values[`Year of birth (2${s})`] = String(2025 - Math.max(0, Math.floor(x.age)))
+    values[`SSN or ITIN (2${s})`] = digits(x.ssn)
+  })
+  return { id: 'co0347', file: 'co0347.pdf', title: 'Colorado DR 0347 (child care credit)', values, pages: [2, 3, 4, 5] }
+}
+
 export function buildCoPacket(ret: TaxReturnInput, res: TaxReturnResult, co: CoResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formCo104(ret, res, co, preparer)]
   if (co.lines['11'] > 0) forms.push(formCo104AD(ret, co))
   if (co.cr['26'] > 0 || co.cr['65'] > 0) forms.push(formCo104CR(ret, co))
-  const shown = new Set(['DR 0104AD', 'DR 0104CR'])
+  if (co.cr['1'] > 0) forms.push(formCo104CN(ret, co))
+  if (co.cr['2'] > 0) forms.push(formCo0347(ret, co))
+  const shown = new Set(['DR 0104AD', 'DR 0104CR', 'DR 0104CN', 'DR 0347'])
   const notIncluded = co.attach.filter((a) => ![...shown].some((s) => a.startsWith(s)))
   if (co.cr['34'] > 0) notIncluded.push('DR 0104CR Part II (lines 27–33): name the other state and show the income ratio; the credit is on line 34')
   if (ret.co.nonrefundableCredits > 0) notIncluded.push('DR 0104CR Part III: list your other nonrefundable credits by line (only the line 65 total is filled in)')
   if (ret.co.refundableCredits > 0) notIncluded.push('DR 0104CR: enter your other refundable credits on their own lines (lines 7–25)')
   if (co.lines['9'] > 0 || co.ad['20'] > 0) notIncluded.push('A statement explaining other additions (line 9) or other subtractions (DR 0104AD line 20)')
+  if (co.cr['2'] > 0) notIncluded.push('A copy of federal Form 2441 (with DR 0347); on DR 0347 add each child’s care expenses (only the total on line 2(e) is filled in)')
+  if (ret.dependentCare.providers.length > 2) notIncluded.push('DR 0347: more than two care providers — list the rest on an extra page')
   return { forms, notIncluded }
 }

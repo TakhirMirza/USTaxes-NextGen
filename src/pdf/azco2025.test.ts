@@ -66,7 +66,7 @@ test('Arizona Form 140: every key matches exactly one field', async () => {
 
 test('Colorado DR 0104, 0104AD and 0104CR: every key matches exactly one field', async () => {
   const { packet } = run('CO')
-  assert.deepEqual(packet.forms.map((x) => x.id), ['co104', 'co104ad', 'co104cr'])
+  assert.deepEqual(packet.forms.map((x) => x.id), ['co104', 'co104ad', 'co104cr', 'co104cn'])
   const problems: FillProblem[] = []
   for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
   assert.deepEqual(problems, [])
@@ -82,4 +82,21 @@ test('the AZ and CO PDFs build', async () => {
     assert.deepEqual(problems, [])
     if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-${state}.pdf`, bytes)
   }
+})
+
+test('Colorado DR 0347 is filled when AGI is $60,000 or less', async () => {
+  const r = household('CO')
+  const ret: TaxReturnInput = { ...r, retirement: [], socialSecurity: [], w2s: [{ ...r.w2s[0], wages: 30000, socialSecurityWages: 30000, medicareWages: 30000 }, { ...emptyW2('taxpayer'), employer: 'Shop', wages: 15000, socialSecurityWages: 15000, medicareWages: 15000 }],
+    taxpayer: { ...r.taxpayer, age: 40, age65OrOlder: false },
+    dependentCare: { expenses: 2500, employerBenefits: 0, providers: [{ id: 'p1', name: 'Little Sprouts LLC', address: '9 Elm St, Denver CO 80202', tin: '841234567', householdEmployee: false, amountPaid: 2500 }] } }
+  const res = computeReturn(ret)
+  const co = computeColorado(ret, res)
+  const packet = buildCoPacket(ret, res, co)
+  assert.ok(packet.forms.some((x) => x.id === 'co0347'))
+  assert.equal(co.cr['2'], Math.round(res.schedule3.dependentCare * 0.5))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, packet.forms, load, '2025 CO care')
+  if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-CO-care.pdf`, bytes)
 })
