@@ -1509,6 +1509,49 @@ export const emptyAl = (): AlInput => ({
   vehiclePurchaseDate: '', nonrefundableCredits: 0, refundableCredits: 0, useTax: 0, creditForward: 0
 })
 
+export interface OrInput {
+  /** Oregon W-2 details by W-2 id (line 33). */
+  w2: Record<string, StateStatement>
+  /** Line 33: Oregon tax withheld on 1099s; line 34: 2024 refund applied; line 35: 2025 estimated and extension payments. */
+  withholding1099: number
+  priorYearRefundApplied: number
+  estimatedPayments: number
+  /** Dates of birth (MM/DD/YYYY) for the return and each dependent; dependent relationship codes (Table 3) and qualifying disability. */
+  birthDate: Record<Owner, string>
+  dependentBirthDates: Record<string, string>
+  dependentCodes: Record<string, string>
+  childDisability: Record<string, boolean>
+  severeDisability: Record<Owner, boolean>
+  /** Line 32: 2024 Oregon tax liability (2024 OR-40 line 24, less codes 802/815) and the election to donate the kicker. */
+  kickerLiability2024: number
+  donateKicker: boolean
+  /** Line 26: political contributions. */
+  politicalContributions: number
+  /** Schedule OR-ASC: 158 other states’ bond interest; 315 U.S. bond interest; 307 federal pension subtraction. */
+  otherStateBondInterest: number
+  usObligationInterest: number
+  federalPension: number
+  otherAddition: { code: string; amount: number }
+  otherSubtraction: { code: string; amount: number }
+  /** Code 802: tax paid to another state (state abbreviation and credit). */
+  otherStateCredit: { state: string; amount: number }
+  /** Codes 896 / 897: Oregon College Savings Plan and ABLE contributions. */
+  collegeSavings: number
+  ableContributions: number
+  /** Retirement income credit (811): household income, when it differs from the default (federal AGI without Social Security, plus tax-exempt interest). */
+  householdIncome: number | null
+  /** WFHDC (895): credit percentage from the WFHDC calculator or Publication OR-WFHDC-TB, as a decimal; provider relationship codes. */
+  wfhdcPercent: number
+  /** Line 48: refund applied to 2026 estimated tax. */
+  creditForward: number
+}
+export const emptyOr = (): OrInput => ({
+  w2: {}, withholding1099: 0, priorYearRefundApplied: 0, estimatedPayments: 0, birthDate: { taxpayer: '', spouse: '' }, dependentBirthDates: {}, dependentCodes: {},
+  childDisability: {}, severeDisability: { taxpayer: false, spouse: false }, kickerLiability2024: 0, donateKicker: false, politicalContributions: 0,
+  otherStateBondInterest: 0, usObligationInterest: 0, federalPension: 0, otherAddition: { code: '', amount: 0 }, otherSubtraction: { code: '', amount: 0 },
+  otherStateCredit: { state: '', amount: 0 }, collegeSavings: 0, ableContributions: 0, householdIncome: null, wfhdcPercent: 0, creditForward: 0
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -1672,6 +1715,7 @@ export interface TaxReturnInput {
   sc: ScInput
   la: LaInput
   al: AlInput
+  or: OrInput
 }
 
 let counter = 0
@@ -1884,7 +1928,8 @@ export const emptyReturn = (): TaxReturnInput => ({
   in: emptyIn(),
   sc: emptySc(),
   la: emptyLa(),
-  al: emptyAl()
+  al: emptyAl(),
+  or: emptyOr()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -2021,6 +2066,12 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       const e = emptyAl(); const x: Partial<AlInput> = r.al ?? {}
       return { ...e, ...x, w2: normalizeStatements(x.w2), retirement: { ...(x.retirement ?? {}) }, interest: { ...(x.interest ?? {}) }, birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) },
         license: { taxpayer: { ...e.license.taxpayer, ...(x.license?.taxpayer ?? {}) }, spouse: { ...e.license.spouse, ...(x.license?.spouse ?? {}) } } }
+    })(),
+    or: (() => {
+      const e = emptyOr(); const x: Partial<OrInput> = r.or ?? {}
+      return { ...e, ...x, w2: normalizeStatements(x.w2), birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) }, dependentBirthDates: { ...(x.dependentBirthDates ?? {}) },
+        dependentCodes: { ...(x.dependentCodes ?? {}) }, childDisability: { ...(x.childDisability ?? {}) }, severeDisability: { ...e.severeDisability, ...(x.severeDisability ?? {}) },
+        otherAddition: { ...e.otherAddition, ...(x.otherAddition ?? {}) }, otherSubtraction: { ...e.otherSubtraction, ...(x.otherSubtraction ?? {}) }, otherStateCredit: { ...e.otherStateCredit, ...(x.otherStateCredit ?? {}) } }
     })()
   })
 }
