@@ -25,7 +25,7 @@ export interface StateInfo {
 const S = (code: StateCode, name: string, support: StateSupport, form: string, agency: string, note?: string): StateInfo => ({ code, name, support, form, agency, note })
 
 export const STATES: readonly StateInfo[] = [
-  S('AL', 'Alabama', 'estimate', 'Form 40', 'Alabama Department of Revenue'),
+  S('AL', 'Alabama', 'supported', 'Form 40', 'Alabama Department of Revenue'),
   S('AK', 'Alaska', 'no-tax', '', 'Alaska Department of Revenue', 'Alaska has no individual income tax.'),
   S('AZ', 'Arizona', 'supported', 'Form 140', 'Arizona Department of Revenue'),
   S('AR', 'Arkansas', 'estimate', 'Form AR1000F', 'Arkansas Department of Finance and Administration'),
@@ -43,7 +43,7 @@ export const STATES: readonly StateInfo[] = [
   S('IA', 'Iowa', 'estimate', 'Form IA 1040', 'Iowa Department of Revenue'),
   S('KS', 'Kansas', 'estimate', 'Form K-40', 'Kansas Department of Revenue'),
   S('KY', 'Kentucky', 'estimate', 'Form 740', 'Kentucky Department of Revenue'),
-  S('LA', 'Louisiana', 'estimate', 'Form IT-540', 'Louisiana Department of Revenue'),
+  S('LA', 'Louisiana', 'supported', 'Form IT-540', 'Louisiana Department of Revenue'),
   S('ME', 'Maine', 'estimate', 'Form 1040ME', 'Maine Revenue Services'),
   S('MD', 'Maryland', 'supported', 'Form 502', 'Comptroller of Maryland', 'Maryland also has county income tax, figured on the same return.'),
   S('MA', 'Massachusetts', 'supported', 'Form 1', 'Massachusetts Department of Revenue'),

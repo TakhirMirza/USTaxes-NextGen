@@ -37,6 +37,8 @@ export async function fillForm(lib: PdfLib, bytes: Uint8Array | ArrayBuffer, fil
         const digitsOnly = text.replace(/[^0-9A-Za-z]/g, '')
         text = digitsOnly.length <= max ? digitsOnly : digitsOnly.slice(0, max)
       }
+      // pdf-lib lays combed text from the first cell; a right-aligned comb field (money boxes) needs the text pushed right.
+      if (text && max !== undefined && text.length < max && field.isCombed() && field.acroField.getQuadding() === 2) text = text.padStart(max, ' ')
       field.setText(text || undefined)
     } else if (field instanceof lib.PDFCheckBox) {
       if (typeof value === 'string' && value) {

@@ -1411,6 +1411,104 @@ export const emptySc = (): ScInput => ({
   subsistenceDays: 0, otherSubtractions: 0, nonrefundableCredits: 0, tuitionCredit: 0, refundableCredits: 0, useTax: 0, creditForward: 0, checkoffs: 0
 })
 
+export type LaRetirementCode = '02E' | '03E' | '04E' | '05E'
+export interface LaInput {
+  /** Louisiana W-2 details by W-2 id (line 27). */
+  w2: Record<string, StateStatement>
+  /** Line 27: Louisiana tax withheld on 1099s; lines 28–30: 2024 credit carried forward, estimated and extension payments. */
+  withholding1099: number
+  priorYearCredit: number
+  estimatedPayments: number
+  extensionPayment: number
+  /** Dates of birth (MM/DD/YYYY) for the return and each dependent (by dependent id). */
+  birthDate: Record<Owner, string>
+  dependentBirthDates: Record<string, string>
+  /** Schedule E line 2A: interest and dividends on other states’ bonds. */
+  otherStateBondInterest: number
+  /** Schedule E 01E: interest and dividends on U.S. government obligations. */
+  usObligationInterest: number
+  /** Schedule E 02E–05E: exempt retirement benefits by code and owner; month and year retired (MMYYYY); 05E system name. */
+  exemptRetirement: Record<LaRetirementCode, Record<Owner, number>>
+  retired: Record<Owner, string>
+  otherRetirementSystem: string
+  /** Schedule E 09E START contributions, 10E military pay exclusion, 17E–19E school expense deductions. */
+  startContributions: number
+  militaryPay: number
+  schoolTuition: number
+  homeSchool: number
+  publicSchool: number
+  /** One more Schedule E exempt income line: code (two digits before E), description, amount. */
+  otherExempt: { code: string; description: string; amount: number }
+  /** Schedule C line 1A/1B: tax paid to other states (Form R-10606). */
+  otherStateTax: number
+  otherStateCredit: number
+  /** Line 17 (Schedule F) and line 26 (Schedule I) totals. */
+  otherRefundableCredits: number
+  priority4Credits: number
+  /** Schedule J line 3 (carryforward of the nonrefundable child care credit from 2020–2024) and one more priority 3 credit. */
+  childCareCarryforward: number
+  otherCredit: { code: string; description: string; amount: number }
+  /** Line 23A consumer use tax, 23B electric/hybrid road usage fee (R-19000A), line 37 credit to 2026. */
+  useTax: number
+  roadUsageFee: number
+  creditForward: number
+}
+export const emptyLa = (): LaInput => ({
+  w2: {}, withholding1099: 0, priorYearCredit: 0, estimatedPayments: 0, extensionPayment: 0, birthDate: { taxpayer: '', spouse: '' }, dependentBirthDates: {},
+  otherStateBondInterest: 0, usObligationInterest: 0,
+  exemptRetirement: { '02E': { taxpayer: 0, spouse: 0 }, '03E': { taxpayer: 0, spouse: 0 }, '04E': { taxpayer: 0, spouse: 0 }, '05E': { taxpayer: 0, spouse: 0 } },
+  retired: { taxpayer: '', spouse: '' }, otherRetirementSystem: '', startContributions: 0, militaryPay: 0, schoolTuition: 0, homeSchool: 0, publicSchool: 0,
+  otherExempt: { code: '', description: '', amount: 0 }, otherStateTax: 0, otherStateCredit: 0, otherRefundableCredits: 0, priority4Credits: 0,
+  childCareCarryforward: 0, otherCredit: { code: '', description: '', amount: 0 }, useTax: 0, roadUsageFee: 0, creditForward: 0
+})
+
+export interface AlRetirementInfo {
+  /** Exempt from Alabama tax (defined benefit plan, Alabama or federal government, military, TVA, railroad). */
+  exempt: boolean
+  reason: string
+  fein: string
+  stateId: string
+  stateTax: number
+}
+export interface AlDriverLicense { state: string; number: string; issued: string; expires: string }
+export interface AlInput {
+  /** Alabama W-2 details by W-2 id (Schedule W-2). */
+  w2: Record<string, StateStatement>
+  /** Schedule RS details by 1099-R id. */
+  retirement: Record<string, AlRetirementInfo>
+  /** Schedule B: U.S. obligation interest (exempt) and taxable out-of-state municipal interest, by 1099-INT id. */
+  interest: Record<string, { usObligation: number; taxableMuni: number }>
+  /** Schedule W-2 line 17: Alabama tax withheld on 1099s other than 1099-R and on W-2Gs. */
+  withholdingOther: number
+  /** Line 23: estimated and extension payments. */
+  estimatedPayments: number
+  birthDate: Record<Owner, string>
+  license: Record<Owner, AlDriverLicense>
+  /** Part II adjustments only Alabama allows (lines 8–11, 13–15). */
+  collegeSavings: number
+  smallEmployerHealth: number
+  homeRetrofit: number
+  catastropheSavings: number
+  homeBuyerSavings: number
+  firefighterInsurance: number
+  ableContributions: number
+  /** Schedule A line 11: date the new vehicle was bought (MM/DD/YYYY); the interest and VIN come from Schedule 1-A. */
+  vehiclePurchaseDate: string
+  /** Schedule OC nonrefundable credits (line 18) and refundable credits (line 25). */
+  nonrefundableCredits: number
+  refundableCredits: number
+  /** Line 19 (Schedule ATP): consumer use tax. */
+  useTax: number
+  /** Line 33: amount applied to 2026 estimated tax. */
+  creditForward: number
+}
+export const emptyAl = (): AlInput => ({
+  w2: {}, retirement: {}, interest: {}, withholdingOther: 0, estimatedPayments: 0, birthDate: { taxpayer: '', spouse: '' },
+  license: { taxpayer: { state: '', number: '', issued: '', expires: '' }, spouse: { state: '', number: '', issued: '', expires: '' } },
+  collegeSavings: 0, smallEmployerHealth: 0, homeRetrofit: 0, catastropheSavings: 0, homeBuyerSavings: 0, firefighterInsurance: 0, ableContributions: 0,
+  vehiclePurchaseDate: '', nonrefundableCredits: 0, refundableCredits: 0, useTax: 0, creditForward: 0
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -1572,6 +1670,8 @@ export interface TaxReturnInput {
   in: InInput
   /** South Carolina resident return (SC1040). */
   sc: ScInput
+  la: LaInput
+  al: AlInput
 }
 
 let counter = 0
@@ -1782,7 +1882,9 @@ export const emptyReturn = (): TaxReturnInput => ({
   mn: emptyMn(),
   wi: emptyWi(),
   in: emptyIn(),
-  sc: emptySc()
+  sc: emptySc(),
+  la: emptyLa(),
+  al: emptyAl()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -1908,6 +2010,17 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     mn: { ...emptyMn(), ...(r.mn ?? {}), w2: normalizeStatements(r.mn?.w2), birthDate: { ...emptyMn().birthDate, ...(r.mn?.birthDate ?? {}) }, campaignCode: { ...emptyMn().campaignCode, ...(r.mn?.campaignCode ?? {}) } },
     wi: { ...emptyWi(), ...(r.wi ?? {}), w2: normalizeStatements(r.wi?.w2), donations: { ...(r.wi?.donations ?? {}) } },
     in: { ...emptyIn(), ...(r.in ?? {}), w2: normalizeStatements(r.in?.w2), countyLived: { ...emptyIn().countyLived, ...(r.in?.countyLived ?? {}) }, countyWorked: { ...emptyIn().countyWorked, ...(r.in?.countyWorked ?? {}) } },
-    sc: { ...emptySc(), ...(r.sc ?? {}), w2: normalizeStatements(r.sc?.w2), birthDate: { ...emptySc().birthDate, ...(r.sc?.birthDate ?? {}) }, militaryRetirement: { ...emptySc().militaryRetirement, ...(r.sc?.militaryRetirement ?? {}) } }
+    sc: { ...emptySc(), ...(r.sc ?? {}), w2: normalizeStatements(r.sc?.w2), birthDate: { ...emptySc().birthDate, ...(r.sc?.birthDate ?? {}) }, militaryRetirement: { ...emptySc().militaryRetirement, ...(r.sc?.militaryRetirement ?? {}) } },
+    la: (() => {
+      const e = emptyLa(); const x: Partial<LaInput> = r.la ?? {}
+      return { ...e, ...x, w2: normalizeStatements(x.w2), birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) }, dependentBirthDates: { ...(x.dependentBirthDates ?? {}) },
+        exemptRetirement: Object.fromEntries((['02E', '03E', '04E', '05E'] as const).map((k) => [k, { ...e.exemptRetirement[k], ...(x.exemptRetirement?.[k] ?? {}) }])) as LaInput['exemptRetirement'],
+        retired: { ...e.retired, ...(x.retired ?? {}) }, otherExempt: { ...e.otherExempt, ...(x.otherExempt ?? {}) }, otherCredit: { ...e.otherCredit, ...(x.otherCredit ?? {}) } }
+    })(),
+    al: (() => {
+      const e = emptyAl(); const x: Partial<AlInput> = r.al ?? {}
+      return { ...e, ...x, w2: normalizeStatements(x.w2), retirement: { ...(x.retirement ?? {}) }, interest: { ...(x.interest ?? {}) }, birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) },
+        license: { taxpayer: { ...e.license.taxpayer, ...(x.license?.taxpayer ?? {}) }, spouse: { ...e.license.spouse, ...(x.license?.spouse ?? {}) } } }
+    })()
   })
 }

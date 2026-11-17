@@ -32,6 +32,10 @@ import type { InResult } from '../engine/in2025.ts'
 import { buildInPacket } from './in2025.ts'
 import type { ScResult } from '../engine/sc2025.ts'
 import { buildScPacket } from './sc2025.ts'
+import type { LaResult } from '../engine/la2025.ts'
+import { buildLaPacket } from './la2025.ts'
+import type { AlResult } from '../engine/al2025.ts'
+import { buildAlPacket } from './al2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -144,4 +148,12 @@ export function downloadIndianaForms(ret: TaxReturnInput, res: TaxReturnResult, 
 
 export function downloadSouthCarolinaForms(ret: TaxReturnInput, res: TaxReturnResult, sc: ScResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildScPacket(ret, res, sc, preparer).forms, '2025 South Carolina SC1040 — USTaxes NextGen', `2025-South-Carolina-SC1040-${slug(ret)}.pdf`)
+}
+
+export function downloadLouisianaForms(ret: TaxReturnInput, res: TaxReturnResult, la: LaResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildLaPacket(ret, res, la, preparer).forms, '2025 Louisiana Form IT-540 — USTaxes NextGen', `2025-Louisiana-IT-540-${slug(ret)}.pdf`)
+}
+
+export function downloadAlabamaForms(ret: TaxReturnInput, res: TaxReturnResult, al: AlResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildAlPacket(ret, res, al, preparer).forms, '2025 Alabama Form 40 — USTaxes NextGen', `2025-Alabama-Form-40-${slug(ret)}.pdf`)
 }
