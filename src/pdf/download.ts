@@ -38,6 +38,8 @@ import type { AlResult } from '../engine/al2025.ts'
 import { buildAlPacket } from './al2025.ts'
 import type { OrResult } from '../engine/or2025.ts'
 import { buildOrPacket } from './or2025.ts'
+import type { KyResult } from '../engine/ky2025.ts'
+import { buildKyPacket } from './ky2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -162,4 +164,8 @@ export function downloadAlabamaForms(ret: TaxReturnInput, res: TaxReturnResult, 
 
 export function downloadOregonForms(ret: TaxReturnInput, res: TaxReturnResult, or: OrResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildOrPacket(ret, res, or, preparer).forms, '2025 Oregon Form OR-40 — USTaxes NextGen', `2025-Oregon-OR-40-${slug(ret)}.pdf`)
+}
+
+export function downloadKentuckyForms(ret: TaxReturnInput, res: TaxReturnResult, ky: KyResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildKyPacket(ret, res, ky, preparer).forms, '2025 Kentucky Form 740 — USTaxes NextGen', `2025-Kentucky-740-${slug(ret)}.pdf`)
 }

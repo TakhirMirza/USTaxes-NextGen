@@ -1552,6 +1552,37 @@ export const emptyOr = (): OrInput => ({
   otherStateCredit: { state: '', amount: 0 }, collegeSavings: 0, ableContributions: 0, householdIncome: null, wfhdcPercent: 0, creditForward: 0
 })
 
+export interface KyInput {
+  /** Kentucky W-2 details by W-2 id (Schedule KW-2, line 31a). */
+  w2: Record<string, StateStatement>
+  /** Line 31a: Kentucky tax withheld on 1099s; line 31b: 2025 estimated and extension payments. */
+  withholdingOther: number
+  estimatedPayments: number
+  /** Schedule M line 1: other states’ municipal bond interest; line 8: U.S. government interest; line 13: active duty military pay. */
+  otherStateBondInterest: number
+  usObligationInterest: number
+  militaryPay: number
+  /** Schedule M lines 5 and 14: other additions and subtractions. */
+  otherAdditions: number
+  otherSubtractions: number
+  /** Schedule ITC Section B: Kentucky National Guard members. */
+  nationalGuard: Record<Owner, boolean>
+  /** Line 15: Schedule ITC Section A credits; line 23: education tuition credit (Form 8863-K). */
+  itcCredits: number
+  tuitionCredit: number
+  /** Line 27: Kentucky use tax. Line 40: credit forward to 2026. */
+  useTax: number
+  creditForward: number
+  /** Driver’s license or state ID numbers (page 3). */
+  license: Record<Owner, string>
+  /** Use a joint return (status 3) even when both spouses had income. */
+  forceJoint: boolean
+}
+export const emptyKy = (): KyInput => ({
+  w2: {}, withholdingOther: 0, estimatedPayments: 0, otherStateBondInterest: 0, usObligationInterest: 0, militaryPay: 0, otherAdditions: 0, otherSubtractions: 0,
+  nationalGuard: { taxpayer: false, spouse: false }, itcCredits: 0, tuitionCredit: 0, useTax: 0, creditForward: 0, license: { taxpayer: '', spouse: '' }, forceJoint: false
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -1716,6 +1747,7 @@ export interface TaxReturnInput {
   la: LaInput
   al: AlInput
   or: OrInput
+  ky: KyInput
 }
 
 let counter = 0
@@ -1929,7 +1961,8 @@ export const emptyReturn = (): TaxReturnInput => ({
   sc: emptySc(),
   la: emptyLa(),
   al: emptyAl(),
-  or: emptyOr()
+  or: emptyOr(),
+  ky: emptyKy()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -2072,6 +2105,10 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       return { ...e, ...x, w2: normalizeStatements(x.w2), birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) }, dependentBirthDates: { ...(x.dependentBirthDates ?? {}) },
         dependentCodes: { ...(x.dependentCodes ?? {}) }, childDisability: { ...(x.childDisability ?? {}) }, severeDisability: { ...e.severeDisability, ...(x.severeDisability ?? {}) },
         otherAddition: { ...e.otherAddition, ...(x.otherAddition ?? {}) }, otherSubtraction: { ...e.otherSubtraction, ...(x.otherSubtraction ?? {}) }, otherStateCredit: { ...e.otherStateCredit, ...(x.otherStateCredit ?? {}) } }
+    })(),
+    ky: (() => {
+      const e = emptyKy(); const x: Partial<KyInput> = r.ky ?? {}
+      return { ...e, ...x, w2: normalizeStatements(x.w2), nationalGuard: { ...e.nationalGuard, ...(x.nationalGuard ?? {}) }, license: { ...e.license, ...(x.license ?? {}) } }
     })()
   })
 }
