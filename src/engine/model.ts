@@ -1583,6 +1583,44 @@ export const emptyKy = (): KyInput => ({
   nationalGuard: { taxpayer: false, spouse: false }, itcCredits: 0, tuitionCredit: 0, useTax: 0, creditForward: 0, license: { taxpayer: '', spouse: '' }, forceJoint: false
 })
 
+export type OkRetirementKind = 'other' | 'okgov' | 'csrs' | 'military' | 'railroad'
+export interface OkInput {
+  /** Oklahoma W-2 details by W-2 id (line 21). */
+  w2: Record<string, StateStatement>
+  /** Line 21: Oklahoma tax withheld on 1099s; lines 22–23: estimated and extension payments. */
+  withholding1099: number
+  estimatedPayments: number
+  extensionPayment: number
+  /** County of residence (page 1) and dates of birth for each dependent (MM/DD/YYYY). */
+  county: string
+  dependentBirthDates: Record<string, string>
+  /** Schedule 511-A: the kind of each 1099-R (by id), CSRS claim numbers, U.S. interest and other subtractions (with the type number). */
+  retirementKind: Record<string, OkRetirementKind>
+  csrsClaim: Record<Owner, string>
+  usObligationInterest: number
+  otherSubtraction: { code: string; amount: number }
+  /** Schedule 511-B: other states’ bond interest and other additions (with the type number). */
+  otherStateBondInterest: number
+  otherAddition: { code: string; amount: number }
+  /** Schedule 511-C: military pay exclusion, 529 contributions and other adjustments. */
+  militaryPay: number
+  collegeSavings: number
+  otherAdjustment: { code: string; amount: number }
+  /** Lines 16–17: credit for tax paid to another state (511-TX) and other credits (511-CR, with its line number). */
+  otherStateCredit: number
+  otherCredit: { code: string; amount: number }
+  /** Line 19: use tax (null: none due, certified). Line 25: sales tax relief credit (Form 538-S). */
+  useTax: number
+  salesTaxCredit: number
+  /** Line 35: refund applied to 2026 estimated tax. */
+  creditForward: number
+}
+export const emptyOk = (): OkInput => ({
+  w2: {}, withholding1099: 0, estimatedPayments: 0, extensionPayment: 0, county: '', dependentBirthDates: {}, retirementKind: {}, csrsClaim: { taxpayer: '', spouse: '' },
+  usObligationInterest: 0, otherSubtraction: { code: '', amount: 0 }, otherStateBondInterest: 0, otherAddition: { code: '', amount: 0 }, militaryPay: 0, collegeSavings: 0,
+  otherAdjustment: { code: '', amount: 0 }, otherStateCredit: 0, otherCredit: { code: '', amount: 0 }, useTax: 0, salesTaxCredit: 0, creditForward: 0
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -1748,6 +1786,7 @@ export interface TaxReturnInput {
   al: AlInput
   or: OrInput
   ky: KyInput
+  ok: OkInput
 }
 
 let counter = 0
@@ -1962,7 +2001,8 @@ export const emptyReturn = (): TaxReturnInput => ({
   la: emptyLa(),
   al: emptyAl(),
   or: emptyOr(),
-  ky: emptyKy()
+  ky: emptyKy(),
+  ok: emptyOk()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -2109,6 +2149,11 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     ky: (() => {
       const e = emptyKy(); const x: Partial<KyInput> = r.ky ?? {}
       return { ...e, ...x, w2: normalizeStatements(x.w2), nationalGuard: { ...e.nationalGuard, ...(x.nationalGuard ?? {}) }, license: { ...e.license, ...(x.license ?? {}) } }
+    })(),
+    ok: (() => {
+      const e = emptyOk(); const x: Partial<OkInput> = r.ok ?? {}
+      return { ...e, ...x, w2: normalizeStatements(x.w2), dependentBirthDates: { ...(x.dependentBirthDates ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, csrsClaim: { ...e.csrsClaim, ...(x.csrsClaim ?? {}) },
+        otherSubtraction: { ...e.otherSubtraction, ...(x.otherSubtraction ?? {}) }, otherAddition: { ...e.otherAddition, ...(x.otherAddition ?? {}) }, otherAdjustment: { ...e.otherAdjustment, ...(x.otherAdjustment ?? {}) }, otherCredit: { ...e.otherCredit, ...(x.otherCredit ?? {}) } }
     })()
   })
 }

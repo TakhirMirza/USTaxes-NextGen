@@ -40,6 +40,8 @@ import type { OrResult } from '../engine/or2025.ts'
 import { buildOrPacket } from './or2025.ts'
 import type { KyResult } from '../engine/ky2025.ts'
 import { buildKyPacket } from './ky2025.ts'
+import type { OkResult } from '../engine/ok2025.ts'
+import { buildOkPacket } from './ok2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -168,4 +170,8 @@ export function downloadOregonForms(ret: TaxReturnInput, res: TaxReturnResult, o
 
 export function downloadKentuckyForms(ret: TaxReturnInput, res: TaxReturnResult, ky: KyResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildKyPacket(ret, res, ky, preparer).forms, '2025 Kentucky Form 740 — USTaxes NextGen', `2025-Kentucky-740-${slug(ret)}.pdf`)
+}
+
+export function downloadOklahomaForms(ret: TaxReturnInput, res: TaxReturnResult, ok: OkResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildOkPacket(ret, res, ok, preparer).forms, '2025 Oklahoma Form 511 — USTaxes NextGen', `2025-Oklahoma-511-${slug(ret)}.pdf`)
 }
