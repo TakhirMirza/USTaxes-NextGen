@@ -42,6 +42,8 @@ import type { KyResult } from '../engine/ky2025.ts'
 import { buildKyPacket } from './ky2025.ts'
 import type { OkResult } from '../engine/ok2025.ts'
 import { buildOkPacket } from './ok2025.ts'
+import type { CtResult } from '../engine/ct2025.ts'
+import { buildCtPacket } from './ct2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -174,4 +176,8 @@ export function downloadKentuckyForms(ret: TaxReturnInput, res: TaxReturnResult,
 
 export function downloadOklahomaForms(ret: TaxReturnInput, res: TaxReturnResult, ok: OkResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildOkPacket(ret, res, ok, preparer).forms, '2025 Oklahoma Form 511 — USTaxes NextGen', `2025-Oklahoma-511-${slug(ret)}.pdf`)
+}
+
+export function downloadConnecticutForms(ret: TaxReturnInput, res: TaxReturnResult, ct: CtResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildCtPacket(ret, res, ct, preparer).forms, '2025 Connecticut Form CT-1040 — USTaxes NextGen', `2025-Connecticut-CT-1040-${slug(ret)}.pdf`)
 }

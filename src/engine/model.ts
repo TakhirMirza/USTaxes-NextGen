@@ -1621,6 +1621,45 @@ export const emptyOk = (): OkInput => ({
   otherAdjustment: { code: '', amount: 0 }, otherStateCredit: 0, otherCredit: { code: '', amount: 0 }, useTax: 0, salesTaxCredit: 0, creditForward: 0
 })
 
+export type CtRetirementKind = 'standard' | 'military' | 'railroad' | 'ctrb' | 'roth'
+export interface CtPropertyTax { town: string; description: string; datePaid: string; amount: number }
+export interface CtInput {
+  /** Connecticut W-2 details by W-2 id (withholding schedule, lines 18a–18e). */
+  w2: Record<string, StateStatement>
+  /** One 1099 with Connecticut tax withheld (payer FEIN, Connecticut income, tax). */
+  other1099: { ein: string; income: number; tax: number }
+  /** Line 19: estimated payments and prior-year overpayment applied; line 20: extension payment. */
+  estimatedPayments: number
+  extensionPayment: number
+  /** City or town of residence if different from the mailing address. */
+  townOfResidence: string
+  /** Schedule 1: other states’ bond interest (31), U.S. interest (39), CHET contributions (48), ABLE (48d), other items. */
+  otherStateBondInterest: number
+  usObligationInterest: number
+  chetContributions: number
+  ableContributions: number
+  otherAddition: { description: string; amount: number }
+  otherSubtraction: { description: string; amount: number }
+  /** Kind of each 1099-R (by id): standard (IRA or pension), military, railroad, Connecticut teachers’ retirement or Roth. */
+  retirementKind: Record<string, CtRetirementKind>
+  /** Schedule 3: property tax paid on the primary residence and motor vehicles. */
+  residence: CtPropertyTax
+  auto1: CtPropertyTax
+  auto2: CtPropertyTax
+  /** Line 7 (Schedule 2), line 13 (Schedule CT-IT Credit) and line 15 (use tax). */
+  otherStateCredit: number
+  itCredits: number
+  useTax: number
+  /** Line 23: overpayment applied to 2026 estimated tax. */
+  creditForward: number
+}
+const emptyPropertyTax = (): CtPropertyTax => ({ town: '', description: '', datePaid: '', amount: 0 })
+export const emptyCt = (): CtInput => ({
+  w2: {}, other1099: { ein: '', income: 0, tax: 0 }, estimatedPayments: 0, extensionPayment: 0, townOfResidence: '', otherStateBondInterest: 0, usObligationInterest: 0,
+  chetContributions: 0, ableContributions: 0, otherAddition: { description: '', amount: 0 }, otherSubtraction: { description: '', amount: 0 }, retirementKind: {},
+  residence: emptyPropertyTax(), auto1: emptyPropertyTax(), auto2: emptyPropertyTax(), otherStateCredit: 0, itCredits: 0, useTax: 0, creditForward: 0
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -1787,6 +1826,7 @@ export interface TaxReturnInput {
   or: OrInput
   ky: KyInput
   ok: OkInput
+  ct: CtInput
 }
 
 let counter = 0
@@ -2002,7 +2042,8 @@ export const emptyReturn = (): TaxReturnInput => ({
   al: emptyAl(),
   or: emptyOr(),
   ky: emptyKy(),
-  ok: emptyOk()
+  ok: emptyOk(),
+  ct: emptyCt()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -2154,6 +2195,12 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       const e = emptyOk(); const x: Partial<OkInput> = r.ok ?? {}
       return { ...e, ...x, w2: normalizeStatements(x.w2), dependentBirthDates: { ...(x.dependentBirthDates ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, csrsClaim: { ...e.csrsClaim, ...(x.csrsClaim ?? {}) },
         otherSubtraction: { ...e.otherSubtraction, ...(x.otherSubtraction ?? {}) }, otherAddition: { ...e.otherAddition, ...(x.otherAddition ?? {}) }, otherAdjustment: { ...e.otherAdjustment, ...(x.otherAdjustment ?? {}) }, otherCredit: { ...e.otherCredit, ...(x.otherCredit ?? {}) } }
+    })(),
+    ct: (() => {
+      const e = emptyCt(); const x: Partial<CtInput> = r.ct ?? {}
+      return { ...e, ...x, w2: normalizeStatements(x.w2), other1099: { ...e.other1099, ...(x.other1099 ?? {}) }, otherAddition: { ...e.otherAddition, ...(x.otherAddition ?? {}) },
+        otherSubtraction: { ...e.otherSubtraction, ...(x.otherSubtraction ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) },
+        residence: { ...e.residence, ...(x.residence ?? {}) }, auto1: { ...e.auto1, ...(x.auto1 ?? {}) }, auto2: { ...e.auto2, ...(x.auto2 ?? {}) } }
     })()
   })
 }
