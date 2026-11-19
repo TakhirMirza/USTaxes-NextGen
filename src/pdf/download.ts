@@ -48,6 +48,10 @@ import type { UtResult } from '../engine/ut2025.ts'
 import { buildUtPacket } from './ut2025.ts'
 import type { IaResult } from '../engine/ia2025.ts'
 import { buildIaPacket } from './ia2025.ts'
+import type { KsResult } from '../engine/ks2025.ts'
+import { buildKsPacket } from './ks2025.ts'
+import type { ArResult } from '../engine/ar2025.ts'
+import { buildArPacket } from './ar2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -192,4 +196,12 @@ export function downloadUtahForms(ret: TaxReturnInput, res: TaxReturnResult, ut:
 
 export function downloadIowaForms(ret: TaxReturnInput, res: TaxReturnResult, ia: IaResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildIaPacket(ret, res, ia, preparer).forms, '2025 Iowa Form IA 1040 — USTaxes NextGen', `2025-Iowa-IA-1040-${slug(ret)}.pdf`)
+}
+
+export function downloadKansasForms(ret: TaxReturnInput, res: TaxReturnResult, ks: KsResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildKsPacket(ret, res, ks, preparer).forms, '2025 Kansas Form K-40 — USTaxes NextGen', `2025-Kansas-K-40-${slug(ret)}.pdf`)
+}
+
+export function downloadArkansasForms(ret: TaxReturnInput, res: TaxReturnResult, ar: ArResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildArPacket(ret, res, ar, preparer).forms, '2025 Arkansas Form AR1000F — USTaxes NextGen', `2025-Arkansas-AR1000F-${slug(ret)}.pdf`)
 }

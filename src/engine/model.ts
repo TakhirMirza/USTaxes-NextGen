@@ -1741,6 +1741,74 @@ export const emptyIa = (): IaInput => ({
   fishWildlife: 0, childAbuse: 0, creditForward: 0, license: { taxpayer: '', spouse: '' }
 })
 
+export interface KsInput {
+  /** Kansas W-2 details by W-2 id (line 19). */
+  w2: Record<string, StateStatement>
+  /** Line 19: Kansas tax withheld on 1099s; lines 20–21: estimated and extension payments. */
+  withholdingOther: number
+  estimatedPayments: number
+  extensionPayment: number
+  /** Header: school district number and county abbreviation (residence on Dec. 31). */
+  schoolDistrict: string
+  county: string
+  /** Schedule S additions: A1 other states’ bond interest, A2 KPERS contributions (W-2 box 14), A8 other. */
+  otherStateBondInterest: number
+  kpersContributions: number
+  otherAdditions: number
+  /** Schedule S subtractions: A12 U.S. interest, A13 state refund in FAGI, A16 529, A21 ABLE, A25 other. */
+  usObligationInterest: number
+  stateRefundInFagi: number
+  qtp529: number
+  able: number
+  otherSubtractions: number
+  /** 1099-Rs exempt from Kansas tax (A14: KPERS, federal civil service, military, railroad retirement), by id. */
+  exemptRetirement: Record<string, boolean>
+  /** Disabled veteran personal exemptions (count, including yourself). */
+  disabledVeterans: number
+  /** Line 13 and 15: credit for taxes paid to other states, other credits. */
+  otherStateCredit: number
+  otherCredits: number
+  /** Lines 35–42: voluntary contributions by line number. */
+  contributions: Record<string, number>
+  /** Line 34: credit forward to 2026. */
+  creditForward: number
+}
+export const emptyKs = (): KsInput => ({
+  w2: {}, withholdingOther: 0, estimatedPayments: 0, extensionPayment: 0, schoolDistrict: '', county: '', otherStateBondInterest: 0, kpersContributions: 0, otherAdditions: 0,
+  usObligationInterest: 0, stateRefundInFagi: 0, qtp529: 0, able: 0, otherSubtractions: 0, exemptRetirement: {}, disabledVeterans: 0, otherStateCredit: 0, otherCredits: 0,
+  contributions: {}, creditForward: 0
+})
+
+export type ArRetirementKind = 'standard' | 'military' | 'nonqualified'
+export interface ArInput {
+  /** Arkansas W-2 details by W-2 id (line 39A). */
+  w2: Record<string, StateStatement>
+  /** Line 39B: Arkansas tax withheld on 1099s and AR-K1s; lines 40–41: estimated and extension payments. */
+  withholding1099: number
+  estimatedPayments: number
+  extensionPayment: number
+  /** Line 9: U.S. military pay included in W-2 wages (exempt). */
+  militaryPay: Record<Owner, number>
+  /** Line 10: interest on U.S. obligations (exempt). */
+  usObligationInterest: number
+  /** Kind of each 1099-R (by id): employer pension / qualified IRA (line 18, $6,000 exemption), military (line 17, exempt), nonqualified (line 16). */
+  retirementKind: Record<string, ArRetirementKind>
+  /** Line 7A: deaf on Dec. 31, 2025. */
+  deaf: Record<Owner, boolean>
+  /** Line 22: other income / depreciation differences (AR-OI); line 24: Arkansas-only adjustments beyond the federal ones (AR1000ADJ). */
+  otherIncome: number
+  extraAdjustments: number
+  /** Line 36: other credits (AR1000TC) besides the additional credit for qualified individuals. */
+  otherCredits: number
+  /** Lines 48–49: credit forward to 2026 and check-off contributions. */
+  creditForward: number
+  checkoff: number
+}
+export const emptyAr = (): ArInput => ({
+  w2: {}, withholding1099: 0, estimatedPayments: 0, extensionPayment: 0, militaryPay: { taxpayer: 0, spouse: 0 }, usObligationInterest: 0, retirementKind: {},
+  deaf: { taxpayer: false, spouse: false }, otherIncome: 0, extraAdjustments: 0, otherCredits: 0, creditForward: 0, checkoff: 0
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -1910,6 +1978,8 @@ export interface TaxReturnInput {
   ct: CtInput
   ut: UtInput
   ia: IaInput
+  ks: KsInput
+  ar: ArInput
 }
 
 let counter = 0
@@ -2127,7 +2197,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   ky: emptyKy(),
   ok: emptyOk(),
   ct: emptyCt(),
-  ut: emptyUt(), ia: emptyIa()
+  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -2267,6 +2337,14 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
         otherAddition: { ...e.otherAddition, ...(x.otherAddition ?? {}) }, otherSubtraction: { ...e.otherSubtraction, ...(x.otherSubtraction ?? {}) }, otherAdjustment: { ...e.otherAdjustment, ...(x.otherAdjustment ?? {}) },
         tuition: { ...(x.tuition ?? {}) }, earlyChildhood: { ...(x.earlyChildhood ?? {}) }, license: { ...e.license, ...(x.license ?? {}) }
       }
+    })(),
+    ks: (() => {
+      const e = emptyKs(); const x: Partial<KsInput> = r.ks ?? {}
+      return { ...e, ...x, w2: normalizeStatements(x.w2), exemptRetirement: { ...(x.exemptRetirement ?? {}) }, contributions: { ...(x.contributions ?? {}) } }
+    })(),
+    ar: (() => {
+      const e = emptyAr(); const x: Partial<ArInput> = r.ar ?? {}
+      return { ...e, ...x, w2: normalizeStatements(x.w2), militaryPay: { ...e.militaryPay, ...(x.militaryPay ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, deaf: { ...e.deaf, ...(x.deaf ?? {}) } }
     })(),
     al: (() => {
       const e = emptyAl(); const x: Partial<AlInput> = r.al ?? {}
