@@ -1809,6 +1809,36 @@ export const emptyAr = (): ArInput => ({
   deaf: { taxpayer: false, spouse: false }, otherIncome: 0, extraAdjustments: 0, otherCredits: 0, creditForward: 0, checkoff: 0
 })
 
+export type NeRetirementKind = 'standard' | 'military' | 'railroad' | 'csrs'
+export interface NeInput {
+  /** Nebraska W-2 details by W-2 id (line 36). */
+  w2: Record<string, StateStatement>
+  /** Line 37: Nebraska tax withheld on 1099s and W-2Gs; line 40: estimated and extension payments. */
+  withholdingOther: number
+  estimatedPayments: number
+  /** High school district code (residence on Dec. 31). */
+  schoolDistrictCode: string
+  /** Schedule I: line 1 other states’ municipal bond interest; line 14 state refund in FAGI; line 15 U.S. obligation interest. */
+  otherStateBondInterest: number
+  stateRefundInFagi: number
+  usObligationInterest: number
+  /** Kind of each 1099-R (by id): military (line 32), railroad (line 18), CSRS (line 38), all excluded. */
+  retirementKind: Record<string, NeRetirementKind>
+  /** Schedule I line 20: Nebraska Educational Savings Plan contributions; line 22: Enable plan contributions. */
+  collegeSavings: number
+  enable: number
+  /** Line 19: credit for tax paid to another state (Schedule II). */
+  otherStateCredit: number
+  /** Line 58: use tax; line 61: applied to 2026; line 62: Wildlife Conservation Fund. */
+  useTax: number
+  creditForward: number
+  wildlife: number
+}
+export const emptyNe = (): NeInput => ({
+  w2: {}, withholdingOther: 0, estimatedPayments: 0, schoolDistrictCode: '', otherStateBondInterest: 0, stateRefundInFagi: 0, usObligationInterest: 0,
+  retirementKind: {}, collegeSavings: 0, enable: 0, otherStateCredit: 0, useTax: 0, creditForward: 0, wildlife: 0
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -1980,6 +2010,7 @@ export interface TaxReturnInput {
   ia: IaInput
   ks: KsInput
   ar: ArInput
+  ne: NeInput
 }
 
 let counter = 0
@@ -2197,7 +2228,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   ky: emptyKy(),
   ok: emptyOk(),
   ct: emptyCt(),
-  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr()
+  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -2345,6 +2376,10 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     ar: (() => {
       const e = emptyAr(); const x: Partial<ArInput> = r.ar ?? {}
       return { ...e, ...x, w2: normalizeStatements(x.w2), militaryPay: { ...e.militaryPay, ...(x.militaryPay ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, deaf: { ...e.deaf, ...(x.deaf ?? {}) } }
+    })(),
+    ne: (() => {
+      const e = emptyNe(); const x: Partial<NeInput> = r.ne ?? {}
+      return { ...e, ...x, w2: normalizeStatements(x.w2), retirementKind: { ...(x.retirementKind ?? {}) } }
     })(),
     al: (() => {
       const e = emptyAl(); const x: Partial<AlInput> = r.al ?? {}

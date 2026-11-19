@@ -52,6 +52,8 @@ import type { KsResult } from '../engine/ks2025.ts'
 import { buildKsPacket } from './ks2025.ts'
 import type { ArResult } from '../engine/ar2025.ts'
 import { buildArPacket } from './ar2025.ts'
+import type { NeResult } from '../engine/ne2025.ts'
+import { buildNePacket } from './ne2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -204,4 +206,8 @@ export function downloadKansasForms(ret: TaxReturnInput, res: TaxReturnResult, k
 
 export function downloadArkansasForms(ret: TaxReturnInput, res: TaxReturnResult, ar: ArResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildArPacket(ret, res, ar, preparer).forms, '2025 Arkansas Form AR1000F — USTaxes NextGen', `2025-Arkansas-AR1000F-${slug(ret)}.pdf`)
+}
+
+export function downloadNebraskaForms(ret: TaxReturnInput, res: TaxReturnResult, ne: NeResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildNePacket(ret, res, ne, preparer).forms, '2025 Nebraska Form 1040N — USTaxes NextGen', `2025-Nebraska-1040N-${slug(ret)}.pdf`)
 }

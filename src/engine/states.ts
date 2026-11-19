@@ -52,7 +52,7 @@ export const STATES: readonly StateInfo[] = [
   S('MS', 'Mississippi', 'estimate', 'Form 80-105', 'Mississippi Department of Revenue'),
   S('MO', 'Missouri', 'estimate', 'Form MO-1040', 'Missouri Department of Revenue'),
   S('MT', 'Montana', 'estimate', 'Form 2', 'Montana Department of Revenue'),
-  S('NE', 'Nebraska', 'estimate', 'Form 1040N', 'Nebraska Department of Revenue'),
+  S('NE', 'Nebraska', 'supported', 'Form 1040N', 'Nebraska Department of Revenue'),
   S('NV', 'Nevada', 'no-tax', '', 'Nevada Department of Taxation', 'Nevada has no individual income tax.'),
   S('NH', 'New Hampshire', 'no-tax', '', 'New Hampshire Department of Revenue Administration', 'New Hampshire’s tax on interest and dividends was repealed starting with 2025, so there is no individual income tax return.'),
   S('NJ', 'New Jersey', 'supported', 'Form NJ-1040', 'New Jersey Division of Taxation'),
