@@ -56,6 +56,8 @@ import type { NeResult } from '../engine/ne2025.ts'
 import { buildNePacket } from './ne2025.ts'
 import type { MsResult } from '../engine/ms2025.ts'
 import { buildMsPacket } from './ms2025.ts'
+import type { WvResult } from '../engine/wv2025.ts'
+import { buildWvPacket } from './wv2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -216,4 +218,8 @@ export function downloadNebraskaForms(ret: TaxReturnInput, res: TaxReturnResult,
 
 export function downloadMississippiForms(ret: TaxReturnInput, res: TaxReturnResult, ms: MsResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildMsPacket(ret, res, ms, preparer).forms, '2025 Mississippi Form 80-105 — USTaxes NextGen', `2025-Mississippi-80-105-${slug(ret)}.pdf`)
+}
+
+export function downloadWestVirginiaForms(ret: TaxReturnInput, res: TaxReturnResult, wv: WvResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildWvPacket(ret, res, wv, preparer).forms, '2025 West Virginia Form IT-140 — USTaxes NextGen', `2025-West-Virginia-IT-140-${slug(ret)}.pdf`)
 }

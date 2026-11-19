@@ -1868,6 +1868,42 @@ export const emptyMs = (): MsInput => ({
   mpact: 0, macs: 0, able: 0, otherStateCredit: 0, otherCredits: 0, useTax: 0, creditForward: 0, contributions: {}
 })
 
+export type WvRetirementKind = 'standard' | 'military' | 'railroad' | 'police' | 'wvPublic' | 'federal'
+export interface WvInput {
+  /** West Virginia W-2 details by W-2 id (line 15). */
+  w2: Record<string, StateStatement>
+  /** Line 15: West Virginia tax withheld on 1099s; line 16: estimated and extension payments. */
+  withholdingOther: number
+  estimatedPayments: number
+  /** Dates of birth (MM/DD/YYYY): dependents by id (exemption list) and you / your spouse (Schedule M line 47). */
+  dependentBirthDate: Record<string, string>
+  birthYear: Record<Owner, string>
+  /** Schedule M line 47: permanently and totally disabled (certified by a physician). */
+  disabled: Record<Owner, boolean>
+  /** Kind of each 1099-R (by id): military (32), railroad (40), WV police / fire (31), WV teachers’ / PERS (33a), federal (33b). */
+  retirementKind: Record<string, WvRetirementKind>
+  /** Schedule M: line 29 U.S. obligation interest; line 38 state refund in FAGI; line 39 WV 529; line 43 ABLE; line 52 other states’ bond interest. */
+  usObligationInterest: number
+  stateRefundInFagi: number
+  wv529: number
+  able: number
+  otherStateBondInterest: number
+  /** RECAP line 1: credit for income tax paid to another state (Schedule E); other RECAP credits. */
+  otherStateCredit: number
+  otherCredits: number
+  /** Line 21A: motor vehicle property tax adjustment credit (refundable); line 13: use tax. */
+  motorVehicleCredit: number
+  useTax: number
+  /** Line 26 donations (A Children’s Trust Fund, B Veterans Assistance, C Veterans Cemetery); line 27: credit forward. */
+  donations: Record<'A' | 'B' | 'C', number>
+  creditForward: number
+}
+export const emptyWv = (): WvInput => ({
+  w2: {}, withholdingOther: 0, estimatedPayments: 0, dependentBirthDate: {}, birthYear: { taxpayer: '', spouse: '' }, disabled: { taxpayer: false, spouse: false },
+  retirementKind: {}, usObligationInterest: 0, stateRefundInFagi: 0, wv529: 0, able: 0, otherStateBondInterest: 0, otherStateCredit: 0, otherCredits: 0,
+  motorVehicleCredit: 0, useTax: 0, donations: { A: 0, B: 0, C: 0 }, creditForward: 0
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -2041,6 +2077,7 @@ export interface TaxReturnInput {
   ar: ArInput
   ne: NeInput
   ms: MsInput
+  wv: WvInput
 }
 
 let counter = 0
@@ -2258,7 +2295,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   ky: emptyKy(),
   ok: emptyOk(),
   ct: emptyCt(),
-  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs()
+  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -2414,6 +2451,13 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     ms: (() => {
       const e = emptyMs(); const x: Partial<MsInput> = r.ms ?? {}
       return { ...e, ...x, w2: normalizeStatements(x.w2), guardPay: { ...e.guardPay, ...(x.guardPay ?? {}) }, contributions: { ...(x.contributions ?? {}) } }
+    })(),
+    wv: (() => {
+      const e = emptyWv(); const x: Partial<WvInput> = r.wv ?? {}
+      return {
+        ...e, ...x, w2: normalizeStatements(x.w2), dependentBirthDate: { ...(x.dependentBirthDate ?? {}) }, birthYear: { ...e.birthYear, ...(x.birthYear ?? {}) },
+        disabled: { ...e.disabled, ...(x.disabled ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, donations: { ...e.donations, ...(x.donations ?? {}) }
+      }
     })(),
     al: (() => {
       const e = emptyAl(); const x: Partial<AlInput> = r.al ?? {}
