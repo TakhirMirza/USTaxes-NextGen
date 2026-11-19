@@ -1660,6 +1660,87 @@ export const emptyCt = (): CtInput => ({
   residence: emptyPropertyTax(), auto1: emptyPropertyTax(), auto2: emptyPropertyTax(), otherStateCredit: 0, itCredits: 0, useTax: 0, creditForward: 0
 })
 
+export interface UtInput {
+  /** Utah W-2 details by W-2 id (TC-40W, line 33). */
+  w2: Record<string, StateStatement>
+  /** Line 33: Utah tax withheld on 1099s (TC-40W); line 34: 2025 prepayments and 2024 refund applied. */
+  withholding1099: number
+  prepayments: number
+  /** Dates of birth (MM/DD/YYYY) — needed for the retirement credit (born on or before Dec. 31, 1952). */
+  birthDate: Record<Owner, string>
+  /** TC-40A Part 2 code 71: U.S. government obligation interest (and Utah municipal bond interest in federal AGI). */
+  usObligationInterest: number
+  /** TC-40A Part 1 code 57: non-Utah municipal bond interest. */
+  otherStateBondInterest: number
+  /** Kind of each 1099-R (by id): military retirement (credit code AJ) or railroad retirement (subtraction code 78). */
+  retirementKind: Record<string, 'standard' | 'military' | 'railroad'>
+  /** TC-40A Part 3 code 20: my529 credit (TC-675H box 1A or 1B). */
+  my529Credit: number
+  /** TC-40A Part 4: credit for income tax paid to another state (code 17) and one more nonapportionable credit. */
+  otherStateCredit: number
+  otherCredit: { code: string; amount: number }
+  /** Line 31: Utah use tax. Line 43: voluntary subtractions from the refund (TC-40 page 3, Part 6) — not supported. */
+  useTax: number
+}
+export const emptyUt = (): UtInput => ({
+  w2: {}, withholding1099: 0, prepayments: 0, birthDate: { taxpayer: '', spouse: '' }, usObligationInterest: 0, otherStateBondInterest: 0, retirementKind: {},
+  my529Credit: 0, otherStateCredit: 0, otherCredit: { code: '', amount: 0 }, useTax: 0
+})
+
+export type IaRetirementKind = 'standard' | 'military' | 'railroad' | 'nonqualified'
+export interface IaInput {
+  /** Iowa W-2 details by W-2 id (line 28). */
+  w2: Record<string, StateStatement>
+  /** Line 28: Iowa tax withheld on 1099s; line 29: 2025 estimated and other payments. */
+  withholdingOther: number
+  estimatedPayments: number
+  /** Step 1: dates of birth (MM/DD/YYYY), county number and school district number (residence on 12/31/2025). */
+  birthDate: Record<Owner, string>
+  countyNo: string
+  schoolDistrictNo: string
+  /** Line 19: school district / EMS surtax rate in percent, from table 41-027. */
+  surtaxRate: number
+  /** Schedule 1 line 1: U.S. government interest (B) and other states’ municipal bond interest (A). */
+  usObligationInterest: number
+  otherStateBondInterest: number
+  /** Kind of each 1099-R (by id): military retirement (line 4), railroad (line 7 at any age), nonqualified (not excluded). */
+  retirementKind: Record<string, IaRetirementKind>
+  /** Line 7: disabled (retirement income excluded before 55). */
+  disabled: Record<Owner, boolean>
+  /** Schedule 1 line 6: active duty military pay. */
+  activeDutyPay: number
+  /** Schedule 1 lines 14–16: Iowa 529 contributions, health insurance premiums (65+), Iowa capital gains deduction (IA 100). */
+  iowa529: number
+  healthInsurance: number
+  capitalGainsDeduction: number
+  /** Schedule 1 line 11 (other income, A or B) and line 19 (other adjustments, B), each with its code. */
+  otherAddition: { code: string; amount: number }
+  otherSubtraction: { code: string; amount: number }
+  otherAdjustment: { code: string; amount: number }
+  /** Line 9: K-12 tuition and textbooks by dependent id; line 24 ECDC: early childhood expenses by dependent id (age 3–5). */
+  tuition: Record<string, number>
+  earlyChildhood: Record<string, number>
+  /** Line 10, 15, 17, 23, 26: other credits. */
+  volunteerCredit: number
+  outOfStateCredit: number
+  otherNonrefundable: number
+  fuelTaxCredit: number
+  otherRefundable: number
+  /** Line 21: contributions. */
+  fishWildlife: number
+  childAbuse: number
+  /** Line 33: overpayment applied to 2026 estimated tax. */
+  creditForward: number
+  license: Record<Owner, string>
+}
+export const emptyIa = (): IaInput => ({
+  w2: {}, withholdingOther: 0, estimatedPayments: 0, birthDate: { taxpayer: '', spouse: '' }, countyNo: '', schoolDistrictNo: '', surtaxRate: 0,
+  usObligationInterest: 0, otherStateBondInterest: 0, retirementKind: {}, disabled: { taxpayer: false, spouse: false }, activeDutyPay: 0,
+  iowa529: 0, healthInsurance: 0, capitalGainsDeduction: 0, otherAddition: { code: '', amount: 0 }, otherSubtraction: { code: '', amount: 0 }, otherAdjustment: { code: '', amount: 0 },
+  tuition: {}, earlyChildhood: {}, volunteerCredit: 0, outOfStateCredit: 0, otherNonrefundable: 0, fuelTaxCredit: 0, otherRefundable: 0,
+  fishWildlife: 0, childAbuse: 0, creditForward: 0, license: { taxpayer: '', spouse: '' }
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -1827,6 +1908,8 @@ export interface TaxReturnInput {
   ky: KyInput
   ok: OkInput
   ct: CtInput
+  ut: UtInput
+  ia: IaInput
 }
 
 let counter = 0
@@ -2043,7 +2126,8 @@ export const emptyReturn = (): TaxReturnInput => ({
   or: emptyOr(),
   ky: emptyKy(),
   ok: emptyOk(),
-  ct: emptyCt()
+  ct: emptyCt(),
+  ut: emptyUt(), ia: emptyIa()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -2176,6 +2260,14 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
         exemptRetirement: Object.fromEntries((['02E', '03E', '04E', '05E'] as const).map((k) => [k, { ...e.exemptRetirement[k], ...(x.exemptRetirement?.[k] ?? {}) }])) as LaInput['exemptRetirement'],
         retired: { ...e.retired, ...(x.retired ?? {}) }, otherExempt: { ...e.otherExempt, ...(x.otherExempt ?? {}) }, otherCredit: { ...e.otherCredit, ...(x.otherCredit ?? {}) } }
     })(),
+    ia: (() => {
+      const e = emptyIa(); const x: Partial<IaInput> = r.ia ?? {}
+      return {
+        ...e, ...x, w2: normalizeStatements(x.w2), birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, disabled: { ...e.disabled, ...(x.disabled ?? {}) },
+        otherAddition: { ...e.otherAddition, ...(x.otherAddition ?? {}) }, otherSubtraction: { ...e.otherSubtraction, ...(x.otherSubtraction ?? {}) }, otherAdjustment: { ...e.otherAdjustment, ...(x.otherAdjustment ?? {}) },
+        tuition: { ...(x.tuition ?? {}) }, earlyChildhood: { ...(x.earlyChildhood ?? {}) }, license: { ...e.license, ...(x.license ?? {}) }
+      }
+    })(),
     al: (() => {
       const e = emptyAl(); const x: Partial<AlInput> = r.al ?? {}
       return { ...e, ...x, w2: normalizeStatements(x.w2), retirement: { ...(x.retirement ?? {}) }, interest: { ...(x.interest ?? {}) }, birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) },
@@ -2201,6 +2293,10 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       return { ...e, ...x, w2: normalizeStatements(x.w2), other1099: { ...e.other1099, ...(x.other1099 ?? {}) }, otherAddition: { ...e.otherAddition, ...(x.otherAddition ?? {}) },
         otherSubtraction: { ...e.otherSubtraction, ...(x.otherSubtraction ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) },
         residence: { ...e.residence, ...(x.residence ?? {}) }, auto1: { ...e.auto1, ...(x.auto1 ?? {}) }, auto2: { ...e.auto2, ...(x.auto2 ?? {}) } }
+    })(),
+    ut: (() => {
+      const e = emptyUt(); const x: Partial<UtInput> = r.ut ?? {}
+      return { ...e, ...x, w2: normalizeStatements(x.w2), birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, otherCredit: { ...e.otherCredit, ...(x.otherCredit ?? {}) } }
     })()
   })
 }

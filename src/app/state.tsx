@@ -33,6 +33,8 @@ import { OregonStep } from './oregon'
 import { KentuckyStep } from './kentucky'
 import { OklahomaStep } from './oklahoma'
 import { ConnecticutStep } from './connecticut'
+import { UtahStep } from './utah'
+import { IowaStep } from './iowa'
 import { StateEstimateView } from './stateEstimate'
 import { STATE_RETURNS_READY, TAX_YEAR } from '../engine/rules.ts'
 
@@ -122,6 +124,8 @@ export function StateStep(props: StepProps & { preparer: PreparerInfo | null }):
       {ready && info?.code === 'KY' && <KentuckyStep {...props} />}
       {ready && info?.code === 'OK' && <OklahomaStep {...props} />}
       {ready && info?.code === 'CT' && <ConnecticutStep {...props} />}
+      {ready && info?.code === 'UT' && <UtahStep {...props} />}
+      {ready && info?.code === 'IA' && <IowaStep {...props} />}
     </div>
   )
 }

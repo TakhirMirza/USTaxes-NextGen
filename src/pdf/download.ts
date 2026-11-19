@@ -44,6 +44,10 @@ import type { OkResult } from '../engine/ok2025.ts'
 import { buildOkPacket } from './ok2025.ts'
 import type { CtResult } from '../engine/ct2025.ts'
 import { buildCtPacket } from './ct2025.ts'
+import type { UtResult } from '../engine/ut2025.ts'
+import { buildUtPacket } from './ut2025.ts'
+import type { IaResult } from '../engine/ia2025.ts'
+import { buildIaPacket } from './ia2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -180,4 +184,12 @@ export function downloadOklahomaForms(ret: TaxReturnInput, res: TaxReturnResult,
 
 export function downloadConnecticutForms(ret: TaxReturnInput, res: TaxReturnResult, ct: CtResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildCtPacket(ret, res, ct, preparer).forms, '2025 Connecticut Form CT-1040 — USTaxes NextGen', `2025-Connecticut-CT-1040-${slug(ret)}.pdf`)
+}
+
+export function downloadUtahForms(ret: TaxReturnInput, res: TaxReturnResult, ut: UtResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildUtPacket(ret, res, ut, preparer).forms, '2025 Utah Form TC-40 — USTaxes NextGen', `2025-Utah-TC-40-${slug(ret)}.pdf`)
+}
+
+export function downloadIowaForms(ret: TaxReturnInput, res: TaxReturnResult, ia: IaResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildIaPacket(ret, res, ia, preparer).forms, '2025 Iowa Form IA 1040 — USTaxes NextGen', `2025-Iowa-IA-1040-${slug(ret)}.pdf`)
 }
