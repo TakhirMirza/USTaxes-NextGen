@@ -1904,6 +1904,42 @@ export const emptyWv = (): WvInput => ({
   motorVehicleCredit: 0, useTax: 0, donations: { A: 0, B: 0, C: 0 }, creditForward: 0
 })
 
+export type NmRetirementKind = 'standard' | 'military' | 'railroad'
+export interface NmInput {
+  /** New Mexico W-2 details by W-2 id (line 27). */
+  w2: Record<string, StateStatement>
+  /** Line 27: New Mexico tax withheld on 1099s; line 30: estimated payments. */
+  withholdingOther: number
+  estimatedPayments: number
+  /** Dates of birth (MM/DD/CCYY): you / your spouse (1f, 2f) and dependents by id. */
+  birthDate: Record<Owner, string>
+  dependentBirthDate: Record<string, string>
+  /** Kind of each 1099-R (by id): armed forces retirement (PIT-ADJ 24, up to $30,000 each) or railroad (PIT-ADJ 10). */
+  retirementKind: Record<string, NmRetirementKind>
+  /** PIT-ADJ: line 1 other states’ bond interest; line 9 U.S. obligation interest; line 15 NM 529; line 17 active duty pay; line 21 state refund in FAGI. */
+  otherStateBondInterest: number
+  usObligationInterest: number
+  nm529: number
+  activeDutyPay: number
+  stateRefundInFagi: number
+  /** PIT-ADJ 18 / PIT-RC 23: unreimbursed medical care expenses of $28,000 or more (65 or older). */
+  bigMedical: boolean
+  /** PIT-RC: other rebates and credits figured by hand (property tax rebates, child day care, special needs adoption). */
+  otherRebates: number
+  /** Line 20: credit for taxes paid to another state; lines 21 / 26: business-related credits (PIT-CR). */
+  otherStateCredit: number
+  businessCredits: number
+  refundableBusinessCredits: number
+  /** Line 41: applied to 2026 estimated tax. Driver’s license numbers (or NONE / DECLINED). */
+  creditForward: number
+  license: Record<Owner, string>
+}
+export const emptyNm = (): NmInput => ({
+  w2: {}, withholdingOther: 0, estimatedPayments: 0, birthDate: { taxpayer: '', spouse: '' }, dependentBirthDate: {}, retirementKind: {},
+  otherStateBondInterest: 0, usObligationInterest: 0, nm529: 0, activeDutyPay: 0, stateRefundInFagi: 0, bigMedical: false, otherRebates: 0,
+  otherStateCredit: 0, businessCredits: 0, refundableBusinessCredits: 0, creditForward: 0, license: { taxpayer: '', spouse: '' }
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -2078,6 +2114,7 @@ export interface TaxReturnInput {
   ne: NeInput
   ms: MsInput
   wv: WvInput
+  nm: NmInput
 }
 
 let counter = 0
@@ -2295,7 +2332,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   ky: emptyKy(),
   ok: emptyOk(),
   ct: emptyCt(),
-  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv()
+  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -2457,6 +2494,13 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       return {
         ...e, ...x, w2: normalizeStatements(x.w2), dependentBirthDate: { ...(x.dependentBirthDate ?? {}) }, birthYear: { ...e.birthYear, ...(x.birthYear ?? {}) },
         disabled: { ...e.disabled, ...(x.disabled ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, donations: { ...e.donations, ...(x.donations ?? {}) }
+      }
+    })(),
+    nm: (() => {
+      const e = emptyNm(); const x: Partial<NmInput> = r.nm ?? {}
+      return {
+        ...e, ...x, w2: normalizeStatements(x.w2), birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) }, dependentBirthDate: { ...(x.dependentBirthDate ?? {}) },
+        retirementKind: { ...(x.retirementKind ?? {}) }, license: { ...e.license, ...(x.license ?? {}) }
       }
     })(),
     al: (() => {

@@ -1,0 +1,129 @@
+/**
+ * Fills the official 2025 New Mexico PIT-1 (public/forms/2025/nm-pit1.pdf: PIT-1 pages 1–2, PIT-ADJ, PIT-RC pages 1–2,
+ * from the Taxation and Revenue Department’s 2025 forms). These forms have no fields, so the values are drawn at the
+ * positions of their boxes (measured from the forms’ text layout). Pages: 0–1 PIT-1, 2 PIT-ADJ, 3–4 PIT-RC.
+ * Whole dollars with “.00”.
+ */
+import type { TaxReturnInput } from '../engine/model.ts'
+import type { TaxReturnResult } from '../engine/compute.ts'
+import type { NmResult } from '../engine/nm2025.ts'
+import type { FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+
+type Draw = NonNullable<FormFill['draw']>[number]
+const digits = (v: string): string => v.replace(/\D/g, '')
+const upper = (s: string): string => s.trim().toUpperCase()
+const dollars = (n: number): string => { const x = Math.round(n); return `${x < 0 ? '-' : ''}${Math.abs(x)}.00` }
+const t = (page: number, x: number, y: number, text: string, size = 9): Draw => ({ page, x, y, text, size })
+const money = (page: number, xRight: number, y: number, n: number): Draw => ({ page, x: xRight, y, text: dollars(n), size: 10, right: true })
+const X = (page: number, x: number, y: number): Draw => ({ page, x, y, text: 'X', size: 9 })
+
+const P1: Record<string, number> = { '9': 314, '10': 296, '11': 279, '12': 266, '13': 240, '14': 228, '15': 216, '17': 165, '18': 147, '19': 121, '20': 104, '21': 86, '22': 68 }
+const P2: Record<string, number> = { '23': 639, '24': 625, '25': 611, '26': 565, '27': 552, '28': 540, '29': 523, '30': 505, '31': 492, '32': 480, '33': 468, '34': 456, '36': 421, '37': 409, '38': 397, '39': 384, '40': 372, '41': 360, '42': 348 }
+const ADJ: Record<string, number> = { '1': 590, '6': 494, '9': 435, '10': 417, '13': 278, '15': 254, '16': 242, '17': 230, '18': 218, '21': 182, '24': 146, '25': 134, '28': 98 }
+const RC1: Record<string, number> = { '1': 408, '2b': 373, '2c': 356, '2d': 339, '2e': 326, '2f': 314, '2g': 302, '3': 264, '4': 218, '5': 206, '6': 194, '8': 169, '9': 157, '11': 128, '12': 105 }
+const RC2: Record<string, number> = { '13': 638, '13a': 625, '14': 605 }
+const RC2B: Record<string, number> = { '23': 181, '24': 168, '25': 156, '26': 132 }
+const COUNTS = new Set(['1', '2b', '2c', '2d', '2e', '2f', '2g', '3', '13a'])
+const ALWAYS1 = new Set(['9', '12', '17', '18', '22'])
+const ALWAYS2 = new Set(['23', '32'])
+
+export function formNmPit1(ret: TaxReturnInput, res: TaxReturnResult, nm: NmResult, preparer?: PreparerInfo | null): FormFill {
+  const L = nm.lines
+  const c = ret.contact
+  const fs = ret.filingStatus
+  const joint = fs === 'mfj'
+  const d = ret.nm
+  const draw: Draw[] = []
+  const pages = [0, 1]
+  const ssn = digits(ret.taxpayer.ssn)
+  const name = (p: TaxReturnInput['taxpayer']): string => upper(`${p.firstName} ${p.lastName}`)
+
+  // ── PIT-1 page 1 ──
+  draw.push(t(0, 47, 604, name(ret.taxpayer)), t(0, 314, 604, ssn, 10), t(0, 463, 604, 'R', 10))
+  if (d.birthDate.taxpayer.trim()) draw.push(t(0, 494, 604, d.birthDate.taxpayer.trim()))
+  if (nm.boxes.taxpayerBlind) draw.push(X(0, 413, 604))
+  if (nm.boxes.taxpayer65) draw.push(X(0, 435, 604))
+  if (joint || fs === 'mfs') {
+    draw.push(t(0, 47, 579, name(ret.spouse)), t(0, 314, 579, digits(ret.spouse.ssn), 10))
+    if (joint) draw.push(t(0, 463, 579, 'R', 10))
+    if (d.birthDate.spouse.trim()) draw.push(t(0, 494, 579, d.birthDate.spouse.trim()))
+    if (nm.boxes.spouseBlind) draw.push(X(0, 413, 579))
+    if (nm.boxes.spouse65) draw.push(X(0, 435, 579))
+  }
+  draw.push(t(0, 47, 543, upper([c.street, c.apt].filter((x) => x.trim()).join(' '))))
+  draw.push(t(0, 47, 519, upper(c.city)), t(0, 201, 519, upper(c.state).slice(0, 2)), t(0, 229, 519, digits(c.zip).slice(0, 9)))
+  draw.push({ page: 0, x: 70, y: 461, text: String(nm.exemptions).padStart(2, '0'), size: 11, right: true })
+  const fsY: Record<TaxReturnInput['filingStatus'], number> = { single: 421, mfj: 409, mfs: 396, hoh: 373, qss: 337 }
+  draw.push(X(0, 398.5, fsY[fs]))
+  ret.dependents.slice(0, 5).forEach((x, i) => {
+    const y = 385 - 12 * i
+    const parts = x.name.trim().split(/\s+/)
+    const last = parts.length > 1 ? parts.pop() ?? '' : ret.taxpayer.lastName
+    draw.push(t(0, 40, y, upper(parts.join(' ')), 8), t(0, 112, y, upper(last), 8), t(0, 204, y, digits(x.ssn), 8))
+    const dob = (d.dependentBirthDate[x.id] ?? '').trim()
+    if (dob) draw.push(t(0, 298, y, dob, 8))
+  })
+  for (const [k, y] of Object.entries(P1)) if (L[k] || ALWAYS1.has(k)) draw.push(money(0, 572, y, L[k]))
+  if (res.deduction.used === 'itemized') draw.push(X(0, 424, 256))
+  draw.push(t(0, 424, 136, 'R', 10))
+
+  // ── PIT-1 page 2 ──
+  draw.push(t(1, 60, 686, ssn, 10))
+  for (const [k, y] of Object.entries(P2)) if (L[k] || ALWAYS2.has(k)) draw.push(money(1, 572, y, L[k]))
+  if (L['25']) draw.push(money(1, 405, 594, L['25a']))
+  if (L['42'] > 0) {
+    const dep = ret.refundDeposit
+    if (dep.routingNumber && dep.accountNumber) {
+      draw.push(t(1, 102, 324, digits(dep.routingNumber).slice(0, 9)), t(1, 260, 324, dep.accountNumber.replace(/[^0-9A-Za-z-]/g, '').slice(0, 17)))
+      draw.push(X(1, dep.accountType === 'savings' ? 519 : 477, 324), X(1, 518, 312))
+    }
+  }
+  if (d.license.taxpayer.trim()) draw.push(t(1, 40, 212, upper(d.license.taxpayer), 8))
+  if (joint && d.license.spouse.trim()) draw.push(t(1, 40, 164, upper(d.license.spouse), 8))
+  draw.push(t(1, 160, 118, digits(c.phone).slice(-10)))
+  if (ret.usePaidPreparer && preparer) {
+    draw.push(t(1, 352, 193, upper(preparer.firmName || preparer.name), 8), t(1, 352, 169, upper(preparer.ptin), 8), t(1, 420, 144, digits(preparer.phone).slice(-10), 8))
+  }
+
+  // ── PIT-ADJ ──
+  const A = nm.adj
+  if (L['11'] + L['15'] > 0) {
+    pages.push(2)
+    draw.push(t(2, 40, 649, name(ret.taxpayer)), t(2, 428, 652, ssn, 10))
+    for (const [k, y] of Object.entries(ADJ)) if (A[k] || k === '6' || k === '28') draw.push(money(2, 572, y, A[k] ?? 0))
+  }
+
+  // ── PIT-RC ──
+  const R = nm.rc
+  if (L['24'] > 0) {
+    pages.push(3, 4)
+    draw.push(t(3, 40, 639, name(ret.taxpayer)), t(3, 427, 637, ssn, 10))
+    for (const y of [470, 458, 446, 434]) {
+      draw.push(X(3, 443, y))
+      if (joint) draw.push(X(3, 523, y))
+    }
+    for (const [k, y] of Object.entries(RC1)) {
+      const n = R[k] ?? 0
+      if (!n && !['1', '2g', '3', '12'].includes(k)) continue
+      draw.push(COUNTS.has(k) ? { page: 3, x: 560, y, text: String(n), size: 10, right: true } : money(3, 572, y, n))
+    }
+    draw.push(t(4, 60, 686, ssn, 10))
+    for (const [k, y] of Object.entries(RC2)) {
+      const n = R[k] ?? 0
+      if (k === '14' && !n) continue
+      draw.push(COUNTS.has(k) ? { page: 4, x: 560, y, text: String(n), size: 10, right: true } : money(4, 572, y, n))
+    }
+    for (const [k, y] of Object.entries(RC2B)) {
+      const n = k === '26' ? R['26'] : R[k] ?? 0
+      if (n || k === '26') draw.push(money(4, 520, y, n))
+    }
+  }
+  return { id: 'nmpit1', file: 'nm-pit1.pdf', title: 'New Mexico PIT-1', values: {}, draw, pages }
+}
+
+export function buildNmPacket(ret: TaxReturnInput, res: TaxReturnResult, nm: NmResult, preparer?: PreparerInfo | null): FormPacket {
+  const notIncluded = nm.attach.filter((x) => x !== 'Schedule PIT-ADJ' && x !== 'Schedule PIT-RC')
+  notIncluded.push('Driver’s license or state ID number, state and expiration date under each signature (or NONE / DECLINED)')
+  if (nm.rc['other'] > 0) notIncluded.push('PIT-RC sections 3–6: write the property tax rebate, day care or adoption lines that make up your other rebates')
+  return { forms: [formNmPit1(ret, res, nm, preparer)], notIncluded }
+}

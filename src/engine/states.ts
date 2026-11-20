@@ -56,7 +56,7 @@ export const STATES: readonly StateInfo[] = [
   S('NV', 'Nevada', 'no-tax', '', 'Nevada Department of Taxation', 'Nevada has no individual income tax.'),
   S('NH', 'New Hampshire', 'no-tax', '', 'New Hampshire Department of Revenue Administration', 'New Hampshire’s tax on interest and dividends was repealed starting with 2025, so there is no individual income tax return.'),
   S('NJ', 'New Jersey', 'supported', 'Form NJ-1040', 'New Jersey Division of Taxation'),
-  S('NM', 'New Mexico', 'estimate', 'Form PIT-1', 'New Mexico Taxation and Revenue Department'),
+  S('NM', 'New Mexico', 'supported', 'Form PIT-1', 'New Mexico Taxation and Revenue Department'),
   S('NY', 'New York', 'supported', 'Form IT-201', 'New York State Department of Taxation and Finance', 'New York City and Yonkers residents also figure city tax on the same return.'),
   S('NC', 'North Carolina', 'supported', 'Form D-400', 'North Carolina Department of Revenue'),
   S('ND', 'North Dakota', 'estimate', 'Form ND-1', 'North Dakota Office of State Tax Commissioner'),

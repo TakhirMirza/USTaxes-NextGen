@@ -58,6 +58,8 @@ import type { MsResult } from '../engine/ms2025.ts'
 import { buildMsPacket } from './ms2025.ts'
 import type { WvResult } from '../engine/wv2025.ts'
 import { buildWvPacket } from './wv2025.ts'
+import type { NmResult } from '../engine/nm2025.ts'
+import { buildNmPacket } from './nm2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -222,4 +224,8 @@ export function downloadMississippiForms(ret: TaxReturnInput, res: TaxReturnResu
 
 export function downloadWestVirginiaForms(ret: TaxReturnInput, res: TaxReturnResult, wv: WvResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildWvPacket(ret, res, wv, preparer).forms, '2025 West Virginia Form IT-140 — USTaxes NextGen', `2025-West-Virginia-IT-140-${slug(ret)}.pdf`)
+}
+
+export function downloadNewMexicoForms(ret: TaxReturnInput, res: TaxReturnResult, nm: NmResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildNmPacket(ret, res, nm, preparer).forms, '2025 New Mexico Form PIT-1 — USTaxes NextGen', `2025-New-Mexico-PIT-1-${slug(ret)}.pdf`)
 }
