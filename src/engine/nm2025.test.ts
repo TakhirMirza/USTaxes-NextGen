@@ -119,12 +119,13 @@ test('NM retiree: Social Security exemption and armed forces retirement', () => 
 test('PIT-1 with PIT-ADJ, PIT-RC and PIT-CR: the PDF builds', async () => {
   const w = w2(22000)
   const k = kid(4)
-  const { nm: r, res, ret } = nm(base({ filingStatus: 'mfj', w2s: [w], dependents: [k], refundDeposit: { routingNumber: '107000327', accountNumber: '5551212', accountType: 'checking' } }), { w2: withheld(w, 300), usObligationInterest: 40, dependentBirthDate: { [k.id]: '04/15/2021' }, dayCare: { [k.id]: { days: 200, rate: 10 } }, crCredits: [{ code: 'F01', approval: 'FP-123', applied: 50, refund: 100 }], contributions: 5 })
+  const { nm: r, res, ret } = nm(base({ filingStatus: 'mfj', w2s: [w], dependents: [k], refundDeposit: { routingNumber: '107000327', accountNumber: '5551212', accountType: 'checking' } }), { w2: withheld(w, 300), usObligationInterest: 40, dependentBirthDate: { [k.id]: '04/15/2021' }, dayCare: { [k.id]: { days: 200, rate: 10 } }, crCredits: [{ code: 'F01', approval: 'FP-123', applied: 50, refund: 100 }], contributions: { '3': 5 }, party: { taxpayer: '2', spouse: '1' } })
   assert.equal(r.rc['19'], 480)
   assert.equal(r.lines['26'], 100)
-  assert.equal(r.lines['40'], 5)
+  assert.equal(r.lines['40'], 9)
+  assert.equal(r.pitd['11'], 4)
   const packet = buildNmPacket(ret, res, r)
-  assert.deepEqual(packet.forms[0].pages, [0, 1, 2, 3, 4, 5])
+  assert.deepEqual(packet.forms[0].pages, [0, 1, 2, 3, 4, 5, 7])
   const formsDir = new URL('../../public/forms/2025/', import.meta.url)
   const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
   const problems: FillProblem[] = []

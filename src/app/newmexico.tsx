@@ -20,6 +20,16 @@ const LINES: [line: string, label: string][] = [
 const ALWAYS = new Set(['9', '12', '17', '18', '22', '32'])
 const KEY = new Set(['22', '33', '42'])
 const KINDS: [NmRetirementKind, string][] = [['standard', 'Pension, IRA or annuity (taxed)'], ['military', 'Armed forces retirement (up to $30,000 exempt)'], ['railroad', 'Railroad retirement (exempt)']]
+const PITD: [string, string][] = [
+  ['2', 'New Mexico Housing Trust Fund'], ['3', 'Share With Wildlife'], ['4', 'Veterans’ State Cemetery Fund'], ['5', 'Substance Abuse Education Fund'],
+  ['6', 'Forest Re-Leaf Program'], ['7', 'National Guard Member and Family Assistance'], ['8', 'Kids ’N Parks Transportation Grant Program'],
+  ['9', 'ALS Research Fund'], ['10', 'Vietnam Veterans Memorial'], ['12', 'Veterans Enterprise Fund'], ['13', 'Lottery Tuition Fund'],
+  ['14', 'Equine Shelter Rescue Fund'], ['15', 'Animal Care and Facility Fund'], ['16', 'Supplemental Senior Services'], ['17', 'Healthy Soil Program']
+]
+const PARTIES: [string, string][] = [
+  ['', 'No contribution'], ['1', 'New Mexico Democratic Party'], ['2', 'New Mexico Republican Party'], ['3', 'Libertarian Party of New Mexico'],
+  ['4', 'Green Party of New Mexico'], ['5', 'Better for America Party of New Mexico'], ['6', 'Constitution Party of New Mexico']
+]
 const firstName = (p: Person, fallback: string): string => p.firstName.trim().split(/\s+/)[0] || fallback
 
 export function NewMexicoStep({ ret, set, result, preparer }: StepProps & { preparer: PreparerInfo | null }): ReactElement {
@@ -143,10 +153,25 @@ export function NewMexicoStep({ ret, set, result, preparer }: StepProps & { prep
         </Section>
       )}
 
+      {L['39'] > 0 && (
+        <Section title="Contributions from your refund (PIT-D)" intro={`Up to your overpayment of ${usd(L['39'])}. If they add up to more, none are made.`}>
+          <div className="grid">
+            {PITD.map(([k, label]) => <MoneyField key={k} label={label} hint={`PIT-D line ${k}`} value={d.contributions[k] ?? 0} onChange={(n) => put({ contributions: { ...d.contributions, [k]: n } })} />)}
+            {owners.map((o) => (
+              <div key={o} className="field">
+                <label htmlFor={`nm-party-${o}`}><span>{names[o]}: $2 to a political party</span></label>
+                <select id={`nm-party-${o}`} className="select" value={d.party[o]} onChange={(e) => put({ party: { ...d.party, [o]: e.target.value } })}>
+                  {PARTIES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
       <Section title="Other credits">
         <div className="grid">
           <NumberField label="Special needs adopted children" hint="PIT-RC line 24, $1,500 each (certified by CYFD)" max={10} value={d.specialNeedsAdoptions} onChange={(n) => put({ specialNeedsAdoptions: n })} />
-          <MoneyField label="Refund contributions (PIT-D)" hint="Line 40" value={d.contributions} onChange={(n) => put({ contributions: n })} />
         </div>
         <p className="why">Credit for tax paid to another state (line 20 worksheet).</p>
         <div className="grid">
