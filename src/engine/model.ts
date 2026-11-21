@@ -2000,6 +2000,57 @@ export const emptyHi = (): HiInput => ({
   electionFund: { taxpayer: false, spouse: false }, creditForward: 0, occupation: { taxpayer: '', spouse: '' }
 })
 
+/** Idaho Form 39R line 8e: which 1099-R benefits qualify for the retirement benefits deduction. */
+export type IdRetirementKind = 'none' | 'military' | 'qualified'
+export interface IdInput {
+  /** Idaho withholding per W-2 (boxes 15–17). */
+  w2: Record<string, StateStatement>
+  withholdingOther: number
+  /** Line 47: Form 51 estimated and extension payments plus the 2024 overpayment applied. */
+  estimatedPayments: number
+  /** Line 48: tax paid or withheld by a pass-through entity (Form ID K-1). */
+  passThrough: number
+  dependentBirthDates: Record<string, string>
+  /** Form 39R Part B line 8: military retirement, or CSRS / Idaho firefighter / Idaho city police benefits. */
+  retirementKind: Record<string, IdRetirementKind>
+  /** Classified as disabled (for the retirement benefits deduction at 62 to 64). */
+  disabled: Record<Owner, boolean>
+  /** Form 39R Part A. */
+  otherStateBondInterest: number
+  otherAdditions: number
+  /** Form 39R Part B. */
+  stateRefund: number
+  usObligationInterest: number
+  healthPremiums: number
+  longTermCarePremiums: number
+  collegeSavings: number
+  otherSubtractions: number
+  /** Form 39R Part C: credit for tax paid to another state. */
+  otherState: { name: string; income: number; tax: number }
+  /** Form 39R Part D: credits for contributions to educational entities, youth facilities and live-organ donation. */
+  partDCredits: number
+  /** Form 39R Part E: family members age 65+ or developmentally disabled you kept a home for ($100 each, up to 3). */
+  homeMembers: { name: string; ssn: string; relationship: string; birthDate: string; disabled: boolean }[]
+  /** Line 28: use tax on untaxed purchases. */
+  useTax: number
+  /** Line 31: received Idaho public assistance (no $10 permanent building fund tax). */
+  publicAssistance: boolean
+  /** Line 42: approved Parental Choice Tax Credit expenses. */
+  parentalChoice: number
+  /** Line 43: donate the food tax credit to the Cooperative Welfare Fund. */
+  donateFoodCredit: boolean
+  /** Lines 33–40: donations. */
+  donations: Record<string, number>
+  creditForward: number
+}
+
+export const emptyId = (): IdInput => ({
+  w2: {}, withholdingOther: 0, estimatedPayments: 0, passThrough: 0, dependentBirthDates: {}, retirementKind: {}, disabled: { taxpayer: false, spouse: false },
+  otherStateBondInterest: 0, otherAdditions: 0, stateRefund: 0, usObligationInterest: 0, healthPremiums: 0, longTermCarePremiums: 0, collegeSavings: 0,
+  otherSubtractions: 0, otherState: { name: '', income: 0, tax: 0 }, partDCredits: 0, homeMembers: [], useTax: 0, publicAssistance: false, parentalChoice: 0,
+  donateFoodCredit: false, donations: {}, creditForward: 0
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -2176,6 +2227,7 @@ export interface TaxReturnInput {
   wv: WvInput
   nm: NmInput
   hi: HiInput
+  id: IdInput
 }
 
 let counter = 0
@@ -2393,7 +2445,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   ky: emptyKy(),
   ok: emptyOk(),
   ct: emptyCt(),
-  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm(), hi: emptyHi()
+  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm(), hi: emptyHi(), id: emptyId()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -2563,6 +2615,14 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       return {
         ...e, ...x, w2: normalizeStatements(x.w2), retirementKind: { ...(x.retirementKind ?? {}) }, disabled: pair('disabled'), schools: pair('schools'),
         libraries: pair('libraries'), violence: pair('violence'), electionFund: pair('electionFund'), occupation: { ...e.occupation, ...(x.occupation ?? {}) }
+      }
+    })(),
+    id: (() => {
+      const e = emptyId(); const x: Partial<IdInput> = r.id ?? {}
+      return {
+        ...e, ...x, w2: normalizeStatements(x.w2), dependentBirthDates: { ...(x.dependentBirthDates ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) },
+        disabled: { ...e.disabled, ...(x.disabled ?? {}) }, otherState: { ...e.otherState, ...(x.otherState ?? {}) }, donations: { ...(x.donations ?? {}) },
+        homeMembers: Array.isArray(x.homeMembers) ? x.homeMembers.map((m) => ({ name: m.name ?? '', ssn: m.ssn ?? '', relationship: m.relationship ?? '', birthDate: m.birthDate ?? '', disabled: !!m.disabled })) : []
       }
     })(),
     nm: (() => {

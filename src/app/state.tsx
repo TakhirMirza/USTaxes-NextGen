@@ -42,6 +42,7 @@ import { MississippiStep } from './mississippi'
 import { WestVirginiaStep } from './westvirginia'
 import { NewMexicoStep } from './newmexico'
 import { HawaiiStep } from './hawaii'
+import { IdahoStep } from './idaho'
 import { StateEstimateView } from './stateEstimate'
 import { STATE_RETURNS_READY, TAX_YEAR } from '../engine/rules.ts'
 
@@ -140,6 +141,7 @@ export function StateStep(props: StepProps & { preparer: PreparerInfo | null }):
       {ready && info?.code === 'WV' && <WestVirginiaStep {...props} />}
       {ready && info?.code === 'NM' && <NewMexicoStep {...props} />}
       {ready && info?.code === 'HI' && <HawaiiStep {...props} />}
+      {ready && info?.code === 'ID' && <IdahoStep {...props} />}
     </div>
   )
 }

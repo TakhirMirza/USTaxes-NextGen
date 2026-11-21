@@ -90,6 +90,16 @@ export async function fillForm(lib: PdfLib, bytes: Uint8Array | ArrayBuffer, fil
   }
   form.updateFieldAppearances(font)
   form.flatten()
+  // pdf-lib's flatten deletes the widgets of fields that have several widgets but can leave their references in
+  // the page’s /Annots; drop references to objects that no longer exist so the output has no dangling entries.
+  for (const page of doc.getPages()) {
+    const annots = page.node.Annots()
+    if (!annots) continue
+    for (let i = annots.size() - 1; i >= 0; i--) {
+      const ref = annots.get(i)
+      if (ref instanceof lib.PDFRef && !doc.context.lookup(ref)) annots.remove(i)
+    }
+  }
   return doc
 }
 

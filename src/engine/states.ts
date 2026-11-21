@@ -37,7 +37,7 @@ export const STATES: readonly StateInfo[] = [
   S('FL', 'Florida', 'no-tax', '', 'Florida Department of Revenue', 'Florida has no individual income tax.'),
   S('GA', 'Georgia', 'supported', 'Form 500', 'Georgia Department of Revenue'),
   S('HI', 'Hawaii', 'supported', 'Form N-11', 'Hawaii Department of Taxation'),
-  S('ID', 'Idaho', 'estimate', 'Form 40', 'Idaho State Tax Commission'),
+  S('ID', 'Idaho', 'supported', 'Form 40', 'Idaho State Tax Commission'),
   S('IL', 'Illinois', 'supported', 'Form IL-1040', 'Illinois Department of Revenue'),
   S('IN', 'Indiana', 'supported', 'Form IT-40', 'Indiana Department of Revenue', 'Indiana also has county income tax, figured on the same return.'),
   S('IA', 'Iowa', 'supported', 'Form IA 1040', 'Iowa Department of Revenue'),
