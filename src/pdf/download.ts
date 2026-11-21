@@ -60,6 +60,8 @@ import type { WvResult } from '../engine/wv2025.ts'
 import { buildWvPacket } from './wv2025.ts'
 import type { NmResult } from '../engine/nm2025.ts'
 import { buildNmPacket } from './nm2025.ts'
+import type { HiResult } from '../engine/hi2025.ts'
+import { buildHiPacket } from './hi2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -228,4 +230,8 @@ export function downloadWestVirginiaForms(ret: TaxReturnInput, res: TaxReturnRes
 
 export function downloadNewMexicoForms(ret: TaxReturnInput, res: TaxReturnResult, nm: NmResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildNmPacket(ret, res, nm, preparer).forms, '2025 New Mexico Form PIT-1 — USTaxes NextGen', `2025-New-Mexico-PIT-1-${slug(ret)}.pdf`)
+}
+
+export function downloadHawaiiForms(ret: TaxReturnInput, res: TaxReturnResult, hi: HiResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildHiPacket(ret, res, hi, preparer).forms, '2025 Hawaii Form N-11 — USTaxes NextGen', `2025-Hawaii-N-11-${slug(ret)}.pdf`)
 }

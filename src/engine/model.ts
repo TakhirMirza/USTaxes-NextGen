@@ -1951,6 +1951,55 @@ export const emptyNm = (): NmInput => ({
   otherState: { name: '', tax: 0, taxableIncome: 0, doubleTaxed: 0 }, crCredits: [], contributions: {}, party: { taxpayer: '', spouse: '' }, creditForward: 0, license: { taxpayer: '', spouse: '' }
 })
 
+export type HiRetirementKind = 'standard' | 'employer'
+export interface HiInput {
+  /** Hawaii W-2 details by W-2 id (line 37). */
+  w2: Record<string, StateStatement>
+  /** Line 37: Hawaii tax withheld on 1099-Gs and N-2s; lines 38–40: estimated payments, 2024 overpayment applied, extension payment. */
+  withholdingOther: number
+  estimatedPayments: number
+  priorYearApplied: number
+  extensionPayment: number
+  /** Each 1099-R (by id): taxed in Hawaii, or a qualifying distribution from an employer-funded or government pension (line 13). */
+  retirementKind: Record<string, HiRetirementKind>
+  /** Line 8 COLA / ERS wage difference; line 9 out-of-state bond interest; line 10 other additions. */
+  wageDifference: number
+  otherStateBondInterest: number
+  otherAdditions: number
+  /** Line 15 military reserve / National Guard pay (up to $8,636); line 16 individual housing account; line 18 other subtractions (U.S. interest and others). */
+  guardPay: number
+  housingAccount: number
+  usObligationInterest: number
+  otherSubtractions: number
+  /** Line 25: blind, deaf or totally disabled ($7,000 exemption, Form N-172). */
+  disabled: Record<Owner, boolean>
+  /** Schedule X Part I: rent paid for units fully subject to real property tax, and exclusions (utilities, parking, subsidies). */
+  rentPaid: number
+  rentExclusions: number
+  /** Schedule X line 4: address of the rental unit (with apartment number). */
+  rentalAddress: string
+  /** Line 31: child passenger restraint systems bought ($25 each); line 32: other refundable credits (Schedule CR). */
+  carSeats: number
+  refundableCredits: number
+  /** Line 35: nonrefundable credits (Schedule CR). */
+  nonrefundableCredits: number
+  /** Lines 43a–c contributions ($2 / $5 / $5 each) and the $3 election campaign fund. */
+  schools: Record<Owner, boolean>
+  libraries: Record<Owner, boolean>
+  violence: Record<Owner, boolean>
+  electionFund: Record<Owner, boolean>
+  /** Line 46: applied to 2026 estimated tax. Occupations for the signature block. */
+  creditForward: number
+  occupation: Record<Owner, string>
+}
+export const emptyHi = (): HiInput => ({
+  w2: {}, withholdingOther: 0, estimatedPayments: 0, priorYearApplied: 0, extensionPayment: 0, retirementKind: {}, wageDifference: 0, otherStateBondInterest: 0,
+  otherAdditions: 0, guardPay: 0, housingAccount: 0, usObligationInterest: 0, otherSubtractions: 0, disabled: { taxpayer: false, spouse: false },
+  rentPaid: 0, rentExclusions: 0, rentalAddress: '', carSeats: 0, refundableCredits: 0, nonrefundableCredits: 0,
+  schools: { taxpayer: false, spouse: false }, libraries: { taxpayer: false, spouse: false }, violence: { taxpayer: false, spouse: false },
+  electionFund: { taxpayer: false, spouse: false }, creditForward: 0, occupation: { taxpayer: '', spouse: '' }
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -2126,6 +2175,7 @@ export interface TaxReturnInput {
   ms: MsInput
   wv: WvInput
   nm: NmInput
+  hi: HiInput
 }
 
 let counter = 0
@@ -2343,7 +2393,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   ky: emptyKy(),
   ok: emptyOk(),
   ct: emptyCt(),
-  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm()
+  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm(), hi: emptyHi()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -2505,6 +2555,14 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       return {
         ...e, ...x, w2: normalizeStatements(x.w2), dependentBirthDate: { ...(x.dependentBirthDate ?? {}) }, birthYear: { ...e.birthYear, ...(x.birthYear ?? {}) },
         disabled: { ...e.disabled, ...(x.disabled ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, donations: { ...e.donations, ...(x.donations ?? {}) }
+      }
+    })(),
+    hi: (() => {
+      const e = emptyHi(); const x: Partial<HiInput> = r.hi ?? {}
+      const pair = (k: 'disabled' | 'schools' | 'libraries' | 'violence' | 'electionFund') => ({ ...e[k], ...(x[k] ?? {}) })
+      return {
+        ...e, ...x, w2: normalizeStatements(x.w2), retirementKind: { ...(x.retirementKind ?? {}) }, disabled: pair('disabled'), schools: pair('schools'),
+        libraries: pair('libraries'), violence: pair('violence'), electionFund: pair('electionFund'), occupation: { ...e.occupation, ...(x.occupation ?? {}) }
       }
     })(),
     nm: (() => {
