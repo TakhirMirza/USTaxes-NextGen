@@ -9,7 +9,7 @@ import * as lib from 'pdf-lib'
 import { computeReturn } from './compute.ts'
 import { empty1099R, emptyDependent, emptyReturn, emptySocialSecurity, emptyW2 } from './model.ts'
 import type { NmInput, TaxReturnInput } from './model.ts'
-import { computeNewMexico, nmChildCreditPerChild, nmLowIncomeRebate, nmLowMiddleExemption, nmSeniorExemption, nmTax } from './nm2025.ts'
+import { computeNewMexico, nmChildCreditPerChild, nmDayCareChild, nmLowIncomePropertyPercent, nmLowIncomeRebate, nmLowMiddleExemption, nmMaxPropertyTaxLiability, nmOtherStateCredit, nmSeniorExemption, nmTax } from './nm2025.ts'
 import { buildNmPacket } from '../pdf/nm2025.ts'
 import { buildPdf, fillForm } from '../pdf/fill.ts'
 import type { FillProblem } from '../pdf/fill.ts'
@@ -63,6 +63,30 @@ test('NM worksheets and tables', () => {
   assert.equal(nmChildCreditPerChild(400000), 26)
 })
 
+test('NM PIT-RC sections 3–5 and the line 20 worksheet', () => {
+  assert.equal(nmMaxPropertyTaxLiability(9500), 75)
+  assert.equal(nmMaxPropertyTaxLiability(16001), null)
+  assert.equal(nmLowIncomePropertyPercent(8000), 0.75)
+  assert.equal(nmLowIncomePropertyPercent(17000), 0.5)
+  assert.equal(nmLowIncomePropertyPercent(24000), 0.35)
+  assert.equal(nmDayCareChild(200, 10), 480)
+  assert.equal(nmDayCareChild(100, 7), 280)
+  assert.equal(nmDayCareChild(50, 10), 160)
+  assert.equal(nmOtherStateCredit(1000, 25000, 600, 10000, 10000), 400)
+})
+
+test('NM low-income senior: property tax rebate and the additional county rebate', () => {
+  const p = { ...empty1099R(), owner: 'taxpayer' as const, payer: 'Plan', grossDistribution: 9000, taxableAmount: 9000, code: '7' }
+  const { nm: r } = nm(base({ taxpayer: { ...emptyReturn().taxpayer, firstName: 'Pat', lastName: 'Doe', ssn: '123456789', age: 70, age65OrOlder: true }, retirement: [p] }), { propertyTax: 900, county: 'SF' })
+  assert.equal(r.rc['13'], 9000)
+  assert.equal(r.rc['17b'], 60)
+  assert.equal(r.rc['17c'], 250)
+  assert.equal(r.rc['18c'], 350)
+  assert.equal(r.rc['13a'], 3)
+  assert.equal(r.rc['14'], 431)
+  assert.equal(r.rc['26'], 250 + 350 + 431)
+})
+
 test('NM single W-2', () => {
   const w = w2(55000)
   const { nm: r } = nm(base({ w2s: [w] }), { w2: withheld(w, 1500) })
@@ -92,12 +116,16 @@ test('NM retiree: Social Security exemption and armed forces retirement', () => 
   assert.ok(r.lines['17'] < 5000)
 })
 
-test('PIT-1 with PIT-ADJ and PIT-RC: the PDF builds', async () => {
+test('PIT-1 with PIT-ADJ, PIT-RC and PIT-CR: the PDF builds', async () => {
   const w = w2(22000)
   const k = kid(4)
-  const { nm: r, res, ret } = nm(base({ filingStatus: 'mfj', w2s: [w], dependents: [k], refundDeposit: { routingNumber: '107000327', accountNumber: '5551212', accountType: 'checking' } }), { w2: withheld(w, 300), usObligationInterest: 40, dependentBirthDate: { [k.id]: '04/15/2021' } })
+  const { nm: r, res, ret } = nm(base({ filingStatus: 'mfj', w2s: [w], dependents: [k], refundDeposit: { routingNumber: '107000327', accountNumber: '5551212', accountType: 'checking' } }), { w2: withheld(w, 300), usObligationInterest: 40, dependentBirthDate: { [k.id]: '04/15/2021' }, dayCare: { [k.id]: { days: 200, rate: 10 } }, crCredits: [{ code: 'F01', approval: 'FP-123', applied: 50, refund: 100 }], contributions: { '3': 5 }, party: { taxpayer: '2', spouse: '1' } })
+  assert.equal(r.rc['19'], 480)
+  assert.equal(r.lines['26'], 100)
+  assert.equal(r.lines['40'], 9)
+  assert.equal(r.pitd['11'], 4)
   const packet = buildNmPacket(ret, res, r)
-  assert.deepEqual(packet.forms[0].pages, [0, 1, 2, 3, 4])
+  assert.deepEqual(packet.forms[0].pages, [0, 1, 2, 3, 4, 5, 7])
   const formsDir = new URL('../../public/forms/2025/', import.meta.url)
   const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
   const problems: FillProblem[] = []
@@ -105,4 +133,15 @@ test('PIT-1 with PIT-ADJ and PIT-RC: the PDF builds', async () => {
   assert.deepEqual(problems, [])
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 NM')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-NM.pdf`, bytes)
+})
+
+test('PIT-S lists dependents six and up', async () => {
+  const kids = Array.from({ length: 7 }, (_, i) => kid(2 + i, `Kid${i + 1} Doe`))
+  const { nm: r, res, ret } = nm(base({ filingStatus: 'mfj', w2s: [w2(60000)], dependents: kids }))
+  const packet = buildNmPacket(ret, res, r)
+  assert.ok(packet.forms[0].pages?.includes(6))
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const { bytes } = await buildPdf(lib, packet.forms, load, '2025 NM')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-NMS.pdf`, bytes)
 })

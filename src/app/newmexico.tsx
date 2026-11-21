@@ -6,7 +6,7 @@ import type { NmInput, NmRetirementKind, Owner, Person } from '../engine/model.t
 import { computeNewMexico } from '../engine/nm2025.ts'
 import { buildNmPacket } from '../pdf/nm2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
-import { MoneyField, Section, TextField, usd } from './fields'
+import { MoneyField, NumberField, Section, TextField, usd } from './fields'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -15,11 +15,21 @@ const LINES: [line: string, label: string][] = [
   ['13', 'Deduction for certain dependents'], ['14', 'Low- and middle-income exemption'], ['15', 'Deductions and exemptions (PIT-ADJ)'], ['17', 'New Mexico taxable income'],
   ['18', 'Tax'], ['20', 'Credit for taxes paid to another state'], ['21', 'Business-related credits'], ['22', 'Net New Mexico income tax'],
   ['24', 'Rebates and credits (PIT-RC)'], ['25', 'Working families tax credit (25% of federal EIC)'], ['26', 'Refundable business credits'],
-  ['27', 'New Mexico tax withheld'], ['30', 'Estimated payments'], ['32', 'Total payments and credits'], ['33', 'Tax due'], ['41', 'Applied to 2026'], ['42', 'Refund']
+  ['27', 'New Mexico tax withheld'], ['30', 'Estimated payments'], ['32', 'Total payments and credits'], ['33', 'Tax due'], ['40', 'Refund contributions'], ['41', 'Applied to 2026'], ['42', 'Refund']
 ]
 const ALWAYS = new Set(['9', '12', '17', '18', '22', '32'])
 const KEY = new Set(['22', '33', '42'])
 const KINDS: [NmRetirementKind, string][] = [['standard', 'Pension, IRA or annuity (taxed)'], ['military', 'Armed forces retirement (up to $30,000 exempt)'], ['railroad', 'Railroad retirement (exempt)']]
+const PITD: [string, string][] = [
+  ['2', 'New Mexico Housing Trust Fund'], ['3', 'Share With Wildlife'], ['4', 'Veterans’ State Cemetery Fund'], ['5', 'Substance Abuse Education Fund'],
+  ['6', 'Forest Re-Leaf Program'], ['7', 'National Guard Member and Family Assistance'], ['8', 'Kids ’N Parks Transportation Grant Program'],
+  ['9', 'ALS Research Fund'], ['10', 'Vietnam Veterans Memorial'], ['12', 'Veterans Enterprise Fund'], ['13', 'Lottery Tuition Fund'],
+  ['14', 'Equine Shelter Rescue Fund'], ['15', 'Animal Care and Facility Fund'], ['16', 'Supplemental Senior Services'], ['17', 'Healthy Soil Program']
+]
+const PARTIES: [string, string][] = [
+  ['', 'No contribution'], ['1', 'New Mexico Democratic Party'], ['2', 'New Mexico Republican Party'], ['3', 'Libertarian Party of New Mexico'],
+  ['4', 'Green Party of New Mexico'], ['5', 'Better for America Party of New Mexico'], ['6', 'Constitution Party of New Mexico']
+]
 const firstName = (p: Person, fallback: string): string => p.firstName.trim().split(/\s+/)[0] || fallback
 
 export function NewMexicoStep({ ret, set, result, preparer }: StepProps & { preparer: PreparerInfo | null }): ReactElement {
@@ -62,7 +72,7 @@ export function NewMexicoStep({ ret, set, result, preparer }: StepProps & { prep
           {owners.map((o) => (
             <TextField key={`b-${o}`} label={`${names[o]}: date of birth`} placeholder="MM/DD/CCYY" autoComplete="off" value={d.birthDate[o]} onChange={(s) => put({ birthDate: { ...d.birthDate, [o]: s } })} />
           ))}
-          {ret.dependents.slice(0, 5).map((x) => (
+          {ret.dependents.slice(0, 20).map((x) => (
             <TextField key={x.id} label={`${x.name.trim() || 'Dependent'}: date of birth`} placeholder="MM/DD/CCYY" autoComplete="off" value={d.dependentBirthDate[x.id] ?? ''} onChange={(s) => put({ dependentBirthDate: { ...d.dependentBirthDate, [x.id]: s } })} />
           ))}
           {owners.map((o) => (
@@ -104,13 +114,88 @@ export function NewMexicoStep({ ret, set, result, preparer }: StepProps & { prep
           <MoneyField label="New Mexico 529 contributions" hint="PIT-ADJ line 15" value={d.nm529} onChange={(n) => put({ nm529: n })} />
           <MoneyField label="U.S. armed forces active duty pay" hint="PIT-ADJ line 17" value={d.activeDutyPay} onChange={(n) => put({ activeDutyPay: n })} />
           <MoneyField label="State income tax refund in federal AGI" hint="PIT-ADJ line 21" value={d.stateRefundInFagi} onChange={(n) => put({ stateRefundInFagi: n })} />
-          <MoneyField label="Other PIT-RC rebates and credits" hint="Property tax rebates, child day care, special needs adoption" value={d.otherRebates} onChange={(n) => put({ otherRebates: n })} />
-          <MoneyField label="Credit for taxes paid to another state" hint="Line 20" value={d.otherStateCredit} onChange={(n) => put({ otherStateCredit: n })} />
-          <MoneyField label="Business-related credits applied" hint="Line 21, PIT-CR line A" value={d.businessCredits} onChange={(n) => put({ businessCredits: n })} />
-          <MoneyField label="Refundable business-related credits" hint="Line 26, PIT-CR line B" value={d.refundableBusinessCredits} onChange={(n) => put({ refundableBusinessCredits: n })} />
         </div>
         {any65 && <label className="check"><input type="checkbox" checked={d.bigMedical} onChange={(e) => put({ bigMedical: e.target.checked })} /> Unreimbursed medical care expenses of $28,000 or more in 2025 ($3,000 exemption and $2,800 credit)</label>}
         {nm.rc['25'] > 0 && <p className="why">Child Income Tax Credit: {nm.qualifyingChildren} qualifying {nm.qualifyingChildren === 1 ? 'child' : 'children'}, {usd(nm.rc['25'])}.</p>}
+      </Section>
+
+      <Section title="Property tax rebates (PIT-RC sections 3–4)" intro={`Modified gross income ${usd(nm.rc['13'])}. The rebate for persons 65 or older needs $16,000 or less; the additional rebate for Los Alamos, Santa Fe, Doña Ana and Bernalillo counties needs $24,000 or less.`}>
+        <div className="grid">
+          <MoneyField label="Property tax billed on your home for 2025" hint="Principal residence only" value={d.propertyTax} onChange={(n) => put({ propertyTax: n })} />
+          {any65 && <MoneyField label="Rent paid for your home in 2025" hint="Line 16a (6% counts as property tax)" value={d.rentPaid} onChange={(n) => put({ rentPaid: n })} />}
+          <div className="field">
+            <label htmlFor="nm-county"><span>County (section 4)</span></label>
+            <select id="nm-county" className="select" value={d.county} onChange={(e) => put({ county: e.target.value as NmInput['county'] })}>
+              <option value="">Another county</option>
+              <option value="LA">Los Alamos County</option>
+              <option value="SF">Santa Fe County</option>
+              <option value="DA">Doña Ana County</option>
+              <option value="BL">Bernalillo County</option>
+            </select>
+          </div>
+        </div>
+        {any65 && d.rentPaid > 0 && <label className="check"><input type="checkbox" checked={d.rentGovernmentPaid} onChange={(e) => put({ rentGovernmentPaid: e.target.checked })} /> A government entity paid part of the rent (line 16b)</label>}
+        {(nm.rc['17c'] > 0 || nm.rc['18c'] > 0) && <p className="why">Property tax rebates: {usd(nm.rc['17c'] + nm.rc['18c'])}.</p>}
+      </Section>
+
+      {ret.dependents.some((x) => x.age < 15) && (
+        <Section title="Child day care credit (PIT-RC section 5)" intro="For care in New Mexico of children under 15 while you (and your spouse) worked, with modified gross income of $30,160 or less: 40% of the days of care times up to $8 a day, at most $480 a child and $1,200 in all, less the federal credit. Get a Form PIT-CG from each caregiver.">
+          <div className="grid">
+            {ret.dependents.filter((x) => x.age < 15).map((x) => {
+              const v = d.dayCare[x.id] ?? { days: 0, rate: 0 }
+              return [
+                <NumberField key={`d-${x.id}`} label={`${x.name.trim() || 'Child'}: days of care`} max={366} value={v.days} onChange={(n) => put({ dayCare: { ...d.dayCare, [x.id]: { ...v, days: n } } })} />,
+                <MoneyField key={`r-${x.id}`} label={`${x.name.trim() || 'Child'}: amount paid per day`} hint="Up to $8 counts" value={v.rate} onChange={(n) => put({ dayCare: { ...d.dayCare, [x.id]: { ...v, rate: n } } })} />
+              ]
+            })}
+          </div>
+          {nm.rc['19'] > 0 && <p className="why">Line 19 {usd(nm.rc['19'])} less the federal credit {usd(nm.rc['21'])}: {usd(nm.rc['22'])}.</p>}
+        </Section>
+      )}
+
+      {L['39'] > 0 && (
+        <Section title="Contributions from your refund (PIT-D)" intro={`Up to your overpayment of ${usd(L['39'])}. If they add up to more, none are made.`}>
+          <div className="grid">
+            {PITD.map(([k, label]) => <MoneyField key={k} label={label} hint={`PIT-D line ${k}`} value={d.contributions[k] ?? 0} onChange={(n) => put({ contributions: { ...d.contributions, [k]: n } })} />)}
+            {owners.map((o) => (
+              <div key={o} className="field">
+                <label htmlFor={`nm-party-${o}`}><span>{names[o]}: $2 to a political party</span></label>
+                <select id={`nm-party-${o}`} className="select" value={d.party[o]} onChange={(e) => put({ party: { ...d.party, [o]: e.target.value } })}>
+                  {PARTIES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      <Section title="Other credits">
+        <div className="grid">
+          <NumberField label="Special needs adopted children" hint="PIT-RC line 24, $1,500 each (certified by CYFD)" max={10} value={d.specialNeedsAdoptions} onChange={(n) => put({ specialNeedsAdoptions: n })} />
+        </div>
+        <p className="why">Credit for tax paid to another state (line 20 worksheet).</p>
+        <div className="grid">
+          <TextField label="Other state" autoComplete="off" value={d.otherState.name} onChange={(v) => put({ otherState: { ...d.otherState, name: v } })} />
+          <MoneyField label="Tax due on the other state’s return" value={d.otherState.tax} onChange={(n) => put({ otherState: { ...d.otherState, tax: n } })} />
+          <MoneyField label="Other state’s taxable income" value={d.otherState.taxableIncome} onChange={(n) => put({ otherState: { ...d.otherState, taxableIncome: n } })} />
+          <MoneyField label="Income taxed by both states" value={d.otherState.doubleTaxed} onChange={(n) => put({ otherState: { ...d.otherState, doubleTaxed: n } })} />
+        </div>
+        <p className="why">Business-related credits (PIT-CR): enter the credit type code from PIT-CR, its approval number, and the amounts.</p>
+        {d.crCredits.map((c, i) => {
+          const upd = (p: Partial<NmInput['crCredits'][number]>): void => put({ crCredits: d.crCredits.map((x, j) => (j === i ? { ...x, ...p } : x)) })
+          return (
+            <div className="grid" key={i}>
+              <TextField label={`Credit ${i + 1}: type code`} hint="For example A01, F01" autoComplete="off" value={c.code} onChange={(v) => upd({ code: v.toUpperCase().slice(0, 3) })} />
+              <TextField label="Approval number" autoComplete="off" value={c.approval} onChange={(v) => upd({ approval: v })} />
+              <MoneyField label="Applied to tax due" value={c.applied} onChange={(n) => upd({ applied: n })} />
+              <MoneyField label="Refunded" hint="Refundable codes only" value={c.refund} onChange={(n) => upd({ refund: n })} />
+            </div>
+          )
+        })}
+        <div className="actions">
+          {d.crCredits.length < 5 && <button type="button" className="button is-quiet" onClick={() => put({ crCredits: [...d.crCredits, { code: '', approval: '', applied: 0, refund: 0 }] })}>Add a PIT-CR credit</button>}
+          {d.crCredits.length > 0 && <button type="button" className="button is-quiet" onClick={() => put({ crCredits: d.crCredits.slice(0, -1) })}>Remove the last credit</button>}
+        </div>
       </Section>
 
       {nm.issues.length > 0 && (

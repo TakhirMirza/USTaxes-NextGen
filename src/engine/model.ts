@@ -1924,20 +1924,31 @@ export interface NmInput {
   stateRefundInFagi: number
   /** PIT-ADJ 18 / PIT-RC 23: unreimbursed medical care expenses of $28,000 or more (65 or older). */
   bigMedical: boolean
-  /** PIT-RC: other rebates and credits figured by hand (property tax rebates, child day care, special needs adoption). */
-  otherRebates: number
-  /** Line 20: credit for taxes paid to another state; lines 21 / 26: business-related credits (PIT-CR). */
-  otherStateCredit: number
-  businessCredits: number
-  refundableBusinessCredits: number
+  /** PIT-RC sections 3–4: property tax billed on your principal residence, rent paid (and whether a government entity paid part), county for section 4. */
+  propertyTax: number
+  rentPaid: number
+  rentGovernmentPaid: boolean
+  county: '' | 'LA' | 'SF' | 'DA' | 'BL'
+  /** PIT-RC section 5: child day care worksheet by dependent id (days of care in New Mexico, amount paid per day); you work or attend school. */
+  dayCare: Record<string, { days: number; rate: number }>
+  /** PIT-RC line 24: special needs adopted child tax credit ($1,500 per certified child). */
+  specialNeedsAdoptions: number
+  /** Line 20 worksheet: the other state’s name, tax, taxable income and the income taxed by both states. */
+  otherState: { name: string; tax: number; taxableIncome: number; doubleTaxed: number }
+  /** PIT-CR: business-related credits (code, approval number, applied to tax due, refunded). */
+  crCredits: { code: string; approval: string; applied: number; refund: number }[]
+  /** Line 40 / PIT-D: voluntary contributions from the refund by PIT-D line (2–10, 12–17), and political party choices (line 11, $2 each: 1–6). */
+  contributions: Record<string, number>
+  party: Record<Owner, string>
   /** Line 41: applied to 2026 estimated tax. Driver’s license numbers (or NONE / DECLINED). */
   creditForward: number
   license: Record<Owner, string>
 }
 export const emptyNm = (): NmInput => ({
   w2: {}, withholdingOther: 0, estimatedPayments: 0, birthDate: { taxpayer: '', spouse: '' }, dependentBirthDate: {}, retirementKind: {},
-  otherStateBondInterest: 0, usObligationInterest: 0, nm529: 0, activeDutyPay: 0, stateRefundInFagi: 0, bigMedical: false, otherRebates: 0,
-  otherStateCredit: 0, businessCredits: 0, refundableBusinessCredits: 0, creditForward: 0, license: { taxpayer: '', spouse: '' }
+  otherStateBondInterest: 0, usObligationInterest: 0, nm529: 0, activeDutyPay: 0, stateRefundInFagi: 0, bigMedical: false,
+  propertyTax: 0, rentPaid: 0, rentGovernmentPaid: false, county: '', dayCare: {}, specialNeedsAdoptions: 0,
+  otherState: { name: '', tax: 0, taxableIncome: 0, doubleTaxed: 0 }, crCredits: [], contributions: {}, party: { taxpayer: '', spouse: '' }, creditForward: 0, license: { taxpayer: '', spouse: '' }
 })
 
 export interface MiInput {
@@ -2500,7 +2511,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       const e = emptyNm(); const x: Partial<NmInput> = r.nm ?? {}
       return {
         ...e, ...x, w2: normalizeStatements(x.w2), birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) }, dependentBirthDate: { ...(x.dependentBirthDate ?? {}) },
-        retirementKind: { ...(x.retirementKind ?? {}) }, license: { ...e.license, ...(x.license ?? {}) }
+        retirementKind: { ...(x.retirementKind ?? {}) }, license: { ...e.license, ...(x.license ?? {}) }, dayCare: { ...(x.dayCare ?? {}) },
+        otherState: { ...e.otherState, ...(x.otherState ?? {}) }, contributions: x.contributions && typeof x.contributions === 'object' ? { ...x.contributions } : {}, party: { ...e.party, ...(x.party ?? {}) }, crCredits: Array.isArray(x.crCredits) ? x.crCredits.map((c) => ({ code: c.code ?? '', approval: c.approval ?? '', applied: c.applied ?? 0, refund: c.refund ?? 0 })) : []
       }
     })(),
     al: (() => {

@@ -91,10 +91,43 @@ export function nmChildCreditPerChild(agi: number): number {
   return 26
 }
 
+const PROPERTY_MAX: [number, number][] = [
+  [1000, 20], [2000, 25], [3000, 30], [4000, 35], [5000, 40], [6000, 45], [7000, 50], [8000, 55], [9000, 60], [10000, 75],
+  [11000, 90], [12000, 105], [13000, 120], [14000, 135], [15000, 150], [16000, 180]
+]
+/** PIT-RC Table 2: maximum property tax liability by modified gross income ($16,000 or less). */
+export function nmMaxPropertyTaxLiability(mgi: number): number | null {
+  const row = PROPERTY_MAX.find(([top]) => Math.max(0, mgi) <= top)
+  return row ? row[1] : null
+}
+
+/** PIT-RC Table 3: additional low income property tax rebate percentage ($24,000 or less). */
+export function nmLowIncomePropertyPercent(mgi: number): number {
+  if (mgi <= 8000) return 0.75
+  if (mgi > 24000) return 0
+  return Math.round((0.7 - 0.05 * (Math.ceil(mgi / 2000) - 5)) * 100) / 100
+}
+
+/** Child day care worksheet: 40% of days × the daily amount (up to $8), up to $480 per child. */
+export function nmDayCareChild(days: number, rate: number): number {
+  return Math.min(480, r(0.4 * Math.max(0, days) * Math.min(8, Math.max(0, rate))))
+}
+
+/** Line 20 worksheet: credit for taxes paid to another state. */
+export function nmOtherStateCredit(nmTax: number, nmTaxable: number, otherTax: number, otherTaxable: number, doubleTaxed: number): number {
+  if (nmTax <= 0 || otherTax <= 0 || nmTaxable <= 0 || otherTaxable <= 0 || doubleTaxed <= 0) return 0
+  const rate1 = Math.round((nmTax / nmTaxable) * 10000) / 10000
+  const rate2 = Math.round((otherTax / otherTaxable) * 10000) / 10000
+  const c1 = Math.min(doubleTaxed, nmTaxable) * rate1
+  const c2 = Math.min(doubleTaxed, otherTaxable) * rate2
+  return Math.min(r(Math.min(c1, c2)), nmTax)
+}
+
 export interface NmResult {
   lines: Record<string, number>
   adj: Record<string, number>
   rc: Record<string, number>
+  pitd: Record<string, number>
   exemptions: number
   boxes: { taxpayer65: boolean; taxpayerBlind: boolean; spouse65: boolean; spouseBlind: boolean }
   qualifyingChildren: number
@@ -157,8 +190,10 @@ export function computeNewMexico(ret: TaxReturnInput, res: TaxReturnResult): NmR
   L['17'] = pos(L['9'] + L['10'] + L['11'] - L['12'] - L['13'] - L['14'] - L['15'])
   L['18'] = nmTax(L['17'], fs)
   L['19'] = 0
-  L['20'] = Math.min(L['18'], r(pos(d.otherStateCredit)))
-  L['21'] = Math.min(L['18'] - L['20'], r(pos(d.businessCredits)))
+  const os = d.otherState
+  L['20'] = nmOtherStateCredit(L['18'], L['17'], r(pos(os.tax)), r(pos(os.taxableIncome)), r(pos(os.doubleTaxed)))
+  const cr = d.crCredits.filter((c) => c.code.trim() && (c.applied > 0 || c.refund > 0))
+  L['21'] = Math.min(L['18'] - L['20'], r(cr.reduce((t, c) => t + pos(c.applied), 0)))
   L['22'] = pos(L['18'] + L['19'] - L['20'] - L['21'])
 
   // ── PIT-RC ──
@@ -184,40 +219,75 @@ export function computeNewMexico(ret: TaxReturnInput, res: TaxReturnResult): NmR
   R['13a'] = R['3']
   R['14'] = rcTrue && R['13'] <= 36000 ? nmLowIncomeRebate(R['13'], R['13a']) : 0
   if (fs === 'mfs') R['14'] = r(R['14'] / 2)
+  // Section 3: property tax rebate for persons 65 or older.
+  const mfs = fs === 'mfs'
+  const maxLiability = nmMaxPropertyTaxLiability(R['13'])
+  R['15'] = r(pos(d.propertyTax))
+  R['16a'] = r(pos(d.rentPaid))
+  R['16c'] = r(R['16a'] * 0.06)
+  R['17a'] = R['15'] + R['16c']
+  R['17b'] = maxLiability ?? 0
+  R['17c'] = rcTrue && any65 && maxLiability !== null ? Math.min(mfs ? 125 : 250, pos(R['17a'] - R['17b'])) : 0
+  // Section 4: additional low income property tax rebate (Los Alamos, Santa Fe, Doña Ana, Bernalillo).
+  R['18a'] = R['15']
+  R['18bPct'] = d.county && R['13'] <= 24000 ? nmLowIncomePropertyPercent(R['13']) : 0
+  R['18c'] = rcTrue ? Math.min(mfs ? 175 : 350, r(R['18a'] * R['18bPct'])) : 0
+  // Section 5: child day care credit.
+  const careKids = ret.dependents.filter((x) => x.age < 15 && (d.dayCare[x.id]?.days ?? 0) > 0)
+  R['19'] = R['13'] <= 30160 ? Math.min(1200, careKids.reduce((t, x) => t + nmDayCareChild(d.dayCare[x.id].days, d.dayCare[x.id].rate), 0)) : 0
+  R['20'] = R['19'] > 0 ? careKids.length : 0
+  R['21'] = R['19'] > 0 ? r(pos(res.schedule3.dependentCare)) : 0
+  R['22'] = rcTrue ? pos(R['19'] - R['21']) : 0
+  if (mfs) R['22'] = r(R['22'] / 2)
   R['23'] = any65 && d.bigMedical ? 2800 : 0
+  R['24'] = rcTrue ? r(pos(d.specialNeedsAdoptions)) * (mfs ? 750 : 1500) : 0
   const qualifyingChildren = ret.dependents.filter((x) => x.childRelationship && (x.age < 19 || (x.student && x.age < 24) || x.disabled) && x.monthsLivedWithYou > 6).length
   R['25'] = rcTrue ? nmChildCreditPerChild(agi) * qualifyingChildren : 0
   if (fs === 'mfs') R['25'] = r(R['25'] / 2)
-  R['other'] = r(pos(d.otherRebates))
-  R['26'] = R['14'] + R['23'] + R['25'] + R['other']
+  R['26'] = R['14'] + R['17c'] + R['18c'] + R['22'] + R['23'] + R['24'] + R['25']
 
   // ── PIT-1 page 2 ──
   L['23'] = L['22']
   L['24'] = R['26']
   L['25a'] = r(pos(f['27a']))
   L['25'] = r(L['25a'] * 0.25)
-  L['26'] = r(pos(d.refundableBusinessCredits))
+  L['26'] = r(cr.reduce((t, c) => t + pos(c.refund), 0))
   L['27'] = r(mineW2.reduce((s, w) => s + pos(d.w2[w.id]?.stateTax ?? 0), 0) + pos(d.withholdingOther))
   L['30'] = r(pos(d.estimatedPayments))
   L['32'] = L['24'] + L['25'] + L['26'] + L['27'] + L['30']
   L['33'] = pos(L['22'] - L['32'])
   L['38'] = L['33']
   L['39'] = pos(L['32'] - L['23'])
-  L['41'] = Math.min(L['39'], r(pos(d.creditForward)))
-  L['42'] = L['39'] - L['41']
+  const D: Record<string, number> = {}
+  for (const k of ['2', '3', '4', '5', '6', '7', '8', '9', '10', '12', '13', '14', '15', '16', '17']) D[k] = r(pos(d.contributions[k] ?? 0))
+  D['11'] = (/^[1-6]$/.test(d.party.taxpayer.trim()) ? 2 : 0) + (joint && /^[1-6]$/.test(d.party.spouse.trim()) ? 2 : 0)
+  D['1'] = L['39']
+  const wanted = Object.entries(D).filter(([k]) => k !== '1').reduce((t, [, v]) => t + v, 0)
+  D['18'] = wanted <= L['39'] ? wanted : 0
+  L['40'] = D['18']
+  if (wanted > L['39']) issues.push('Your PIT-D contributions are more than your overpayment, so none are made (PIT-D line 1).')
+  L['41'] = Math.min(L['39'] - L['40'], r(pos(d.creditForward)))
+  L['42'] = L['39'] - L['40'] - L['41']
 
   // ── Notes ──
   attach.push('Your W-2s and 1099s showing New Mexico tax withheld')
   if (L['11'] + L['15'] > 0) attach.push('Schedule PIT-ADJ')
   if (L['24'] > 0) attach.push('Schedule PIT-RC')
-  if (L['21'] + L['26'] > 0) attach.push('Schedule PIT-CR (business-related credits) — not filled in here')
-  if (L['20'] > 0) attach.push('The other state’s return (credit for taxes paid to another state)')
-  if (ret.dependents.length > 5) attach.push('Schedule PIT-S (more than five dependents) — not filled in here')
-  if (R['other'] > 0) issues.push('Other PIT-RC rebates and credits (property tax rebates, child day care, special needs adoption) are entered as one total; complete those PIT-RC sections by hand.')
+  if (L['21'] + L['26'] > 0) attach.push('Schedule PIT-CR and the claim form and approval for each credit')
+  if (cr.length > 5) attach.push('PIT-CR Supplemental (credits 6 and up) — not filled in here')
+  if (L['20'] > 0) attach.push(`The Line 20 worksheet and a copy of your ${os.name.trim() || 'other state’s'} return`)
+  if (ret.dependents.length > 5) attach.push('Schedule PIT-S (dependents 6 and up)')
+  if (R['22'] > 0) attach.push('The Child Day Care Credit Worksheet and a Form PIT-CG from each caregiver')
+  if (R['24'] > 0) attach.push('The special needs certificate (first year claimed)')
+  if (L['40'] > 0) attach.push('Schedule PIT-D')
+  if (R['18c'] > 0 || R['17c'] > 0) attach.push('Your property tax bill or rent records (keep them; do not send)')
+  if (R['19'] > 0 && joint) issues.push('Child day care credit: both spouses must have worked (or attended school) during the care period.')
+  if (careKids.length && R['13'] > 30160) issues.push('Modified gross income is over $30,160, so there is no child day care credit.')
+  if (d.county && R['13'] > 24000) issues.push('Modified gross income is over $24,000, so there is no additional low income property tax rebate.')
   if (mine.some((x) => x.taxableAmount > 0) && Object.keys(d.retirementKind).length === 0) issues.push('Mark armed forces or railroad retirement among your 1099-Rs: armed forces retirement is exempt up to $30,000 each and railroad retirement in full.')
   if (A['25'] === 0 && f['6b'] > 0) issues.push('Federal AGI is above the limit, so Social Security is taxed in New Mexico.')
   if (L['10'] > 0) issues.push('You itemized: the state income tax part of your federal SALT deduction is added back (line 10, worksheet estimate).')
   if (L['33'] > 1000 && L['30'] === 0) issues.push('Tax due of $1,000 or more may mean an underpayment penalty (PIT-ES).')
 
-  return { lines: L, adj: A, rc: R, exemptions, boxes, qualifyingChildren, issues, attach }
+  return { lines: L, adj: A, rc: R, pitd: D, exemptions, boxes, qualifyingChildren, issues, attach }
 }
