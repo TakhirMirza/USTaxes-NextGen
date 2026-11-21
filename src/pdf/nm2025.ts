@@ -2,7 +2,7 @@
  * Fills the official 2025 New Mexico PIT-1 (public/forms/2025/nm-pit1.pdf: PIT-1 pages 1–2, PIT-ADJ, PIT-RC pages 1–2,
  * from the Taxation and Revenue Department’s 2025 forms). These forms have no fields, so the values are drawn at the
  * positions of their boxes (measured from the forms’ text layout). Pages: 0–1 PIT-1, 2 PIT-ADJ, 3–4 PIT-RC, 5 PIT-CR,
- * 6 PIT-S, 7 PIT-D.
+ * 6 PIT-S.
  * Whole dollars with “.00”.
  */
 import type { TaxReturnInput } from '../engine/model.ts'
@@ -153,23 +153,11 @@ export function formNmPit1(ret: TaxReturnInput, res: TaxReturnResult, nm: NmResu
       if (dob) draw.push(t(6, 450, y, dob, 8))
     })
   }
-  // ── PIT-D ──
-  const D = nm.pitd
-  if (L['40'] > 0) {
-    pages.push(7)
-    draw.push(t(7, 40, 651, name(ret.taxpayer)), t(7, 428, 651, ssn, 10))
-    const ys: Record<string, number> = { '1': 566, '2': 542, '3': 519, '4': 495, '5': 472, '6': 449, '7': 425, '8': 402, '9': 378, '10': 355, '11': 331, '12': 231, '13': 207, '14': 184, '15': 160, '16': 137, '17': 103, '18': 76 }
-    for (const [k, y] of Object.entries(ys)) if (D[k] || k === '1' || k === '18') draw.push(money(7, 569, y - 4, D[k] ?? 0))
-    if (D['11']) {
-      if (/^[1-6]$/.test(d.party.taxpayer.trim())) draw.push(t(7, 392, 285, d.party.taxpayer.trim(), 10))
-      if (joint && /^[1-6]$/.test(d.party.spouse.trim())) draw.push(t(7, 392, 276, d.party.spouse.trim(), 10))
-    }
-  }
   return { id: 'nmpit1', file: 'nm-pit1.pdf', title: 'New Mexico PIT-1', values: {}, draw, pages }
 }
 
 export function buildNmPacket(ret: TaxReturnInput, res: TaxReturnResult, nm: NmResult, preparer?: PreparerInfo | null): FormPacket {
-  const drawn = ['Schedule PIT-ADJ', 'Schedule PIT-RC', 'Schedule PIT-S (dependents 6 and up)', 'Schedule PIT-D']
+  const drawn = ['Schedule PIT-ADJ', 'Schedule PIT-RC', 'Schedule PIT-S (dependents 6 and up)']
   const notIncluded = nm.attach.filter((x) => !drawn.includes(x))
   notIncluded.push('Driver’s license or state ID number, state and expiration date under each signature (or NONE / DECLINED)')
   return { forms: [formNmPit1(ret, res, nm, preparer)], notIncluded }

@@ -127,7 +127,6 @@ export interface NmResult {
   lines: Record<string, number>
   adj: Record<string, number>
   rc: Record<string, number>
-  pitd: Record<string, number>
   exemptions: number
   boxes: { taxpayer65: boolean; taxpayerBlind: boolean; spouse65: boolean; spouseBlind: boolean }
   qualifyingChildren: number
@@ -258,14 +257,7 @@ export function computeNewMexico(ret: TaxReturnInput, res: TaxReturnResult): NmR
   L['33'] = pos(L['22'] - L['32'])
   L['38'] = L['33']
   L['39'] = pos(L['32'] - L['23'])
-  const D: Record<string, number> = {}
-  for (const k of ['2', '3', '4', '5', '6', '7', '8', '9', '10', '12', '13', '14', '15', '16', '17']) D[k] = r(pos(d.contributions[k] ?? 0))
-  D['11'] = (/^[1-6]$/.test(d.party.taxpayer.trim()) ? 2 : 0) + (joint && /^[1-6]$/.test(d.party.spouse.trim()) ? 2 : 0)
-  D['1'] = L['39']
-  const wanted = Object.entries(D).filter(([k]) => k !== '1').reduce((t, [, v]) => t + v, 0)
-  D['18'] = wanted <= L['39'] ? wanted : 0
-  L['40'] = D['18']
-  if (wanted > L['39']) issues.push('Your PIT-D contributions are more than your overpayment, so none are made (PIT-D line 1).')
+  L['40'] = Math.min(L['39'], r(pos(d.contributions)))
   L['41'] = Math.min(L['39'] - L['40'], r(pos(d.creditForward)))
   L['42'] = L['39'] - L['40'] - L['41']
 
@@ -279,7 +271,7 @@ export function computeNewMexico(ret: TaxReturnInput, res: TaxReturnResult): NmR
   if (ret.dependents.length > 5) attach.push('Schedule PIT-S (dependents 6 and up)')
   if (R['22'] > 0) attach.push('The Child Day Care Credit Worksheet and a Form PIT-CG from each caregiver')
   if (R['24'] > 0) attach.push('The special needs certificate (first year claimed)')
-  if (L['40'] > 0) attach.push('Schedule PIT-D')
+  if (L['40'] > 0) attach.push('Schedule PIT-D (voluntary contributions) — not filled in here')
   if (R['18c'] > 0 || R['17c'] > 0) attach.push('Your property tax bill or rent records (keep them; do not send)')
   if (R['19'] > 0 && joint) issues.push('Child day care credit: both spouses must have worked (or attended school) during the care period.')
   if (careKids.length && R['13'] > 30160) issues.push('Modified gross income is over $30,160, so there is no child day care credit.')
@@ -289,5 +281,5 @@ export function computeNewMexico(ret: TaxReturnInput, res: TaxReturnResult): NmR
   if (L['10'] > 0) issues.push('You itemized: the state income tax part of your federal SALT deduction is added back (line 10, worksheet estimate).')
   if (L['33'] > 1000 && L['30'] === 0) issues.push('Tax due of $1,000 or more may mean an underpayment penalty (PIT-ES).')
 
-  return { lines: L, adj: A, rc: R, pitd: D, exemptions, boxes, qualifyingChildren, issues, attach }
+  return { lines: L, adj: A, rc: R, exemptions, boxes, qualifyingChildren, issues, attach }
 }

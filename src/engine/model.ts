@@ -1937,9 +1937,8 @@ export interface NmInput {
   otherState: { name: string; tax: number; taxableIncome: number; doubleTaxed: number }
   /** PIT-CR: business-related credits (code, approval number, applied to tax due, refunded). */
   crCredits: { code: string; approval: string; applied: number; refund: number }[]
-  /** Line 40 / PIT-D: voluntary contributions from the refund by PIT-D line (2–10, 12–17), and political party choices (line 11, $2 each: 1–6). */
-  contributions: Record<string, number>
-  party: Record<Owner, string>
+  /** Line 40: refund voluntary contributions (PIT-D total). */
+  contributions: number
   /** Line 41: applied to 2026 estimated tax. Driver’s license numbers (or NONE / DECLINED). */
   creditForward: number
   license: Record<Owner, string>
@@ -1948,7 +1947,7 @@ export const emptyNm = (): NmInput => ({
   w2: {}, withholdingOther: 0, estimatedPayments: 0, birthDate: { taxpayer: '', spouse: '' }, dependentBirthDate: {}, retirementKind: {},
   otherStateBondInterest: 0, usObligationInterest: 0, nm529: 0, activeDutyPay: 0, stateRefundInFagi: 0, bigMedical: false,
   propertyTax: 0, rentPaid: 0, rentGovernmentPaid: false, county: '', dayCare: {}, specialNeedsAdoptions: 0,
-  otherState: { name: '', tax: 0, taxableIncome: 0, doubleTaxed: 0 }, crCredits: [], contributions: {}, party: { taxpayer: '', spouse: '' }, creditForward: 0, license: { taxpayer: '', spouse: '' }
+  otherState: { name: '', tax: 0, taxableIncome: 0, doubleTaxed: 0 }, crCredits: [], contributions: 0, creditForward: 0, license: { taxpayer: '', spouse: '' }
 })
 
 export interface MiInput {
@@ -2512,7 +2511,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       return {
         ...e, ...x, w2: normalizeStatements(x.w2), birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) }, dependentBirthDate: { ...(x.dependentBirthDate ?? {}) },
         retirementKind: { ...(x.retirementKind ?? {}) }, license: { ...e.license, ...(x.license ?? {}) }, dayCare: { ...(x.dayCare ?? {}) },
-        otherState: { ...e.otherState, ...(x.otherState ?? {}) }, contributions: x.contributions && typeof x.contributions === 'object' ? { ...x.contributions } : {}, party: { ...e.party, ...(x.party ?? {}) }, crCredits: Array.isArray(x.crCredits) ? x.crCredits.map((c) => ({ code: c.code ?? '', approval: c.approval ?? '', applied: c.applied ?? 0, refund: c.refund ?? 0 })) : []
+        otherState: { ...e.otherState, ...(x.otherState ?? {}) }, crCredits: Array.isArray(x.crCredits) ? x.crCredits.map((c) => ({ code: c.code ?? '', approval: c.approval ?? '', applied: c.applied ?? 0, refund: c.refund ?? 0 })) : []
       }
     })(),
     al: (() => {
