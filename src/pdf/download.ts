@@ -1,6 +1,7 @@
 import type { TaxReturnInput } from '../engine/model.ts'
 import type { DeResult } from '../engine/de2025.ts'
 import type { VtResult } from '../engine/vt2025.ts'
+import type { NdResult } from '../engine/nd2025.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { VaResult } from '../engine/va2025.ts'
 import type { MdResult } from '../engine/md2025.ts'
@@ -74,6 +75,7 @@ import type { RiResult } from '../engine/ri2025.ts'
 import { buildRiPacket } from './ri2025.ts'
 import { buildDePacket } from './de2025.ts'
 import { buildVtPacket } from './vt2025.ts'
+import { buildNdPacket } from './nd2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -270,4 +272,8 @@ export function downloadDelawareForms(ret: TaxReturnInput, res: TaxReturnResult,
 
 export function downloadVermontForms(ret: TaxReturnInput, res: TaxReturnResult, vt: VtResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildVtPacket(ret, res, vt, preparer).forms, '2025 Vermont IN-111 — USTaxes NextGen', `2025-Vermont-IN-111-${slug(ret)}.pdf`)
+}
+
+export function downloadNorthDakotaForms(ret: TaxReturnInput, res: TaxReturnResult, nd: NdResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildNdPacket(ret, res, nd, preparer).forms, '2025 North Dakota ND-1 — USTaxes NextGen', `2025-North-Dakota-ND-1-${slug(ret)}.pdf`)
 }

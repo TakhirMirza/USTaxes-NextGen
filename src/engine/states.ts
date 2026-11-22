@@ -59,7 +59,7 @@ export const STATES: readonly StateInfo[] = [
   S('NM', 'New Mexico', 'supported', 'Form PIT-1', 'New Mexico Taxation and Revenue Department'),
   S('NY', 'New York', 'supported', 'Form IT-201', 'New York State Department of Taxation and Finance', 'New York City and Yonkers residents also figure city tax on the same return.'),
   S('NC', 'North Carolina', 'supported', 'Form D-400', 'North Carolina Department of Revenue'),
-  S('ND', 'North Dakota', 'estimate', 'Form ND-1', 'North Dakota Office of State Tax Commissioner'),
+  S('ND', 'North Dakota', 'supported', 'Form ND-1', 'North Dakota Office of State Tax Commissioner'),
   S('OH', 'Ohio', 'supported', 'Form IT 1040', 'Ohio Department of Taxation', 'Most Ohio cities and many school districts also tax income on their own returns.'),
   S('OK', 'Oklahoma', 'supported', 'Form 511', 'Oklahoma Tax Commission'),
   S('OR', 'Oregon', 'supported', 'Form OR-40', 'Oregon Department of Revenue'),

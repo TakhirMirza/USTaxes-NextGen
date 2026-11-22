@@ -1,0 +1,144 @@
+/**
+ * The North Dakota part of the State step: Form ND-1 for full-year residents.
+ */
+import { ReactElement, useMemo, useState } from 'react'
+import type { NdInput, Owner, Person } from '../engine/model.ts'
+import { computeNorthDakota } from '../engine/nd2025.ts'
+import { buildNdPacket } from '../pdf/nd2025.ts'
+import type { PreparerInfo } from '../pdf/irs2025.ts'
+import { Check, Choice, MoneyField, Section, TextField, usd } from './fields'
+import { StatementRows } from './statements'
+import type { StepProps } from './steps'
+
+const LINES: [line: string, label: string][] = [
+  ['1a', 'Federal adjusted gross income'], ['1b', 'Federal taxable income'], ['4a', 'Additions'], ['5', 'U.S. obligation interest'], ['6', 'Net long-term capital gain exclusion (40%)'],
+  ['7', 'Native American exempt income'], ['8', 'Railroad Retirement Board benefits'], ['9', 'Peace officer retirement exclusion'], ['11', 'Military pay exclusion'],
+  ['12', 'College SAVE deduction'], ['13', 'Qualified dividend exclusion (40%)'], ['14', 'Military retirement exclusion'], ['15', 'Social Security exclusion'],
+  ['16', 'Other subtractions (ND-1SA)'], ['17', 'Total subtractions'], ['18', 'North Dakota taxable income'], ['20', 'Tax'], ['21', 'Credit for tax paid to another state'],
+  ['22', 'Marriage penalty credit'], ['23', 'Other credits (ND-1TC)'], ['25', 'Net tax liability'], ['26', 'North Dakota tax withheld'], ['27', 'Estimated payments'],
+  ['28', 'Total payments'], ['30', 'Applied to 2026'], ['31', 'Contributions'], ['32', 'Refund'], ['35', 'Contributions'], ['36', 'Balance due']
+]
+const ALWAYS = new Set(['1a', '1b', '18', '20', '25', '28'])
+const KEY = new Set(['25', '32', '36'])
+const SOURCES: [string, string][] = [
+  ['1', 'Farming, ranching, agricultural production'], ['2', 'Retail, wholesale, eating and drinking places'], ['3', 'Federal, state, county or city government'],
+  ['4', 'Public or private education'], ['5', 'Professional and personal services'], ['6', 'Construction'], ['7', 'Manufacturing'],
+  ['8', 'Transportation, communication, utilities'], ['9', 'Coal, oil and natural gas'], ['10', 'Banking, insurance, real estate, finance'], ['11', 'Military service'],
+  ['12', 'Retirement (pensions, annuities, IRAs)']
+]
+const FUNDS: [string, string][] = [['veterans', 'Veterans’ Postwar Trust Fund'], ['wildlife', 'Watchable Wildlife Fund'], ['trees', 'Trees for ND Trust Fund']]
+const firstName = (p: Person, fallback: string): string => p.firstName.trim().split(/\s+/)[0] || fallback
+
+export function NorthDakotaStep({ ret, set, result, preparer }: StepProps & { preparer: PreparerInfo | null }): ReactElement {
+  const d = ret.nd
+  const nd = useMemo(() => computeNorthDakota(ret, result), [ret, result])
+  const [pdf, setPdf] = useState<{ busy: boolean; note: string }>({ busy: false, note: '' })
+  const put = (p: Partial<NdInput>): void => set((r) => ({ ...r, nd: { ...r.nd, ...p } }))
+  const married = ret.filingStatus === 'mfj'
+  const owners: Owner[] = married ? ['taxpayer', 'spouse'] : ['taxpayer']
+  const names: Record<Owner, string> = { taxpayer: firstName(ret.taxpayer, 'You'), spouse: firstName(ret.spouse, 'Spouse') }
+  const packet = buildNdPacket(ret, result, nd, preparer)
+  const L = nd.lines
+  const owes = L['36'] > 0
+  const w2s = ret.w2s.filter((w) => owners.includes(w.owner))
+  const r1099 = ret.retirement.filter((x) => owners.includes(x.owner))
+  const makePdf = (): void => {
+    setPdf({ busy: true, note: '' })
+    import('../pdf/download.ts')
+      .then(({ downloadNorthDakotaForms }) => downloadNorthDakotaForms(ret, result, nd, preparer))
+      .then(({ pages, problems }) => setPdf({ busy: false, note: `Downloaded ${pages} pages.${problems ? ` ${problems} field(s) could not be filled; check the PDF before filing.` : ''}` }))
+      .catch((e: unknown) => setPdf({ busy: false, note: `The PDF could not be created: ${e instanceof Error ? e.message : String(e)}` }))
+  }
+  return (
+    <div className="virginia">
+      <div className={`va-result ${owes ? 'is-owed' : 'is-refund'}`} aria-live="polite">
+        <div>
+          <p className="va-result-label">{owes ? 'North Dakota: you owe' : 'North Dakota refund'}</p>
+          <p className="va-result-amount">{usd(owes ? L['36'] : L['32'])}</p>
+        </div>
+        <dl>
+          <div><dt>North Dakota taxable income</dt><dd>{usd(L['18'])}</dd></div>
+          <div><dt>Tax</dt><dd>{usd(L['20'])}</dd></div>
+          <div><dt>Net tax liability</dt><dd>{usd(L['25'])}</dd></div>
+        </dl>
+      </div>
+
+      <Section title="North Dakota return" intro="North Dakota starts from your federal taxable income. Income up to $48,475 ($80,975 joint, $64,950 head of household) is taxed at 0%, then 1.95%, and 2.5% at the top.">
+        <div className="grid">
+          <TextField label="School district code" hint="5 digits; list on page 19 of the instructions" autoComplete="off" value={d.schoolCode} onChange={(s) => put({ schoolCode: s.replace(/\D/g, '').slice(0, 5) })} />
+        </div>
+        <Choice legend="Income source code (where most of your North Dakota income came from)" value={d.incomeSourceCode} onChange={(incomeSourceCode) => put({ incomeSourceCode })} columns={2}
+          options={SOURCES.map(([v, label]) => ({ value: v, label: `${v}. ${label}` }))} />
+      </Section>
+
+      <Section title="North Dakota withholding and payments" intro="From the state section of each W-2 (boxes 15–17) and 1099-R (boxes 14–16).">
+        {w2s.length > 0
+          ? <StatementRows kind="w2" state="North Dakota" items={w2s.map((w) => ({ id: w.id, title: `${w.employer.trim() || 'W-2'} (${names[w.owner]})`, federal: w.wages }))} value={d.w2} onChange={(w2) => put({ w2 })} />
+          : <p className="why">No W-2s entered.</p>}
+        {r1099.length > 0 && <StatementRows kind="1099r" state="North Dakota" items={r1099.map((x) => ({ id: x.id, title: `${x.payer.trim() || '1099-R'} (${names[x.owner]})`, federal: x.taxableAmount }))} value={d.r1099} onChange={(r) => put({ r1099: r })} />}
+        <div className="grid">
+          <MoneyField label="North Dakota tax withheld on other 1099s and ND Schedules K-1" hint="Line 26" value={d.otherWithholding} onChange={(n) => put({ otherWithholding: n })} />
+          <MoneyField label="2025 estimated and extension payments" hint="Line 27, with any 2024 overpayment applied" value={d.estimatedPayments} onChange={(n) => put({ estimatedPayments: n })} />
+          {L['29'] > 0 && <MoneyField label="Apply to 2026 estimated tax" hint="Line 30" value={d.creditForward} onChange={(n) => put({ creditForward: n })} />}
+          <Check label="Get Form 1099-G electronically instead of by mail" checked={d.consent1099g} onChange={(v) => put({ consent1099g: v })} />
+        </div>
+      </Section>
+
+      <Section title="Additions and subtractions" intro="40% of your net long-term capital gain and of your qualified dividends, and your taxable Social Security, are subtracted automatically.">
+        <div className="grid">
+          <MoneyField label="Planned gift or endowment credit adjustment" hint="Line 2; from Schedule ND-1PG or ND-1QEC" value={d.plannedGift} onChange={(n) => put({ plannedGift: n })} />
+          <MoneyField label="Other additions (Schedule ND-1SA)" hint="Line 3" value={d.otherAdditions} onChange={(n) => put({ otherAdditions: n })} />
+          <MoneyField label="Interest on U.S. obligations" hint="Line 5" value={d.usObligationInterest} onChange={(n) => put({ usObligationInterest: n })} />
+          <MoneyField label="Long-term gain already in lines 7 or 16" hint="Capital gain worksheet line 6" value={d.gainInOtherLines} onChange={(n) => put({ gainInOtherLines: n })} />
+          <MoneyField label="Exempt income of an enrolled tribal member living on a reservation" hint="Line 7" value={d.nativeAmerican} onChange={(n) => put({ nativeAmerican: n })} />
+          {owners.map((o) => (
+            <MoneyField key={o} label={`${names[o]}: taxable Railroad Retirement Board benefits`} hint="Line 8" value={d.railroad[o]} onChange={(n) => put({ railroad: { ...d.railroad, [o]: n } })} />
+          ))}
+          <MoneyField label="Part of taxable Social Security that is Tier 1 RRB" hint="Moved from line 15 to line 8" value={d.rrbTier1InSs} onChange={(n) => put({ rrbTier1InSs: n })} />
+          <MoneyField label="Licensed peace officer retirement benefits" hint="Line 9; 20 years or retired disabled" value={d.peaceOfficer} onChange={(n) => put({ peaceOfficer: n })} />
+          <MoneyField label="Military pay (active, reserve, National Guard)" hint="Line 11" value={d.militaryPay} onChange={(n) => put({ militaryPay: n })} />
+          <MoneyField label="North Dakota College SAVE contributions" hint="Line 12; up to $5,000 ($10,000 joint)" value={d.collegeSave} onChange={(n) => put({ collegeSave: n })} />
+          <MoneyField label="Military retirement benefits" hint="Line 14" value={d.militaryRetirement} onChange={(n) => put({ militaryRetirement: n })} />
+          <MoneyField label="Other subtractions (Schedule ND-1SA)" hint="Line 16" value={d.otherSubtractions} onChange={(n) => put({ otherSubtractions: n })} />
+        </div>
+      </Section>
+
+      <Section title="Credits" intro={nd.marriage ? `Marriage penalty credit: ${usd(L['22'])}, worked out from both spouses’ qualified income.` : 'The marriage penalty credit (joint filers) is worked out automatically.'}>
+        <div className="grid">
+          <MoneyField label="Credit for income tax paid to another state" hint="Line 21; Schedule ND-1CR" value={d.otherStateCredit} onChange={(n) => put({ otherStateCredit: n })} />
+          <MoneyField label="Other credits" hint="Line 23; Schedule ND-1TC" value={d.otherCredits} onChange={(n) => put({ otherCredits: n })} />
+        </div>
+      </Section>
+
+      <Section title="Voluntary contributions" intro="At least $1 each; taken from your refund or added to what you owe.">
+        <div className="grid">
+          {FUNDS.map(([k, label]) => <MoneyField key={k} label={label} value={d.contributions[k] ?? 0} onChange={(n) => put({ contributions: { ...d.contributions, [k]: n } })} />)}
+        </div>
+      </Section>
+
+      {nd.issues.length > 0 && (
+        <Section title="Things to look at">
+          <ul className="issues">{nd.issues.map((t) => <li key={t} className="issue is-warning"><span className="issue-kind">Check</span><span>{t}</span></li>)}</ul>
+        </Section>
+      )}
+
+      <Section title="Form ND-1" intro="Whole dollars.">
+        <table className="lines"><tbody>
+          {LINES.filter(([k]) => ALWAYS.has(k) || (L[k] ?? 0) !== 0).map(([k, label]) => (
+            <tr key={k} className={KEY.has(k) ? 'is-key' : ''}><th scope="row"><span className="line-no">{k}</span>{label}</th><td>{usd(L[k] ?? 0)}</td></tr>
+          ))}
+        </tbody></table>
+      </Section>
+
+      <Section title="North Dakota forms" intro="Filled in on this device from the official North Dakota Office of State Tax Commissioner Form ND-1.">
+        <ul className="form-list">{packet.forms.map((f) => <li key={f.id}>{f.title}</li>)}</ul>
+        {packet.notIncluded.length > 0 && (
+          <div className="note is-warn"><strong>Include these yourself.</strong><ul>{packet.notIncluded.map((n) => <li key={n}>{n}</li>)}</ul></div>
+        )}
+        <div className="actions"><button type="button" className="button" onClick={makePdf} disabled={pdf.busy}>{pdf.busy ? 'Preparing PDF…' : 'Download North Dakota forms (PDF)'}</button></div>
+        {pdf.note && <p className="note" role="status">{pdf.note}</p>}
+        <p className="why">Sign page 2{married ? ' (both spouses)' : ''}. Mail to Office of State Tax Commissioner, PO Box 5621, Bismarck ND 58506-5621; with a payment, include Form ND-1PRV. Due April 15, 2026.</p>
+      </Section>
+    </div>
+  )
+}

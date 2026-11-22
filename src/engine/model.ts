@@ -2329,6 +2329,45 @@ export const emptyVt = (): VtInput => ({
   }
 })
 
+export interface NdInput {
+  /** North Dakota W-2 and 1099-R details by id (line 26), plus withholding on other 1099s / ND K-1s. */
+  w2: Record<string, StateStatement>
+  r1099: Record<string, StateStatement>
+  otherWithholding: number
+  /** Item B: 5-digit school district code; Item C: income source code (1–12). */
+  schoolCode: string
+  incomeSourceCode: string
+  /** Lines 2 and 3 (additions), 16 (ND-1SA subtractions). */
+  plannedGift: number
+  otherAdditions: number
+  otherSubtractions: number
+  usObligationInterest: number
+  /** Capital gain worksheet line 6: part of the net long-term gain already in lines 7 or 16. */
+  gainInOtherLines: number
+  nativeAmerican: number
+  /** Line 8: taxable Railroad Retirement Board benefits by owner; the part of Form 1040 line 6b that is Tier 1 RRB. */
+  railroad: Record<Owner, number>
+  rrbTier1InSs: number
+  peaceOfficer: number
+  militaryPay: number
+  collegeSave: number
+  militaryRetirement: number
+  /** Line 21 (ND-1CR) and line 23 (ND-1TC). */
+  otherStateCredit: number
+  otherCredits: number
+  estimatedPayments: number
+  creditForward: number
+  /** Veterans’ Postwar Trust Fund, Watchable Wildlife Fund, Trees for ND Trust Fund. */
+  contributions: Record<string, number>
+  consent1099g: boolean
+}
+
+export const emptyNd = (): NdInput => ({
+  w2: {}, r1099: {}, otherWithholding: 0, schoolCode: '', incomeSourceCode: '', plannedGift: 0, otherAdditions: 0, otherSubtractions: 0, usObligationInterest: 0,
+  gainInOtherLines: 0, nativeAmerican: 0, railroad: { taxpayer: 0, spouse: 0 }, rrbTier1InSs: 0, peaceOfficer: 0, militaryPay: 0, collegeSave: 0, militaryRetirement: 0,
+  otherStateCredit: 0, otherCredits: 0, estimatedPayments: 0, creditForward: 0, contributions: {}, consent1099g: false
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -2511,6 +2550,7 @@ export interface TaxReturnInput {
   ri: RiInput
   de: DeInput
   vt: VtInput
+  nd: NdInput
 }
 
 let counter = 0
@@ -2728,7 +2768,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   ky: emptyKy(),
   ok: emptyOk(),
   ct: emptyCt(),
-  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm(), hi: emptyHi(), id: emptyId(), me: emptyMe(), mt: emptyMt(), ri: emptyRi(), de: emptyDe(), vt: emptyVt()
+  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm(), hi: emptyHi(), id: emptyId(), me: emptyMe(), mt: emptyMt(), ri: emptyRi(), de: emptyDe(), vt: emptyVt(), nd: emptyNd()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -2899,6 +2939,10 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
         ...e, ...x, w2: normalizeStatements(x.w2), retirementKind: { ...(x.retirementKind ?? {}) }, disabled: pair('disabled'), schools: pair('schools'),
         libraries: pair('libraries'), violence: pair('violence'), electionFund: pair('electionFund'), occupation: { ...e.occupation, ...(x.occupation ?? {}) }
       }
+    })(),
+    nd: (() => {
+      const e = emptyNd(); const x: Partial<NdInput> = r.nd ?? {}
+      return { ...e, ...x, w2: normalizeStatements(x.w2), r1099: normalizeStatements(x.r1099), railroad: { ...e.railroad, ...(x.railroad ?? {}) }, contributions: { ...(x.contributions ?? {}) } }
     })(),
     vt: (() => {
       const e = emptyVt(); const x: Partial<VtInput> = r.vt ?? {}
