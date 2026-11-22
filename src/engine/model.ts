@@ -2252,6 +2252,83 @@ export const emptyDe = (): DeInput => ({
   firefighter: { taxpayer: '', spouse: '' }, crs: {}, estimatedPayments: 0, sCorp: [], realEstatePayments: 0, dependentBirthDates: {}, contributions: {}, creditForward: 0, dmvId: ''
 })
 
+export interface VtInput {
+  /** Vermont W-2 and 1099-R details by id (line 26a). */
+  w2: Record<string, StateStatement>
+  r1099: Record<string, StateStatement>
+  /** 3-digit school district code (required) and the 911 physical address on 12/31/2025 (blank = mailing address). */
+  schoolCode: string
+  physicalAddress: string
+  /** Full-year minimum essential coverage (healthcare coverage code). */
+  coverage: Record<Owner, boolean>
+  birthDates: Record<Owner, string>
+  /** IN-112 Part I. */
+  vtObligationInterest: number
+  bonusDepreciation: number
+  usObligationInterest: number
+  /** IN-153 Part II (percentage exclusion): used only when chosen. Gains held three years or less, and gains on homes,
+   * depreciable personal property and publicly traded securities held longer (not eligible). */
+  capitalGainsMethod: 'flat' | 'percentage'
+  cg: { shortHeld: number; homes: number; personalProperty: number; publicSecurities: number }
+  priorBonusDepreciation: number
+  taxableRefunds: number
+  medicalNonAllowable: number
+  retirementChoice: 'auto' | 'ss' | 'pension'
+  /** Pension from a public retirement system not covered by Social Security (CSRS, state systems). */
+  publicPension: number
+  militaryRetirement: number
+  railroadRetirement: number
+  bondInterest: number
+  bondKind: '' | 'VSAC' | 'Build America' | 'VT Telecom' | 'VT Public'
+  studentLoanInterest: number
+  /** IN-113 Part II: exempt military pay and months on active duty. */
+  militaryPay: number
+  activeDutyMonths: number
+  /** IN-117: credit for tax paid to another state or Canadian province. */
+  otherState: { state: string; income: number; tax: number; bonusAdded: number; muniInterest: number; bonusSubtracted: number; usInterest: number }
+  /** IN-119 Part I (adjustments) and Part II (credits by line: earned in 2025 and carryforward). */
+  in119: {
+    itcRecapture: number; lumpSumTax: number; vtRecapture: number; elderlyCredit: number; vtInvestmentCredit: number; farmAveraging: number; solarCarryforward: number
+    higherEdContribution: number; entityName: string; entityFein: string; credits: Record<string, { earned: number; carry: number }>
+  }
+  /** Child care contribution worksheet line 2: self-employment earnings from work outside Vermont. */
+  seOutsideVt: number
+  useTax: { mode: 'none' | 'estimate' | 'amount'; amount: number }
+  /** Lines 24a–24d. */
+  contributions: Record<string, number>
+  estimatedPayments: number
+  realEstateWithholding: number
+  /** Lines 28a / 28b. */
+  creditForward: number
+  propertyTaxCredit: number
+  veteran: boolean
+  /** RCC-146 renter credit claim. */
+  renter: { claim: boolean; county: string; span: string; address: string; unit: string; town: string; sharedWithAdult: boolean; subsidized: boolean; subsidizedMonths: number; monthsRented: number; applyToTax: boolean }
+  /** HS-122 and Schedule HI-144. */
+  homestead: {
+    file: boolean; claimCredit: boolean; span: string; location: string; town: string; businessUse: number; rentalUse: number; otherBuildings: boolean
+    housesiteValue: number; educationTax: number; municipalTax: number; ownership: number
+    publicAssistance: number; otherBenefits: number; workersComp: number; alimony: number; childSupportAndGifts: number; passThroughIncome: number; otherIncome: number
+    childSupportPaid: number; alimonyPaid: number; otherPeopleIncome: number
+  }
+}
+
+export const emptyVt = (): VtInput => ({
+  w2: {}, r1099: {}, schoolCode: '', physicalAddress: '', coverage: { taxpayer: true, spouse: true }, birthDates: { taxpayer: '', spouse: '' },
+  vtObligationInterest: 0, bonusDepreciation: 0, usObligationInterest: 0, capitalGainsMethod: 'flat', cg: { shortHeld: 0, homes: 0, personalProperty: 0, publicSecurities: 0 }, priorBonusDepreciation: 0, taxableRefunds: 0,
+  medicalNonAllowable: 0, retirementChoice: 'auto', publicPension: 0, militaryRetirement: 0, railroadRetirement: 0, bondInterest: 0, bondKind: '', studentLoanInterest: 0,
+  militaryPay: 0, activeDutyMonths: 0,
+  otherState: { state: '', income: 0, tax: 0, bonusAdded: 0, muniInterest: 0, bonusSubtracted: 0, usInterest: 0 },
+  in119: { itcRecapture: 0, lumpSumTax: 0, vtRecapture: 0, elderlyCredit: 0, vtInvestmentCredit: 0, farmAveraging: 0, solarCarryforward: 0, higherEdContribution: 0, entityName: '', entityFein: '', credits: {} },
+  seOutsideVt: 0, useTax: { mode: 'none', amount: 0 }, contributions: {},
+  estimatedPayments: 0, realEstateWithholding: 0, creditForward: 0, propertyTaxCredit: 0, veteran: false,
+  renter: { claim: false, county: '', span: '', address: '', unit: '', town: '', sharedWithAdult: false, subsidized: false, subsidizedMonths: 0, monthsRented: 12, applyToTax: false },
+  homestead: {
+    file: false, claimCredit: false, span: '', location: '', town: '', businessUse: 0, rentalUse: 0, otherBuildings: false, housesiteValue: 0, educationTax: 0, municipalTax: 0, ownership: 100,
+    publicAssistance: 0, otherBenefits: 0, workersComp: 0, alimony: 0, childSupportAndGifts: 0, passThroughIncome: 0, otherIncome: 0, childSupportPaid: 0, alimonyPaid: 0, otherPeopleIncome: 0
+  }
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -2433,6 +2510,7 @@ export interface TaxReturnInput {
   mt: MtInput
   ri: RiInput
   de: DeInput
+  vt: VtInput
 }
 
 let counter = 0
@@ -2650,7 +2728,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   ky: emptyKy(),
   ok: emptyOk(),
   ct: emptyCt(),
-  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm(), hi: emptyHi(), id: emptyId(), me: emptyMe(), mt: emptyMt(), ri: emptyRi(), de: emptyDe()
+  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm(), hi: emptyHi(), id: emptyId(), me: emptyMe(), mt: emptyMt(), ri: emptyRi(), de: emptyDe(), vt: emptyVt()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -2820,6 +2898,15 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       return {
         ...e, ...x, w2: normalizeStatements(x.w2), retirementKind: { ...(x.retirementKind ?? {}) }, disabled: pair('disabled'), schools: pair('schools'),
         libraries: pair('libraries'), violence: pair('violence'), electionFund: pair('electionFund'), occupation: { ...e.occupation, ...(x.occupation ?? {}) }
+      }
+    })(),
+    vt: (() => {
+      const e = emptyVt(); const x: Partial<VtInput> = r.vt ?? {}
+      return {
+        ...e, ...x, w2: normalizeStatements(x.w2), r1099: normalizeStatements(x.r1099), coverage: { ...e.coverage, ...(x.coverage ?? {}) }, birthDates: { ...e.birthDates, ...(x.birthDates ?? {}) },
+        useTax: { ...e.useTax, ...(x.useTax ?? {}) }, contributions: { ...(x.contributions ?? {}) }, homestead: { ...e.homestead, ...(x.homestead ?? {}) },
+        cg: { ...e.cg, ...(x.cg ?? {}) }, otherState: { ...e.otherState, ...(x.otherState ?? {}) }, renter: { ...e.renter, ...(x.renter ?? {}) },
+        in119: { ...e.in119, ...(x.in119 ?? {}), credits: { ...(x.in119?.credits ?? {}) } }
       }
     })(),
     de: (() => {

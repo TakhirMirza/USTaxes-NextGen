@@ -70,7 +70,7 @@ export const STATES: readonly StateInfo[] = [
   S('TN', 'Tennessee', 'no-tax', '', 'Tennessee Department of Revenue', 'Tennessee has no individual income tax.'),
   S('TX', 'Texas', 'no-tax', '', 'Texas Comptroller of Public Accounts', 'Texas has no individual income tax.'),
   S('UT', 'Utah', 'supported', 'Form TC-40', 'Utah State Tax Commission'),
-  S('VT', 'Vermont', 'estimate', 'Form IN-111', 'Vermont Department of Taxes'),
+  S('VT', 'Vermont', 'supported', 'Form IN-111', 'Vermont Department of Taxes'),
   S('VA', 'Virginia', 'supported', 'Form 760', 'Virginia Department of Taxation'),
   S('WA', 'Washington', 'no-tax', '', 'Washington Department of Revenue', 'Washington has no tax on wages, but it taxes large long-term capital gains (capital gains excise tax, its own return).'),
   S('WV', 'West Virginia', 'supported', 'Form IT-140', 'West Virginia State Tax Department'),
