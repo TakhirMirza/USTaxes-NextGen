@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import * as lib from 'pdf-lib'
 import { computeReturn } from './compute.ts'
-import { empty1099R, emptyDependent, emptyReturn, emptySocialSecurity, emptyW2 } from './model.ts'
+import { empty1099R, emptyDependent, emptyProvider, emptyReturn, emptySocialSecurity, emptyTransaction, emptyW2 } from './model.ts'
 import type { ArInput, TaxReturnInput } from './model.ts'
 import { arAdditionalCredit, arLowTax, arRegularTax, computeArkansas } from './ar2025.ts'
 import { buildArPacket } from '../pdf/ar2025.ts'
@@ -102,4 +102,42 @@ test('AR1000F: every value lands on one field and the PDF builds', async () => {
   assert.deepEqual(problems, [])
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 AR')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-AR.pdf`, bytes)
+})
+
+test('AR schedules: AR1000D, AR1000ADJ, AR3, AR2441 and AR1000TC', async () => {
+  const r0 = emptyReturn()
+  const lt = { ...emptyTransaction(), description: 'Stock', term: 'long' as const, proceeds: 20000, costBasis: 10000, dateAcquired: '01/02/2020', dateSold: '03/04/2025' }
+  const st = { ...emptyTransaction(), description: 'Fund', term: 'short' as const, proceeds: 3000, costBasis: 5000, dateAcquired: '01/02/2025', dateSold: '03/04/2025' }
+  const { ar: r, res, ret } = ar(base({
+    filingStatus: 'mfj', w2s: [w2(60000), w2(30000, 'spouse')], dependents: [kid(4)], capitalTransactions: [lt, st],
+    adjustments: { ...r0.adjustments, iraDeduction: 6000, educatorExpenses: 200 },
+    itemized: { ...r0.itemized, medical: 12000, stateLocalIncomeOrSalesTax: 4000, realEstateTax: 5000, mortgageInterest: 9000, charityCash: 3000 },
+    dependentCare: { expenses: 4000, employerBenefits: 0, providers: [{ ...emptyProvider(), name: 'Little Rock Kids', address: '1 Main St, Little Rock, AR 72201', tin: '71-7654321', amountPaid: 4000 }] }
+  }), {
+    adj: { ...r0.ar.adj, tuitionSavings: 3000, alimony: 1200, alimonyName: 'Lee Roe', alimonySsn: '222334444' },
+    tc: { ...r0.ar.tc, political: 150, stillborn: 1, developmental: [{ name: 'Kim Doe', ssn: '333445555' }], business: [{ owner: 'spouse', code: '0001', fein: '71-0000001', amount: 250 }] }
+  })
+  const D = r.d!
+  assert.equal(D['1'], 10000); assert.equal(D['4'], -2000); assert.equal(D['7a'], 8000); assert.equal(D['8'], 4000); assert.equal(D['12'], 4000)
+  assert.equal(r.lines['14'], 4000)
+  assert.equal(r.adj['3'], 6000); assert.equal(r.adj['19'], 10200); assert.equal(r.lines['24'], 10200)
+  assert.equal(r.lines['25'], 83800)
+  assert.equal(r.ar3['3'], 8380); assert.equal(r.ar3['4'], 3620); assert.equal(r.ar3['7'], 5000); assert.equal(r.ar3['30'], 20620)
+  assert.equal(r.table, 'itemized'); assert.equal(r.lines['28'], 63180)
+  assert.equal(res.form2441.credit, 600); assert.equal(r.lines['35'], 120)
+  assert.equal(r.tc['1'], 100); assert.equal(r.tc['5'], 500); assert.equal(r.tc['7'], 500); assert.equal(r.tc['8'], 250); assert.equal(r.tc['9'], 1350)
+  assert.equal(r.lines['36'], 1350)
+  assert.ok(r.issues.some((t) => t.includes('educator')))
+  const packet = buildArPacket(ret, res, r)
+  assert.deepEqual(packet.forms.map((f) => f.id), ['ar1000f', 'ar1000adj', 'ar3', 'ar1000d', 'ar2441', 'ar1000tc'])
+  const tc = packet.forms[5].values
+  assert.equal(tc['TC-30'], '0001'); assert.equal(tc['TC-32'], '250'); assert.equal(tc['TC-9'], 'KIM DOE')
+  assert.equal(packet.forms[1].values['ADJ-36'], 'LEE ROE')
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, packet.forms, load, '2025 AR')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-ARS.pdf`, bytes)
 })

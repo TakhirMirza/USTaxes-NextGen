@@ -1795,18 +1795,54 @@ export interface ArInput {
   retirementKind: Record<string, ArRetirementKind>
   /** Line 7A: deaf on Dec. 31, 2025. */
   deaf: Record<Owner, boolean>
-  /** Line 22: other income / depreciation differences (AR-OI); line 24: Arkansas-only adjustments beyond the federal ones (AR1000ADJ). */
+  /** Line 22: other income / depreciation differences (AR-OI). */
   otherIncome: number
-  extraAdjustments: number
-  /** Line 36: other credits (AR1000TC) besides the additional credit for qualified individuals. */
-  otherCredits: number
+  /** AR1000D lines 2, 5 and 10: depreciation differences and PET capital gain or loss (long-term, short-term loss, short-term gain). */
+  capitalAdjust: { long: number; shortLoss: number; shortGain: number }
+  /** AR1000ADJ amounts not carried from the federal return (IRA, HSA and student loan interest are). */
+  adj: ArAdjInput
+  /** AR3 items that have no federal counterpart here. */
+  ar3: ArItemizedInput
+  /** AR1000TC credits (line 6, the additional credit for qualified individuals, is worked out). */
+  tc: ArCreditsInput
   /** Lines 48–49: credit forward to 2026 and check-off contributions. */
   creditForward: number
   checkoff: number
 }
+export interface ArAdjInput {
+  borderCity: number; tuitionSavings: number; msa: number; trust: number; moving: number; keogh: number
+  forfeitedInterest: number; alimony: number; alimonyName: string; alimonySsn: string; disability: number; organDonor: number
+  militaryReserve: number; reforestation: number; teacher: number; able: number
+}
+export const emptyArAdj = (): ArAdjInput => ({
+  borderCity: 0, tuitionSavings: 0, msa: 0, trust: 0, moving: 0, keogh: 0, forfeitedInterest: 0, alimony: 0, alimonyName: '', alimonySsn: '',
+  disability: 0, organDonor: 0, militaryReserve: 0, reforestation: 0, teacher: 0, able: 0
+})
+export interface ArItemizedInput {
+  otherTaxes: number; otherTaxesType: string
+  individualMortgage: number; individualName: string; individualAddress: string; points: number; investmentInterest: number
+  artContributions: number; charityCarryover: number; charityCarryoverType: string; casualty: number; tuition: number
+  employeeExpenses: number; otherExpenses: number; otherExpensesType: string; firefighter: number; gambling: number; otherDeductionsType: string
+}
+export const emptyArItemized = (): ArItemizedInput => ({
+  otherTaxes: 0, otherTaxesType: '', individualMortgage: 0, individualName: '', individualAddress: '', points: 0, investmentInterest: 0, artContributions: 0,
+  charityCarryover: 0, charityCarryoverType: '', casualty: 0, tuition: 0, employeeExpenses: 0, otherExpenses: 0, otherExpensesType: '', firefighter: 0, gambling: 0,
+  otherDeductionsType: ''
+})
+export interface ArBusinessCredit { owner: Owner; code: string; fein: string; amount: number }
+export interface ArCreditsInput {
+  /** Line 1 contributions; line 2 other state credit; line 3 the federal adoption credit allowed (Form 8839; 20% of it); line 4 PKU credit (AR1113); line 5 stillborn children ($500 each). */
+  political: number; otherState: number; adoption: number; pku: number; stillborn: number
+  /** Line 7: individuals named on Form AR1000-DD ($500 each). */
+  developmental: { name: string; ssn: string }[]
+  /** Lines 8A–8F: business incentive credits (up to three each). */
+  business: ArBusinessCredit[]
+}
+export const emptyArCredits = (): ArCreditsInput => ({ political: 0, otherState: 0, adoption: 0, pku: 0, stillborn: 0, developmental: [], business: [] })
 export const emptyAr = (): ArInput => ({
   w2: {}, withholding1099: 0, estimatedPayments: 0, extensionPayment: 0, militaryPay: { taxpayer: 0, spouse: 0 }, usObligationInterest: 0, retirementKind: {},
-  deaf: { taxpayer: false, spouse: false }, otherIncome: 0, extraAdjustments: 0, otherCredits: 0, creditForward: 0, checkoff: 0
+  deaf: { taxpayer: false, spouse: false }, otherIncome: 0, capitalAdjust: { long: 0, shortLoss: 0, shortGain: 0 },
+  adj: emptyArAdj(), ar3: emptyArItemized(), tc: emptyArCredits(), creditForward: 0, checkoff: 0
 })
 
 export type NeRetirementKind = 'standard' | 'military' | 'railroad' | 'csrs'
@@ -2990,7 +3026,10 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     })(),
     ar: (() => {
       const e = emptyAr(); const x: Partial<ArInput> = r.ar ?? {}
-      return { ...e, ...x, w2: normalizeStatements(x.w2), militaryPay: { ...e.militaryPay, ...(x.militaryPay ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, deaf: { ...e.deaf, ...(x.deaf ?? {}) } }
+      return { ...e, ...x, w2: normalizeStatements(x.w2), militaryPay: { ...e.militaryPay, ...(x.militaryPay ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, deaf: { ...e.deaf, ...(x.deaf ?? {}) },
+        capitalAdjust: { ...e.capitalAdjust, ...(x.capitalAdjust ?? {}) }, adj: { ...e.adj, ...(x.adj ?? {}) }, ar3: { ...e.ar3, ...(x.ar3 ?? {}) },
+        tc: { ...e.tc, ...(x.tc ?? {}), developmental: Array.isArray(x.tc?.developmental) ? x.tc!.developmental.map((d: Partial<{ name: string; ssn: string }>) => ({ name: d.name ?? '', ssn: d.ssn ?? '' })) : [],
+          business: Array.isArray(x.tc?.business) ? x.tc!.business.map((b: Partial<ArBusinessCredit>) => ({ owner: b.owner === 'spouse' ? 'spouse' as Owner : 'taxpayer' as Owner, code: b.code ?? '', fein: b.fein ?? '', amount: Number(b.amount) || 0 })) : [] } }
     })(),
     ne: (() => {
       const e = emptyNe(); const x: Partial<NeInput> = r.ne ?? {}
