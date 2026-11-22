@@ -103,6 +103,10 @@ export function computeMissouri(ret: TaxReturnInput, res: TaxReturnResult): MoRe
   const spouseAgi = two ? (d.spouseAgi !== null ? r(d.spouseAgi) : r(own('spouse') + (agi - own('taxpayer') - own('spouse')) / 2)) : 0
   Y['1'] = agi - spouseAgi
   S['1'] = spouseAgi
+  // A negative federal AGI counts as $0. On a combined return with a positive total, the spouse with positive
+  // income takes the whole joint amount and the other enters $0 (instructions, page 6).
+  if (!two) Y['1'] = pos(agi)
+  else if (agi <= 0) { Y['1'] = 0; S['1'] = 0 } else if (Y['1'] < 0) { Y['1'] = 0; S['1'] = agi } else if (S['1'] < 0) { Y['1'] = agi; S['1'] = 0 }
   const half = (n: number, c: 'Y' | 'S'): number => (two ? (c === 'Y' ? n - r(n / 2) : r(n / 2)) : c === 'Y' ? n : 0)
   const byOwner = (rec: Record<Owner, number>, c: 'Y' | 'S'): number => (c === 'Y' ? r(pos(rec.taxpayer ?? 0)) : two ? r(pos(rec.spouse ?? 0)) : 0)
 
@@ -185,7 +189,8 @@ export function computeMissouri(ret: TaxReturnInput, res: TaxReturnResult): MoRe
 
   // ── Lines 9–15 ──
   L['9'] = r(pos(f['22'] - f['27a'] - f['29'] - res.schedule2.amt))
-  L['10'] = r(pos(res.schedule2.amt) + pos(res.schedule2.earlyDistributionTax))
+  // Schedule 2 lines 3 (AMT) and 8 (Form 5329 additional taxes).
+  L['10'] = r(pos(res.schedule2.amt) + pos(res.schedule2.earlyDistributionTax) + pos(res.schedule2.hsaExcessTax))
   L['11'] = L['9'] + L['10']
   L['12'] = moFederalTaxPercent(L['6'])
   L['13'] = Math.min(r(L['11'] * L['12'] / 100), two ? 10000 : 5000)

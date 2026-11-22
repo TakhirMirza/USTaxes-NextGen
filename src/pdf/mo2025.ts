@@ -30,6 +30,19 @@ const phone = (s: string): string => {
 const STATUS = { single: 'c.single', dependent: 'c.dependent', combined: 'c.married', separate: 'c.marrfilingsep', hoh: 'c.headofhousehold', widow: 'c.widower' } as const
 /** MO-CRP line 7 boxes by percentage. */
 const CRP_BOX: Record<number, string> = { 100: 'c.crp_7aa', 50: 'c.crp_7ia', 45: 'c.crp_7da', 33: 'c.crp_7ja', 25: 'c.crp_7ka' }
+/** Counties of residence as listed on page 1 (the form’s own list, including St. Louis City). */
+export const MO_COUNTIES: string[] = [
+  'ADAIR', 'ANDREW', 'ATCHISON', 'AUDRAIN', 'BARRY', 'BARTON', 'BATES', 'BENTON', 'BOLLINGER', 'BOONE', 'BUCHANAN', 'BUTLER', 'CALDWELL', 'CALLAWAY',
+  'CAMDEN', 'CAPE GIRARDEAU', 'CARROLL', 'CARTER', 'CASS', 'CEDAR', 'CHARITON', 'CHRISTIAN', 'CLARK', 'CLAY', 'CLINTON', 'COLE', 'COOPER', 'CRAWFORD',
+  'DADE', 'DALLAS', 'DAVIESS', 'DE KALB', 'DENT', 'DOUGLAS', 'DUNKLIN', 'FRANKLIN', 'GASCONADE', 'GENTRY', 'GREENE', 'GRUNDY', 'HARRISON', 'HENRY',
+  'HICKORY', 'HOLT', 'HOWARD', 'HOWELL', 'IRON', 'JACKSON', 'JASPER', 'JEFFERSON', 'JOHNSON', 'KANSAS', 'KNOX', 'LACLEDE', 'LAFAYETTE', 'LAWRENCE',
+  'LEWIS', 'LINCOLN', 'LINN', 'LIVINGSTON', 'MACON', 'MADISON', 'MARIES', 'MARION', 'MCDONALD', 'MERCER', 'MILLER', 'MISSISSIPPI', 'MONITEAU',
+  'MONROE', 'MONTGOMERY', 'MORGAN', 'NEW MADRID', 'NEWTON', 'NODAWAY', 'NONRESIDENT', 'OREGON', 'OSAGE', 'OTHER', 'OZARK', 'PEMISCOT', 'PERRY',
+  'PETTIS', 'PHELPS', 'PIKE', 'PLATTE', 'POLK', 'PULASKI', 'PUTNAM', 'RALLS', 'RANDOLPH', 'RAY', 'REYNOLDS', 'RIPLEY', 'SALINE', 'SCHUYLER',
+  'SCOTLAND', 'SCOTT', 'SHANNON', 'SHELBY', 'ST CHARLES', 'ST CLAIR', 'ST FRANCOIS', 'ST LOUIS CITY', 'ST LOUIS COUNTY', 'STE GENEVIEVE', 'STODDARD',
+  'STONE', 'SULLIVAN', 'TANEY', 'TEXAS', 'VERNON', 'WARREN', 'WASHINGTON', 'WAYNE', 'WEBSTER', 'WORTH', 'WRIGHT'
+]
+
 export const MO_TRUST_FUNDS: [string, string][] = [
   ['a', 'Children’s Trust Fund'], ['b', 'Veterans Trust Fund'], ['c', 'Elderly Home-Delivered Meals Trust Fund'], ['d', 'Missouri National Guard Trust Fund'],
   ['e', 'Workers’ Memorial Fund'], ['f', 'Childhood Lead Testing Fund'], ['g', 'Missouri Military Family Relief Fund'], ['h', 'General Revenue Fund'],

@@ -2,6 +2,7 @@ import type { TaxReturnInput } from '../engine/model.ts'
 import type { DeResult } from '../engine/de2025.ts'
 import type { VtResult } from '../engine/vt2025.ts'
 import type { NdResult } from '../engine/nd2025.ts'
+import type { MoResult } from '../engine/mo2025.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { VaResult } from '../engine/va2025.ts'
 import type { MdResult } from '../engine/md2025.ts'
@@ -76,6 +77,7 @@ import { buildRiPacket } from './ri2025.ts'
 import { buildDePacket } from './de2025.ts'
 import { buildVtPacket } from './vt2025.ts'
 import { buildNdPacket } from './nd2025.ts'
+import { buildMoPacket } from './mo2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -276,4 +278,8 @@ export function downloadVermontForms(ret: TaxReturnInput, res: TaxReturnResult, 
 
 export function downloadNorthDakotaForms(ret: TaxReturnInput, res: TaxReturnResult, nd: NdResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildNdPacket(ret, res, nd, preparer).forms, '2025 North Dakota ND-1 — USTaxes NextGen', `2025-North-Dakota-ND-1-${slug(ret)}.pdf`)
+}
+
+export function downloadMissouriForms(ret: TaxReturnInput, res: TaxReturnResult, mo: MoResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildMoPacket(ret, res, mo, preparer).forms, '2025 Missouri MO-1040 — USTaxes NextGen', `2025-Missouri-MO-1040-${slug(ret)}.pdf`)
 }

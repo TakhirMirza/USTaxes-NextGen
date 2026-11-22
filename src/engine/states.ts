@@ -50,7 +50,7 @@ export const STATES: readonly StateInfo[] = [
   S('MI', 'Michigan', 'supported', 'Form MI-1040', 'Michigan Department of Treasury', 'Some Michigan cities also have their own income tax return.'),
   S('MN', 'Minnesota', 'supported', 'Form M1', 'Minnesota Department of Revenue'),
   S('MS', 'Mississippi', 'supported', 'Form 80-105', 'Mississippi Department of Revenue'),
-  S('MO', 'Missouri', 'estimate', 'Form MO-1040', 'Missouri Department of Revenue'),
+  S('MO', 'Missouri', 'supported', 'Form MO-1040', 'Missouri Department of Revenue'),
   S('MT', 'Montana', 'supported', 'Form 2', 'Montana Department of Revenue'),
   S('NE', 'Nebraska', 'supported', 'Form 1040N', 'Nebraska Department of Revenue'),
   S('NV', 'Nevada', 'no-tax', '', 'Nevada Department of Taxation', 'Nevada has no individual income tax.'),
