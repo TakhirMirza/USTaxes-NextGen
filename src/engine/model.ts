@@ -2194,6 +2194,64 @@ export const emptyRi = (): RiInput => ({
   driversLicense: { taxpayer: '', spouse: '' }, creditForward: 0
 })
 
+export interface DeInput {
+  /** Delaware W-2 and 1099-R details by id (PIT-RSS Schedule IV, line 35). */
+  w2: Record<string, StateStatement>
+  r1099: Record<string, StateStatement>
+  /** Joint federal return: 'auto' uses the cheaper of status 2 (joint) and status 4 (combined separate). */
+  status: 'auto' | 'joint' | 'combined'
+  /** Status 4: the spouse’s share of federal AGI (column A, line 1); null = worked out from who earned what. */
+  spouseAgi: number | null
+  deduction: 'auto' | 'standard' | 'itemized'
+  /** Lines 2–3 additions and lines 5, 7 subtractions (split evenly on status 4). */
+  otherStateBondInterest: number
+  fiduciaryAdditions: number
+  usObligationInterest: number
+  otherSubtractions: number
+  /** Line 6: the pension is a U.S. military pension (under 60: up to $12,500). */
+  militaryPension: Record<Owner, boolean>
+  /** Line 8a: Tier II railroad retirement in federal AGI; retirement distributions used for higher education. */
+  railroadRetirement: Record<Owner, number>
+  higherEducation: Record<Owner, number>
+  /** Line 8b: deposits to Delaware 529 plans and ABLE accounts. */
+  tuition529: Record<Owner, number>
+  able: Record<Owner, number>
+  /** Line 11: totally and permanently disabled. */
+  disabled: Record<Owner, boolean>
+  /** PIT-RSA line 5b: the federal state-and-local tax is general sales tax. */
+  salesTax: boolean
+  /** Lines 14–16 and 18. */
+  foreignTaxes: number
+  charityMiles: number
+  unionDues: Record<Owner, number>
+  landAdjustment: number
+  /** Line 28 / Schedule I. */
+  otherState: { state: string; owner: Owner; income: number; tax: number }
+  /** Line 29: volunteer fire company number. */
+  firefighter: Record<Owner, string>
+  /** PIT-CRS amounts by line. */
+  crs: Record<string, number>
+  estimatedPayments: number
+  /** Schedule V: S corporation payments. */
+  sCorp: { fein: string; name: string; owner: Owner; amount: number }[]
+  /** Line 39: REW-EST real estate payments. */
+  realEstatePayments: number
+  /** Schedule II: dates of birth of EITC children. */
+  dependentBirthDates: Record<string, string>
+  /** Schedule III: contributions by letter (A–U). */
+  contributions: Record<string, number>
+  creditForward: number
+  dmvId: string
+}
+
+export const emptyDe = (): DeInput => ({
+  w2: {}, r1099: {}, status: 'auto', spouseAgi: null, deduction: 'auto', otherStateBondInterest: 0, fiduciaryAdditions: 0, usObligationInterest: 0, otherSubtractions: 0,
+  militaryPension: { taxpayer: false, spouse: false }, railroadRetirement: { taxpayer: 0, spouse: 0 }, higherEducation: { taxpayer: 0, spouse: 0 },
+  tuition529: { taxpayer: 0, spouse: 0 }, able: { taxpayer: 0, spouse: 0 }, disabled: { taxpayer: false, spouse: false }, salesTax: false,
+  foreignTaxes: 0, charityMiles: 0, unionDues: { taxpayer: 0, spouse: 0 }, landAdjustment: 0, otherState: { state: '', owner: 'taxpayer', income: 0, tax: 0 },
+  firefighter: { taxpayer: '', spouse: '' }, crs: {}, estimatedPayments: 0, sCorp: [], realEstatePayments: 0, dependentBirthDates: {}, contributions: {}, creditForward: 0, dmvId: ''
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -2374,6 +2432,7 @@ export interface TaxReturnInput {
   me: MeInput
   mt: MtInput
   ri: RiInput
+  de: DeInput
 }
 
 let counter = 0
@@ -2591,7 +2650,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   ky: emptyKy(),
   ok: emptyOk(),
   ct: emptyCt(),
-  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm(), hi: emptyHi(), id: emptyId(), me: emptyMe(), mt: emptyMt(), ri: emptyRi()
+  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm(), hi: emptyHi(), id: emptyId(), me: emptyMe(), mt: emptyMt(), ri: emptyRi(), de: emptyDe()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -2761,6 +2820,17 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       return {
         ...e, ...x, w2: normalizeStatements(x.w2), retirementKind: { ...(x.retirementKind ?? {}) }, disabled: pair('disabled'), schools: pair('schools'),
         libraries: pair('libraries'), violence: pair('violence'), electionFund: pair('electionFund'), occupation: { ...e.occupation, ...(x.occupation ?? {}) }
+      }
+    })(),
+    de: (() => {
+      const e = emptyDe(); const x: Partial<DeInput> = r.de ?? {}
+      const own = <T,>(k: 'militaryPension' | 'railroadRetirement' | 'higherEducation' | 'tuition529' | 'able' | 'disabled' | 'unionDues' | 'firefighter') => ({ ...e[k], ...((x[k] ?? {}) as object) }) as T
+      return {
+        ...e, ...x, w2: normalizeStatements(x.w2), r1099: normalizeStatements(x.r1099), spouseAgi: typeof x.spouseAgi === 'number' ? x.spouseAgi : null,
+        militaryPension: own('militaryPension'), railroadRetirement: own('railroadRetirement'), higherEducation: own('higherEducation'), tuition529: own('tuition529'),
+        able: own('able'), disabled: own('disabled'), unionDues: own('unionDues'), firefighter: own('firefighter'), otherState: { ...e.otherState, ...(x.otherState ?? {}) },
+        crs: { ...(x.crs ?? {}) }, sCorp: Array.isArray(x.sCorp) ? x.sCorp.map((o) => ({ fein: o.fein ?? '', name: o.name ?? '', owner: o.owner === 'spouse' ? 'spouse' as const : 'taxpayer' as const, amount: Number(o.amount) || 0 })) : [],
+        dependentBirthDates: { ...(x.dependentBirthDates ?? {}) }, contributions: { ...(x.contributions ?? {}) }
       }
     })(),
     ri: (() => {

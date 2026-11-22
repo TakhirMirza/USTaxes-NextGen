@@ -1,4 +1,5 @@
 import type { TaxReturnInput } from '../engine/model.ts'
+import type { DeResult } from '../engine/de2025.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { VaResult } from '../engine/va2025.ts'
 import type { MdResult } from '../engine/md2025.ts'
@@ -70,6 +71,7 @@ import type { MtResult } from '../engine/mt2025.ts'
 import { buildMtPacket } from './mt2025.ts'
 import type { RiResult } from '../engine/ri2025.ts'
 import { buildRiPacket } from './ri2025.ts'
+import { buildDePacket } from './de2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -258,4 +260,8 @@ export function downloadMontanaForms(ret: TaxReturnInput, res: TaxReturnResult, 
 
 export function downloadRhodeIslandForms(ret: TaxReturnInput, res: TaxReturnResult, ri: RiResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildRiPacket(ret, res, ri, preparer).forms, '2025 Rhode Island RI-1040 — USTaxes NextGen', `2025-Rhode-Island-RI-1040-${slug(ret)}.pdf`)
+}
+
+export function downloadDelawareForms(ret: TaxReturnInput, res: TaxReturnResult, de: DeResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildDePacket(ret, res, de, preparer).forms, '2025 Delaware PIT-RES — USTaxes NextGen', `2025-Delaware-PIT-RES-${slug(ret)}.pdf`)
 }
