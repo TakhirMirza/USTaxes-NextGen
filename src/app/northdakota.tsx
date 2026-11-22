@@ -6,7 +6,7 @@ import type { NdInput, Owner, Person } from '../engine/model.ts'
 import { computeNorthDakota } from '../engine/nd2025.ts'
 import { buildNdPacket } from '../pdf/nd2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
-import { Check, Choice, MoneyField, Section, TextField, usd } from './fields'
+import { Check, Choice, MoneyField, NumberField, Section, TextField, usd } from './fields'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -14,7 +14,7 @@ const LINES: [line: string, label: string][] = [
   ['1a', 'Federal adjusted gross income'], ['1b', 'Federal taxable income'], ['4a', 'Additions'], ['5', 'U.S. obligation interest'], ['6', 'Net long-term capital gain exclusion (40%)'],
   ['7', 'Native American exempt income'], ['8', 'Railroad Retirement Board benefits'], ['9', 'Peace officer retirement exclusion'], ['11', 'Military pay exclusion'],
   ['12', 'College SAVE deduction'], ['13', 'Qualified dividend exclusion (40%)'], ['14', 'Military retirement exclusion'], ['15', 'Social Security exclusion'],
-  ['16', 'Other subtractions (ND-1SA)'], ['17', 'Total subtractions'], ['18', 'North Dakota taxable income'], ['20', 'Tax'], ['21', 'Credit for tax paid to another state'],
+  ['16', 'Other subtractions (ND-1SA)'], ['3', 'Other additions (ND-1SA)'], ['17', 'Total subtractions'], ['18', 'North Dakota taxable income'], ['20', 'Tax'], ['21', 'Credit for tax paid to another state'],
   ['22', 'Marriage penalty credit'], ['23', 'Other credits (ND-1TC)'], ['25', 'Net tax liability'], ['26', 'North Dakota tax withheld'], ['27', 'Estimated payments'],
   ['28', 'Total payments'], ['30', 'Applied to 2026'], ['31', 'Contributions'], ['32', 'Refund'], ['35', 'Contributions'], ['36', 'Balance due']
 ]
@@ -34,6 +34,7 @@ export function NorthDakotaStep({ ret, set, result, preparer }: StepProps & { pr
   const nd = useMemo(() => computeNorthDakota(ret, result), [ret, result])
   const [pdf, setPdf] = useState<{ busy: boolean; note: string }>({ busy: false, note: '' })
   const put = (p: Partial<NdInput>): void => set((r) => ({ ...r, nd: { ...r.nd, ...p } }))
+  const putSa = (p: Partial<NdInput['sa']>): void => put({ sa: { ...d.sa, ...p } })
   const married = ret.filingStatus === 'mfj'
   const owners: Owner[] = married ? ['taxpayer', 'spouse'] : ['taxpayer']
   const names: Record<Owner, string> = { taxpayer: firstName(ret.taxpayer, 'You'), spouse: firstName(ret.spouse, 'Spouse') }
@@ -87,7 +88,6 @@ export function NorthDakotaStep({ ret, set, result, preparer }: StepProps & { pr
       <Section title="Additions and subtractions" intro="40% of your net long-term capital gain and of your qualified dividends, and your taxable Social Security, are subtracted automatically.">
         <div className="grid">
           <MoneyField label="Planned gift or endowment credit adjustment" hint="Line 2; from Schedule ND-1PG or ND-1QEC" value={d.plannedGift} onChange={(n) => put({ plannedGift: n })} />
-          <MoneyField label="Other additions (Schedule ND-1SA)" hint="Line 3" value={d.otherAdditions} onChange={(n) => put({ otherAdditions: n })} />
           <MoneyField label="Interest on U.S. obligations" hint="Line 5" value={d.usObligationInterest} onChange={(n) => put({ usObligationInterest: n })} />
           <MoneyField label="Long-term gain already in lines 7 or 16" hint="Capital gain worksheet line 6" value={d.gainInOtherLines} onChange={(n) => put({ gainInOtherLines: n })} />
           <MoneyField label="Exempt income of an enrolled tribal member living on a reservation" hint="Line 7" value={d.nativeAmerican} onChange={(n) => put({ nativeAmerican: n })} />
@@ -99,8 +99,27 @@ export function NorthDakotaStep({ ret, set, result, preparer }: StepProps & { pr
           <MoneyField label="Military pay (active, reserve, National Guard)" hint="Line 11" value={d.militaryPay} onChange={(n) => put({ militaryPay: n })} />
           <MoneyField label="North Dakota College SAVE contributions" hint="Line 12; up to $5,000 ($10,000 joint)" value={d.collegeSave} onChange={(n) => put({ collegeSave: n })} />
           <MoneyField label="Military retirement benefits" hint="Line 14" value={d.militaryRetirement} onChange={(n) => put({ militaryRetirement: n })} />
-          <MoneyField label="Other subtractions (Schedule ND-1SA)" hint="Line 16" value={d.otherSubtractions} onChange={(n) => put({ otherSubtractions: n })} />
         </div>
+        <details>
+          <summary>Schedule ND-1SA adjustments</summary>
+          <div className="grid">
+            <MoneyField label="Lump-sum distribution (Form 4972 lines 6 + 10)" hint="ND-1SA line 1" value={d.sa.lumpSum} onChange={(n) => putSa({ lumpSum: n })} />
+            <MoneyField label="Loss from an S corporation taxed as a C corporation" hint="Line 2" value={d.sa.sCorpLoss} onChange={(n) => putSa({ sCorpLoss: n })} />
+            <MoneyField label="Renaissance zone income exemption" hint="Line 4; Schedule RZ" value={d.sa.renaissance} onChange={(n) => putSa({ renaissance: n })} />
+            <MoneyField label="New or expanding business income exemption" hint="Line 5" value={d.sa.newBusiness} onChange={(n) => putSa({ newBusiness: n })} />
+            <MoneyField label="Organ donor expenses" hint="Line 6; up to $10,000" value={d.sa.organDonor} onChange={(n) => putSa({ organDonor: n })} />
+            <MoneyField label="Employee workforce recruitment payments" hint="Line 7; employer statement" value={d.sa.workforce} onChange={(n) => putSa({ workforce: n })} />
+            <NumberField label="Stillborn children in 2025" hint="Line 8a; $5,241 each" max={10} value={d.sa.stillborn} onChange={(n) => putSa({ stillborn: n })} />
+            {d.sa.stillborn > 0 && <>
+              <TextField label="Fetal death certificate number" hint="Line 8b; 11 digits" autoComplete="off" value={d.sa.stillbornCertificate} onChange={(s) => putSa({ stillbornCertificate: s })} />
+              <TextField label="Date of death" hint="Line 8c" placeholder="mm/dd/yyyy" autoComplete="off" value={d.sa.stillbornDate} onChange={(s) => putSa({ stillbornDate: s })} />
+            </>}
+            <MoneyField label="Employer college expense reimbursement in W-2 wages" hint="Line 9" value={d.sa.collegeReimbursement} onChange={(n) => putSa({ collegeReimbursement: n })} />
+            <MoneyField label="Income from an S corporation taxed as a C corporation" hint="Line 10" value={d.sa.sCorpIncome} onChange={(n) => putSa({ sCorpIncome: n })} />
+            <Check label="You or your spouse own 50% or more of real property in North Dakota" hint="Required with lines 4 and 5" checked={d.sa.ownsNdRealProperty} onChange={(v) => putSa({ ownsNdRealProperty: v })} />
+            {d.sa.ownsNdRealProperty && <TextField label="North Dakota counties" autoComplete="off" value={d.sa.counties} onChange={(s) => putSa({ counties: s })} />}
+          </div>
+        </details>
       </Section>
 
       <Section title="Credits" intro={nd.marriage ? `Marriage penalty credit: ${usd(L['22'])}, worked out from both spouses’ qualified income.` : 'The marriage penalty credit (joint filers) is worked out automatically.'}>

@@ -44,6 +44,8 @@ export function ndTax(taxable: number, fs: FS): number {
 
 export interface NdResult {
   lines: Record<string, number>
+  /** Schedule ND-1SA lines. */
+  sa: Record<string, number>
   /** Marriage penalty credit worksheet, or null when it doesn’t apply. */
   marriage: Record<string, number> | null
   /** Net long-term capital gain exclusion worksheet. */
@@ -65,7 +67,21 @@ export function computeNorthDakota(ret: TaxReturnInput, res: TaxReturnResult): N
   L['1a'] = r(f['11a'])
   L['1b'] = r(f['11a'] - f['14'])
   L['2'] = r(pos(d.plannedGift))
-  L['3'] = r(pos(d.otherAdditions))
+  // ── Schedule ND-1SA ──
+  const S: Record<string, number> = {}
+  const a = d.sa
+  S['1'] = r(pos(a.lumpSum))
+  S['2'] = r(pos(a.sCorpLoss))
+  S['3'] = S['1'] + S['2']
+  S['4'] = r(pos(a.renaissance))
+  S['5'] = r(pos(a.newBusiness))
+  S['6'] = Math.min(10000, r(pos(a.organDonor)))
+  S['7'] = r(pos(a.workforce))
+  S['8a'] = 5241 * Math.max(0, Math.round(a.stillborn))
+  S['9'] = r(pos(a.collegeReimbursement))
+  S['10'] = r(pos(a.sCorpIncome))
+  S['11'] = S['4'] + S['5'] + S['6'] + S['7'] + S['8a'] + S['9'] + S['10']
+  L['3'] = S['3']
   L['4a'] = L['2'] + L['3']
   L['4b'] = L['1b'] + L['4a']
   L['5'] = r(pos(d.usObligationInterest))
@@ -90,7 +106,7 @@ export function computeNorthDakota(ret: TaxReturnInput, res: TaxReturnResult): N
   L['13'] = r(pos(f['3a']) * 0.4)
   L['14'] = r(pos(d.militaryRetirement))
   L['15'] = r(pos(f['6b'] - pos(d.rrbTier1InSs)))
-  L['16'] = r(pos(d.otherSubtractions))
+  L['16'] = S['11']
   L['17'] = ['5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16'].reduce((s, k) => s + L[k], 0)
   L['18'] = pos(L['4b'] - L['17'])
   L['19'] = L['18']
@@ -157,7 +173,12 @@ export function computeNorthDakota(ret: TaxReturnInput, res: TaxReturnResult): N
   // ── Notes ──
   attach.push('A complete copy of your 2025 federal return')
   if (L['26'] > 0) attach.push('W-2s, 1099s and North Dakota Schedules K-1 showing North Dakota withholding')
-  if (L['3'] + L['16'] > 0) attach.push('Schedule ND-1SA (statutory adjustments)')
+  if (S['4'] + S['5'] > 0) attach.push('Property Tax Clearance Record from each county where you own 50% or more of real property')
+  if (S['4'] > 0) attach.push('Schedule RZ (renaissance zone)')
+  if (S['7'] > 0 || S['9'] > 0) attach.push('Your employer’s statement (workforce recruitment / college expense reimbursement)')
+  if (S['6'] > 0) issues.push('The organ donor deduction is limited to $10,000 of qualified expenses.')
+  if (S['8a'] > 0 && !/^\d{11}$/.test(a.stillbornCertificate.replace(/\D/g, ''))) issues.push('Enter the 11-digit certificate number from the Certification of Fetal Death (ND-1SA line 8b).')
+  if ((S['4'] + S['5'] > 0) && a.ownsNdRealProperty && !a.counties.trim()) issues.push('ND-1SA: list each North Dakota county where you or your spouse own 50% or more of real property.')
   if (L['21'] > 0) attach.push('Schedule ND-1CR and a copy of the other state’s return')
   if (L['23'] > 0) attach.push('Schedule ND-1TC (tax credits)')
   if (L['2'] > 0) attach.push('Schedule ND-1PG / ND-1QEC (planned gift or endowment credit)')
@@ -168,5 +189,5 @@ export function computeNorthDakota(ret: TaxReturnInput, res: TaxReturnResult): N
   if (L['13'] > 0) issues.push('Line 13 excludes 40% of your qualified dividends.')
   if (L['6'] > 0) issues.push('Line 6 excludes 40% of your net long-term capital gain.')
   if (marriage && L['22'] > 0) issues.push(`Marriage penalty credit: ${'$'}${L['22']} (both spouses had qualified income over $47,550).`)
-  return { lines: L, marriage, cg, issues, attach }
+  return { lines: L, sa: S, marriage, cg, issues, attach }
 }

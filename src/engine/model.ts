@@ -2337,10 +2337,14 @@ export interface NdInput {
   /** Item B: 5-digit school district code; Item C: income source code (1–12). */
   schoolCode: string
   incomeSourceCode: string
-  /** Lines 2 and 3 (additions), 16 (ND-1SA subtractions). */
+  /** Line 2: planned gift / endowment credit adjustment. */
   plannedGift: number
-  otherAdditions: number
-  otherSubtractions: number
+  /** Schedule ND-1SA (lines 3 and 16 of ND-1). */
+  sa: {
+    lumpSum: number; sCorpLoss: number; renaissance: number; newBusiness: number; organDonor: number; workforce: number
+    stillborn: number; stillbornCertificate: string; stillbornDate: string; collegeReimbursement: number; sCorpIncome: number
+    ownsNdRealProperty: boolean; counties: string
+  }
   usObligationInterest: number
   /** Capital gain worksheet line 6: part of the net long-term gain already in lines 7 or 16. */
   gainInOtherLines: number
@@ -2363,9 +2367,77 @@ export interface NdInput {
 }
 
 export const emptyNd = (): NdInput => ({
-  w2: {}, r1099: {}, otherWithholding: 0, schoolCode: '', incomeSourceCode: '', plannedGift: 0, otherAdditions: 0, otherSubtractions: 0, usObligationInterest: 0,
+  w2: {}, r1099: {}, otherWithholding: 0, schoolCode: '', incomeSourceCode: '', plannedGift: 0,
+  sa: { lumpSum: 0, sCorpLoss: 0, renaissance: 0, newBusiness: 0, organDonor: 0, workforce: 0, stillborn: 0, stillbornCertificate: '', stillbornDate: '', collegeReimbursement: 0, sCorpIncome: 0, ownsNdRealProperty: false, counties: '' }, usObligationInterest: 0,
   gainInOtherLines: 0, nativeAmerican: 0, railroad: { taxpayer: 0, spouse: 0 }, rrbTier1InSs: 0, peaceOfficer: 0, militaryPay: 0, collegeSave: 0, militaryRetirement: 0,
   otherStateCredit: 0, otherCredits: 0, estimatedPayments: 0, creditForward: 0, contributions: {}, consent1099g: false
+})
+
+export interface MoInput {
+  /** Missouri W-2 and 1099-R details by id (line 37). */
+  w2: Record<string, StateStatement>
+  r1099: Record<string, StateStatement>
+  /** County of residence (as on the form’s list). */
+  county: string
+  /** Married filing combined: the spouse’s share of federal AGI (line 1S); null = worked out from who earned what. */
+  spouseAgi: number | null
+  disabled: Record<Owner, boolean>
+  /** Taxable Social Security of a person under 62 that is disability (SSDI). */
+  ssDisability: Record<Owner, boolean>
+  /** MO-A Part 1 additions (lines 1, 2) and subtractions (8, 9, 10, 11 with railroad, 12, 13, 15). */
+  muniInterest: Record<Owner, number>
+  otherAdditions: Record<Owner, number>
+  usInterest: Record<Owner, number>
+  stateRefund: Record<Owner, number>
+  militaryRetirement: Record<Owner, number>
+  railroad: Record<Owner, number>
+  otherSubtractions: Record<Owner, number>
+  tuition529: Record<Owner, number>
+  healthPremiums: Record<Owner, number>
+  able: Record<Owner, number>
+  /** MO-A Part 3 Section A: taxable public (government) pensions. */
+  publicPension: Record<Owner, number>
+  /** MO-A Part 2 line 10: city earnings taxes included in state and local income taxes. */
+  earningsTax: number
+  /** Lines 16–24. */
+  ltcInsurance: number
+  healthShare: number
+  activeDuty: number
+  inactiveDuty: number
+  farmland: number
+  foster: number
+  /** MO-CR: credit for income tax paid to another state. */
+  otherState: { state: string; owner: Owner; income: number; tax: number }
+  otherTaxes: number
+  estimatedPayments: number
+  extensionPayment: number
+  /** Line 42: MO-TC total. */
+  miscCredits: number
+  creditForward: number
+  mostDeposit: number
+  /** Line 51 trust funds by letter (a–l). */
+  trustFunds: Record<string, number>
+  /** MO-PTS / MO-CRP property tax credit (65+, 100% disabled, 60+ surviving spouse). */
+  pts: {
+    claim: boolean; qualification: 'A' | 'B' | 'C' | 'D'; owner: boolean; propertyTax: number; rent: number; rentPercent: number
+    otherIncome: number; veteransBenefits: number; publicAssistance: number; nontaxableRrb: number
+    rentalAddress: string; rentalApt: string; rentalCity: string; rentalZip: string; landlordName: string; landlordAddress: string; landlordCity: string; landlordState: string; landlordZip: string; landlordPhone: string
+  }
+  birthDates: Record<Owner, string>
+}
+
+export const emptyMo = (): MoInput => ({
+  w2: {}, r1099: {}, county: '', spouseAgi: null, disabled: { taxpayer: false, spouse: false }, ssDisability: { taxpayer: false, spouse: false },
+  muniInterest: { taxpayer: 0, spouse: 0 }, otherAdditions: { taxpayer: 0, spouse: 0 }, usInterest: { taxpayer: 0, spouse: 0 }, stateRefund: { taxpayer: 0, spouse: 0 },
+  militaryRetirement: { taxpayer: 0, spouse: 0 }, railroad: { taxpayer: 0, spouse: 0 }, otherSubtractions: { taxpayer: 0, spouse: 0 }, tuition529: { taxpayer: 0, spouse: 0 },
+  healthPremiums: { taxpayer: 0, spouse: 0 }, able: { taxpayer: 0, spouse: 0 }, publicPension: { taxpayer: 0, spouse: 0 }, earningsTax: 0,
+  ltcInsurance: 0, healthShare: 0, activeDuty: 0, inactiveDuty: 0, farmland: 0, foster: 0, otherState: { state: '', owner: 'taxpayer', income: 0, tax: 0 },
+  otherTaxes: 0, estimatedPayments: 0, extensionPayment: 0, miscCredits: 0, creditForward: 0, mostDeposit: 0, trustFunds: {},
+  pts: {
+    claim: false, qualification: 'A', owner: false, propertyTax: 0, rent: 0, rentPercent: 100, otherIncome: 0, veteransBenefits: 0, publicAssistance: 0, nontaxableRrb: 0,
+    rentalAddress: '', rentalApt: '', rentalCity: '', rentalZip: '', landlordName: '', landlordAddress: '', landlordCity: '', landlordState: '', landlordZip: '', landlordPhone: ''
+  },
+  birthDates: { taxpayer: '', spouse: '' }
 })
 
 export interface MiInput {
@@ -2551,6 +2623,7 @@ export interface TaxReturnInput {
   de: DeInput
   vt: VtInput
   nd: NdInput
+  mo: MoInput
 }
 
 let counter = 0
@@ -2768,7 +2841,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   ky: emptyKy(),
   ok: emptyOk(),
   ct: emptyCt(),
-  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm(), hi: emptyHi(), id: emptyId(), me: emptyMe(), mt: emptyMt(), ri: emptyRi(), de: emptyDe(), vt: emptyVt(), nd: emptyNd()
+  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm(), hi: emptyHi(), id: emptyId(), me: emptyMe(), mt: emptyMt(), ri: emptyRi(), de: emptyDe(), vt: emptyVt(), nd: emptyNd(), mo: emptyMo()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -2940,9 +3013,20 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
         libraries: pair('libraries'), violence: pair('violence'), electionFund: pair('electionFund'), occupation: { ...e.occupation, ...(x.occupation ?? {}) }
       }
     })(),
+    mo: (() => {
+      const e = emptyMo(); const x: Partial<MoInput> = r.mo ?? {}
+      const own = (k: keyof MoInput) => ({ ...(e[k] as object), ...((x[k] ?? {}) as object) })
+      return {
+        ...e, ...x, w2: normalizeStatements(x.w2), r1099: normalizeStatements(x.r1099), spouseAgi: typeof x.spouseAgi === 'number' ? x.spouseAgi : null,
+        disabled: own('disabled'), ssDisability: own('ssDisability'), muniInterest: own('muniInterest'), otherAdditions: own('otherAdditions'), usInterest: own('usInterest'),
+        stateRefund: own('stateRefund'), militaryRetirement: own('militaryRetirement'), railroad: own('railroad'), otherSubtractions: own('otherSubtractions'),
+        tuition529: own('tuition529'), healthPremiums: own('healthPremiums'), able: own('able'), publicPension: own('publicPension'), otherState: own('otherState'),
+        trustFunds: { ...(x.trustFunds ?? {}) }, pts: own('pts'), birthDates: own('birthDates')
+      } as MoInput
+    })(),
     nd: (() => {
       const e = emptyNd(); const x: Partial<NdInput> = r.nd ?? {}
-      return { ...e, ...x, w2: normalizeStatements(x.w2), r1099: normalizeStatements(x.r1099), railroad: { ...e.railroad, ...(x.railroad ?? {}) }, contributions: { ...(x.contributions ?? {}) } }
+      return { ...e, ...x, w2: normalizeStatements(x.w2), r1099: normalizeStatements(x.r1099), railroad: { ...e.railroad, ...(x.railroad ?? {}) }, sa: { ...e.sa, ...(x.sa ?? {}) }, contributions: { ...(x.contributions ?? {}) } }
     })(),
     vt: (() => {
       const e = emptyVt(); const x: Partial<VtInput> = r.vt ?? {}

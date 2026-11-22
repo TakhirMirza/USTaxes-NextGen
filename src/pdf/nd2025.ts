@@ -1,6 +1,6 @@
 /**
  * Fills the official 2025 North Dakota Form ND-1 (public/forms/2025/nd-nd1.pdf: the Office of State Tax
- * Commissioner’s fill-in form, SFN 28702 12-2025). Whole dollars.
+ * Commissioner’s fill-in form, SFN 28702 12-2025) and Schedule ND-1SA (SFN 28710). Whole dollars.
  */
 import type { TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
@@ -84,7 +84,33 @@ export function formNd1(ret: TaxReturnInput, nd: NdResult, preparer?: PreparerIn
   return { id: 'nd-1', file: 'nd-nd1.pdf', title: 'North Dakota Form ND-1', values: v }
 }
 
+export function formNd1sa(ret: TaxReturnInput, nd: NdResult): FormFill | null {
+  const S = nd.sa
+  if (S['3'] + S['11'] === 0) return null
+  const a = ret.nd.sa
+  const v: Record<string, FieldValue> = {}
+  const money = (k: string, always = false): void => {
+    const x = Math.round(S[k] ?? 0)
+    if (x !== 0 || always) v[`Line ${k}`] = String(x)
+  }
+  const fs = ret.filingStatus
+  v.Name = upper(fs === 'mfj' ? `${ret.taxpayer.firstName} & ${ret.spouse.firstName} ${ret.taxpayer.lastName}` : `${ret.taxpayer.firstName} ${ret.taxpayer.lastName}`)
+  v.SSN = ssn(ret.taxpayer.ssn)
+  if (S['4'] + S['5'] > 0 || a.ownsNdRealProperty) {
+    v[a.ownsNdRealProperty ? 'Yes' : 'No'] = true
+    if (a.ownsNdRealProperty && a.counties.trim()) v['County Name'] = upper(a.counties)
+  }
+  for (const k of ['1', '2', '4', '5', '6', '7', '8a', '9', '10']) money(k)
+  if (S['3'] > 0) money('3', true)
+  if (S['8a'] > 0) {
+    if (a.stillbornCertificate.trim()) v['Line 8b'] = digits(a.stillbornCertificate).slice(0, 11)
+    if (a.stillbornDate.trim()) v['Line 8c'] = a.stillbornDate.trim()
+  }
+  if (S['11'] > 0) money('11', true)
+  return { id: 'nd-1sa', file: 'nd-nd1sa.pdf', title: 'North Dakota Schedule ND-1SA', values: v }
+}
+
 export function buildNdPacket(ret: TaxReturnInput, res: TaxReturnResult, nd: NdResult, preparer?: PreparerInfo | null): FormPacket {
   void res
-  return { forms: [formNd1(ret, nd, preparer)], notIncluded: nd.attach }
+  return { forms: [formNd1(ret, nd, preparer), formNd1sa(ret, nd)].filter((x): x is FormFill => x !== null), notIncluded: nd.attach }
 }
