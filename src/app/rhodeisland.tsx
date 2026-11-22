@@ -1,6 +1,6 @@
 /**
  * The Rhode Island part of the State step: RI-1040 with Schedules W, E, M and CR for full-year residents, and the
- * RI-1040H property tax relief credit amount.
+ * RI-1040H property tax relief claim.
  */
 import { ReactElement, useMemo, useState } from 'react'
 import type { Owner, Person, RiInput } from '../engine/model.ts'
@@ -178,7 +178,7 @@ export function RhodeIslandStep({ ret, set, result, preparer }: StepProps & { pr
         </tbody></table>
       </Section>
 
-      <Section title="Rhode Island forms" intro="Filled in on this device from the official Rhode Island Division of Taxation RI-1040 with Schedules W and E, and Schedules M and CR.">
+      <Section title="Rhode Island forms" intro="Filled in on this device from the official Rhode Island Division of Taxation RI-1040 with Schedules W and E, Schedules M and CR, and RI-1040H.">
         <ul className="form-list">{packet.forms.map((f) => <li key={f.id}>{f.title}</li>)}</ul>
         {packet.notIncluded.length > 0 && (
           <div className="note is-warn"><strong>Finish or include these yourself.</strong><ul>{packet.notIncluded.map((n) => <li key={n}>{n}</li>)}</ul></div>

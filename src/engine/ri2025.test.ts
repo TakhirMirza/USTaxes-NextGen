@@ -131,3 +131,22 @@ test('RI-1040 with Schedules W, E and M: every value lands on one field and the 
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 RI')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-RI.pdf`, bytes)
 })
+
+test('RI-1040H fills and builds for a renter 65 or older', async () => {
+  const ss = { ...emptySocialSecurity(), netBenefits: 18000 }
+  const r0 = emptyReturn()
+  const { ri, res, ret } = run(base({ taxpayer: { ...r0.taxpayer, firstName: 'Pat', lastName: 'Doe', ssn: '123456789', age: 70, age65OrOlder: true }, socialSecurity: [ss] }),
+    { birthDates: { taxpayer: '05/06/1955', spouse: '' }, relief: { claim: true, owner: false, propertyTax: 0, rent: 9600, householdSize: 1, dependentsUnder18: 0, publicAssistance: 0, otherNontaxable: 0, disabled: false, landlord: 'Main St Apts' } })
+  const packet = buildRiPacket(ret, res, ri)
+  assert.deepEqual(packet.forms.map((f) => f.id), ['ri1040', 'ri1040h'])
+  const v = packet.forms[1].values
+  assert.equal(v['topmostSubform[0].Page1[0].PropTaxReliefCredit[0]'], '700')
+  assert.equal(v['topmostSubform[0].Page1[0].IncomePct[1]'], '6')
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, packet.forms, load, '2025 RI-H')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-RIH.pdf`, bytes)
+})

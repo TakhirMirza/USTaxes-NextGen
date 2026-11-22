@@ -16,6 +16,11 @@ const nameParts = (first: string): [string, string] => {
   const mi = parts.length > 1 && /^[A-Za-z]\.?$/.test(parts[parts.length - 1]) ? parts.pop() ?? '' : ''
   return [parts.join(' '), mi.replace('.', '')]
 }
+/** A date written into a box that already prints the two slashes. */
+const slashed = (s: string): string => {
+  const m = s.trim().match(/^(\d{1,2})\D(\d{1,2})\D(\d{4})$/)
+  return m ? `${m[1].padStart(2, "0")}   ${m[2].padStart(2, "0")}   ${m[3]}` : s.trim()
+}
 const mmddyyyy = (s: string): string => {
   const m = s.trim().match(/^(\d{1,2})\D(\d{1,2})\D(\d{4})$/)
   return m ? `${m[1].padStart(2, '0')}/${m[2].padStart(2, '0')}/${m[3]}` : s.trim()
@@ -213,12 +218,12 @@ function formRiSchM(ret: TaxReturnInput, ri: RiResult): FormFill {
   amount(v, 'Page1', 'MilitaryPensions', M['1v'])
   const joint = ret.filingStatus === 'mfj'
   if (M['1s'] > 0) {
-    if (d.birthDates.taxpayer.trim()) v[`${P1}PrimaryDOB[0]`] = mmddyyyy(d.birthDates.taxpayer)
-    if (joint && d.birthDates.spouse.trim()) v[`${P1}SpouseDOB[0]`] = mmddyyyy(d.birthDates.spouse)
+    if (d.birthDates.taxpayer.trim()) v[`${P1}PrimaryDOB[0]`] = slashed(d.birthDates.taxpayer)
+    if (joint && d.birthDates.spouse.trim()) v[`${P1}SpouseDOB[0]`] = slashed(d.birthDates.spouse)
   }
   if (M['1t'] > 0) {
-    if (d.birthDates.taxpayer.trim()) v[`${P1}PrimaryDOB[1]`] = mmddyyyy(d.birthDates.taxpayer)
-    if (joint && d.birthDates.spouse.trim()) v[`${P1}SpouseDOB[1]`] = mmddyyyy(d.birthDates.spouse)
+    if (d.birthDates.taxpayer.trim()) v[`${P1}PrimaryDOB[1]`] = slashed(d.birthDates.taxpayer)
+    if (joint && d.birthDates.spouse.trim()) v[`${P1}SpouseDOB[1]`] = slashed(d.birthDates.spouse)
   }
   amount(v, 'Page1', 'NetDecreasing', M['1y'], true)
   amount(v, 'Page2', 'ObligationsotherState', M['2a'])
@@ -236,6 +241,79 @@ function formRiSchCR(ret: TaxReturnInput, ri: RiResult): FormFill {
   return { id: 'rischcr', file: 'ri-schcr.pdf', title: 'RI Schedule CR', values: v }
 }
 
+function formRi1040H(ret: TaxReturnInput, ri: RiResult): FormFill {
+  const H = ri.h ?? {}
+  const d = ret.ri
+  const rl = d.relief
+  const c = ret.contact
+  const tp = ret.taxpayer
+  const sp = ret.spouse
+  const joint = ret.filingStatus === 'mfj'
+  const v: Record<string, FieldValue> = {}
+  const P1 = `${T}Page1[0].`
+  const [tf, tmi] = nameParts(tp.firstName)
+  v[`${P1}PrimFirstName[0]`] = upper(tf)
+  if (tmi) v[`${P1}PrimMidInitial[0]`] = upper(tmi)
+  v[`${P1}PrimLastName[0]`] = upper(tp.lastName)
+  v[`${P1}PrimTaxpayerSSN[0]`] = digits(tp.ssn)
+  if (joint) {
+    const [sf, smi] = nameParts(sp.firstName)
+    v[`${P1}SecFirstName[0]`] = upper(sf)
+    if (smi) v[`${P1}SecMidInitial[0]`] = upper(smi)
+    v[`${P1}SecLastName[0]`] = upper(sp.lastName)
+    v[`${P1}SecTaxpayerSSN[0]`] = digits(sp.ssn)
+  }
+  v[`${P1}AddressLine1[0]`] = upper(c.street)
+  if (c.apt.trim()) v[`${P1}AddressLine2[0]`] = upper(c.apt)
+  if (c.phone.trim()) v[`${P1}DayTimePhoneNumber[0]`] = digits(c.phone).slice(-10)
+  v[`${P1}City[0]`] = upper(c.city)
+  v[`${P1}State[0]`] = upper(c.state).slice(0, 2)
+  v[`${P1}ZipCode[0]`] = digits(c.zip).slice(0, 5)
+  v[`${P1}CityTownLegalResidence[0]`] = upper(c.city)
+  // Part 1: eligibility answers (the credit is only computed when they are all yes).
+  const ok = (H['13'] ?? 0) > 0
+  for (const k of ['Domociled', 'PropertyTax', 'CurrentTaxes', 'Age65']) v[`${P1}${k}-${ok ? 'Y' : 'N'}[0]`] = true
+  v[`${P1}${ok ? 'income30000-Y' : 'Income30000-N'}[0]`] = true
+  // Part 2.
+  amount(v, 'Page1', 'PublicAssistance', H['29'], true)
+  amount(v, 'Page1', 'TotalHouseholdIncome', H['32'], true)
+  if (d.birthDates.taxpayer.trim()) v[`${P1}PrimaryDOB[0]`] = slashed(d.birthDates.taxpayer)
+  if (joint && d.birthDates.spouse.trim()) v[`${P1}SpouseDOB[0]`] = slashed(d.birthDates.spouse)
+  v[`${P1}Disabled-${rl.disabled ? 'Y' : 'N'}[0]`] = true
+  v[`${P1}PersonsInHousehold[0]`] = String(Math.max(1, Math.round(rl.householdSize)))
+  v[`${P1}Dependents[0]`] = String(Math.max(0, Math.round(rl.dependentsUnder18)))
+  const pct = (n: number | undefined): string => `${Math.round((n ?? 0) * 100)}`
+  if (rl.owner) {
+    amount(v, 'Page1', 'PropertyTaxes', H['2'], true)
+    v[`${P1}IncomePct[0]`] = pct(H['3'])
+    amount(v, 'Page1', 'HomeownerCalc', H['4'], true)
+    amount(v, 'Page1', 'TentativeCredit', H['5'], true)
+    amount(v, 'Page1', 'HomeownerCredit', H['6'], true)
+  } else {
+    if (rl.landlord.trim()) v[`${P1}LandlordName[0]`] = upper(rl.landlord)
+    amount(v, 'Page1', 'Rent', H['7'], true)
+    amount(v, 'Page1', 'RenterCalc', H['8'], true)
+    v[`${P1}IncomePct[1]`] = pct(H['9'])
+    amount(v, 'Page1', 'RenterCalcB', H['10'], true)
+    amount(v, 'Page1', 'RentTentativeCredit', H['11'], true)
+    amount(v, 'Page1', 'RenterCredit', H['12'], true)
+  }
+  amount(v, 'Page1', 'PropTaxReliefCredit', H['13'], true)
+  // Page 2: household income worksheet.
+  header(v, ret, 'Page2')
+  const rows: [string, string][] = [['14', 'Wages'], ['15', 'Interest'], ['18', 'BusinessIncome'], ['19', 'SaleProperty'], ['20', 'IRAPensions'], ['21', 'RentalRE'], ['23', 'Unemployment'], ['24', 'SocialSecurity'], ['25', 'OtherIncome']]
+  for (const [k, f] of rows) amount(v, 'Page2', f, H[k])
+  amount(v, 'Page2', 'TotalIncome', H['26'], true)
+  amount(v, 'Page2', 'Deductions', H['27'])
+  amount(v, 'Page2', 'AdjustedIncome', H['28'], true)
+  amount(v, 'Page2', 'PublicAssistance', H['29'])
+  amount(v, 'Page2', 'OtherNontaxableIncome', H['30'])
+  amount(v, 'Page2', 'Addback', H['31'])
+  amount(v, 'Page2', 'TotalHouseholdIncome', H['32'], true)
+  if (c.phone.trim()) v[`${T}Page2[0].TPPhone[0]`] = digits(c.phone).slice(-10)
+  return { id: 'ri1040h', file: 'ri-1040h.pdf', title: 'Rhode Island RI-1040H', values: v }
+}
+
 export function buildRiPacket(ret: TaxReturnInput, res: TaxReturnResult, ri: RiResult, preparer?: PreparerInfo | null): FormPacket {
   void res
   const forms = [formRi1040(ret, ri, preparer)]
@@ -244,7 +322,7 @@ export function buildRiPacket(ret: TaxReturnInput, res: TaxReturnResult, ri: RiR
     if (a.startsWith('RI Schedule M')) forms.push(formRiSchM(ret, ri))
     else if (a.startsWith('RI Schedule CR')) { forms.push(formRiSchCR(ret, ri)); notIncluded.push('RI Schedule CR lines 1–8: enter each credit yourself (only the total is filled) and attach the credit forms and certificates') }
     else if (a.startsWith('RI Schedule W') || a.startsWith('RI Schedule E')) notIncluded.push(a.startsWith('RI Schedule W') ? 'Every W-2 and 1099 with Rhode Island withholding (Schedule W is filled in)' : 'Schedule E is filled in: check each dependent’s date of birth')
-    else if (a.startsWith('RI-1040H')) notIncluded.push(`Form RI-1040H (property tax relief, $${ri.lines['14c'].toFixed(2)} on line 14c): fill in the official form and attach ${d(ret)}`)
+    else if (a.startsWith('RI-1040H')) { forms.push(formRi1040H(ret, ri)); notIncluded.push(`With RI-1040H, attach ${d(ret)}`) }
     else notIncluded.push(a)
   }
   return { forms, notIncluded }
