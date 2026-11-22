@@ -66,6 +66,8 @@ import type { IdResult } from '../engine/id2025.ts'
 import { buildIdPacket } from './id2025.ts'
 import type { MeResult } from '../engine/me2025.ts'
 import { buildMePacket } from './me2025.ts'
+import type { MtResult } from '../engine/mt2025.ts'
+import { buildMtPacket } from './mt2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -246,4 +248,8 @@ export function downloadIdahoForms(ret: TaxReturnInput, res: TaxReturnResult, id
 
 export function downloadMaineForms(ret: TaxReturnInput, res: TaxReturnResult, me: MeResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildMePacket(ret, res, me, preparer).forms, '2025 Maine Form 1040ME — USTaxes NextGen', `2025-Maine-1040ME-${slug(ret)}.pdf`)
+}
+
+export function downloadMontanaForms(ret: TaxReturnInput, res: TaxReturnResult, mt: MtResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildMtPacket(ret, res, mt, preparer).forms, '2025 Montana Form 2 — USTaxes NextGen', `2025-Montana-Form-2-${slug(ret)}.pdf`)
 }

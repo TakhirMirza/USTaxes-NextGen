@@ -2105,6 +2105,51 @@ export const emptyMe = (): MeInput => ({
   occupation: { taxpayer: '', spouse: '' }
 })
 
+export interface MtInput {
+  w2: Record<string, StateStatement>
+  /** Line 11b: Montana tax withheld on 1099s; 11c / 11d: pass-through entity credit and K-1 withholding. */
+  withholding1099: number
+  passThroughCredit: number
+  k1Withholding: number
+  estimatedPayments: number
+  priorYearApplied: number
+  extensionPayment: number
+  /** Schedule I additions. */
+  otherStateBondInterest: number
+  otherAdditions: number
+  otherAdditionsCode: string
+  /** Schedule I subtractions. */
+  stateRefund: number
+  usObligationInterest: number
+  activeDutyPay: number
+  workingMilitaryRetirement: number
+  tuition529: number
+  ableDeposits: number
+  tier1Railroad: number
+  tier2Railroad: number
+  otherSubtractions: number
+  otherSubtractionsCode: string
+  /** Schedule III. */
+  otherStateCredit: { state: string; amount: number }
+  otherNonrefundableCredits: number
+  refundableCredits: number
+  /** Schedule 2EC: elderly homeowner/renter credit (62 or older). */
+  elderly: { claim: boolean; householdSize: number; otherHouseholdIncome: number; governmentAssistance: number; propertyTaxBilled: number; rentPaid: number; physicalAddress: string }
+  /** Schedule IV line 1a–1d. */
+  contributions: Record<string, number>
+  birthDates: Record<Owner, string>
+  creditForward: number
+}
+
+export const emptyMt = (): MtInput => ({
+  w2: {}, withholding1099: 0, passThroughCredit: 0, k1Withholding: 0, estimatedPayments: 0, priorYearApplied: 0, extensionPayment: 0,
+  otherStateBondInterest: 0, otherAdditions: 0, otherAdditionsCode: '', stateRefund: 0, usObligationInterest: 0, activeDutyPay: 0, workingMilitaryRetirement: 0,
+  tuition529: 0, ableDeposits: 0, tier1Railroad: 0, tier2Railroad: 0, otherSubtractions: 0, otherSubtractionsCode: '',
+  otherStateCredit: { state: '', amount: 0 }, otherNonrefundableCredits: 0, refundableCredits: 0,
+  elderly: { claim: false, householdSize: 1, otherHouseholdIncome: 0, governmentAssistance: 0, propertyTaxBilled: 0, rentPaid: 0, physicalAddress: '' },
+  contributions: {}, birthDates: { taxpayer: '', spouse: '' }, creditForward: 0
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -2283,6 +2328,7 @@ export interface TaxReturnInput {
   hi: HiInput
   id: IdInput
   me: MeInput
+  mt: MtInput
 }
 
 let counter = 0
@@ -2500,7 +2546,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   ky: emptyKy(),
   ok: emptyOk(),
   ct: emptyCt(),
-  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm(), hi: emptyHi(), id: emptyId(), me: emptyMe()
+  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm(), hi: emptyHi(), id: emptyId(), me: emptyMe(), mt: emptyMt()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -2670,6 +2716,13 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       return {
         ...e, ...x, w2: normalizeStatements(x.w2), retirementKind: { ...(x.retirementKind ?? {}) }, disabled: pair('disabled'), schools: pair('schools'),
         libraries: pair('libraries'), violence: pair('violence'), electionFund: pair('electionFund'), occupation: { ...e.occupation, ...(x.occupation ?? {}) }
+      }
+    })(),
+    mt: (() => {
+      const e = emptyMt(); const x: Partial<MtInput> = r.mt ?? {}
+      return {
+        ...e, ...x, w2: normalizeStatements(x.w2), otherStateCredit: { ...e.otherStateCredit, ...(x.otherStateCredit ?? {}) }, elderly: { ...e.elderly, ...(x.elderly ?? {}) },
+        contributions: { ...(x.contributions ?? {}) }, birthDates: { ...e.birthDates, ...(x.birthDates ?? {}) }
       }
     })(),
     me: (() => {
