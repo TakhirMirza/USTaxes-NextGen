@@ -2051,6 +2051,60 @@ export const emptyId = (): IdInput => ({
   donateFoodCredit: false, donations: {}, creditForward: 0
 })
 
+/** Maine Schedule 1S line 4: how a 1099-R counts for the pension income deduction. */
+export type MePensionKind = 'eligible' | 'military' | 'none'
+export interface MeInput {
+  w2: Record<string, StateStatement>
+  withholdingOther: number
+  /** Line 25b: 2025 estimated tax, 2024 overpayment applied, extension and real estate withholding payments. */
+  estimatedPayments: number
+  pensionKind: Record<string, MePensionKind>
+  /** Schedule 1A. */
+  otherStateBondInterest: number
+  mainePersContributions: number
+  otherAdditions: number
+  /** Schedule 1S. */
+  usObligationInterest: number
+  stateRefund: number
+  mainePersPickup: number
+  /** Line 8: 529 contributions and the number of beneficiaries ($1,000 each). */
+  tuition529: number
+  tuitionBeneficiaries: number
+  maineBondInterest: number
+  otherSubtractions: number
+  /** Schedule A: part of child care expenses paid to a Star 5 (quality certificate) provider, credited at 50%. */
+  star5Expenses: number
+  otherRefundableCredits: number
+  otherNonrefundableCredits: number
+  otherJurisdiction: { name: string; income: number; tax: number }
+  /** Schedule PTFC/STFC. */
+  birthDates: Record<Owner, string>
+  propertyTax: number
+  rentPaid: number
+  rentIncludesUtilities: boolean
+  /** Known amount of heat / utilities / furniture in the rent; null = use 15%. */
+  rentUtilities: number | null
+  landlord: string
+  propertyLocation: string
+  veteranDisabled: boolean
+  /** Lines 30–31. */
+  useTax: number
+  contributions: number
+  cleanElection: Record<Owner, boolean>
+  farmingFishing: boolean
+  creditForward: number
+  occupation: Record<Owner, string>
+}
+
+export const emptyMe = (): MeInput => ({
+  w2: {}, withholdingOther: 0, estimatedPayments: 0, pensionKind: {}, otherStateBondInterest: 0, mainePersContributions: 0, otherAdditions: 0,
+  usObligationInterest: 0, stateRefund: 0, mainePersPickup: 0, tuition529: 0, tuitionBeneficiaries: 0, maineBondInterest: 0, otherSubtractions: 0,
+  star5Expenses: 0, otherRefundableCredits: 0, otherNonrefundableCredits: 0, otherJurisdiction: { name: '', income: 0, tax: 0 },
+  birthDates: { taxpayer: '', spouse: '' }, propertyTax: 0, rentPaid: 0, rentIncludesUtilities: false, rentUtilities: null, landlord: '', propertyLocation: '',
+  veteranDisabled: false, useTax: 0, contributions: 0, cleanElection: { taxpayer: false, spouse: false }, farmingFishing: false, creditForward: 0,
+  occupation: { taxpayer: '', spouse: '' }
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -2228,6 +2282,7 @@ export interface TaxReturnInput {
   nm: NmInput
   hi: HiInput
   id: IdInput
+  me: MeInput
 }
 
 let counter = 0
@@ -2445,7 +2500,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   ky: emptyKy(),
   ok: emptyOk(),
   ct: emptyCt(),
-  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm(), hi: emptyHi(), id: emptyId()
+  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm(), hi: emptyHi(), id: emptyId(), me: emptyMe()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -2615,6 +2670,14 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       return {
         ...e, ...x, w2: normalizeStatements(x.w2), retirementKind: { ...(x.retirementKind ?? {}) }, disabled: pair('disabled'), schools: pair('schools'),
         libraries: pair('libraries'), violence: pair('violence'), electionFund: pair('electionFund'), occupation: { ...e.occupation, ...(x.occupation ?? {}) }
+      }
+    })(),
+    me: (() => {
+      const e = emptyMe(); const x: Partial<MeInput> = r.me ?? {}
+      return {
+        ...e, ...x, w2: normalizeStatements(x.w2), pensionKind: { ...(x.pensionKind ?? {}) }, otherJurisdiction: { ...e.otherJurisdiction, ...(x.otherJurisdiction ?? {}) },
+        birthDates: { ...e.birthDates, ...(x.birthDates ?? {}) }, cleanElection: { ...e.cleanElection, ...(x.cleanElection ?? {}) }, occupation: { ...e.occupation, ...(x.occupation ?? {}) },
+        rentUtilities: typeof x.rentUtilities === 'number' ? x.rentUtilities : null
       }
     })(),
     id: (() => {
