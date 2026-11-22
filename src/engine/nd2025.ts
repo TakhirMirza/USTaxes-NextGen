@@ -201,7 +201,7 @@ export function computeNorthDakota(ret: TaxReturnInput, res: TaxReturnResult): N
   if (S['6'] > 0) issues.push('The organ donor deduction is limited to $10,000 of qualified expenses.')
   if (S['8a'] > 0 && !/^\d{11}$/.test(a.stillbornCertificate.replace(/\D/g, ''))) issues.push('Enter the 11-digit certificate number from the Certification of Fetal Death (ND-1SA line 8b).')
   if ((S['4'] + S['5'] > 0) && a.ownsNdRealProperty && !a.counties.trim()) issues.push('ND-1SA: list each North Dakota county where you or your spouse own 50% or more of real property.')
-  if (L['21'] > 0) attach.push('Schedule ND-1CR (2025 revision) and a copy of the other state’s return')
+  if (L['21'] > 0) attach.push('Schedule ND-1CR and a copy of the other state’s return')
   if (L['23'] > 0) attach.push('The schedules and documentation listed on Schedule ND-1TC for each credit (ND-1FC, ND-1PG, ND-1QEC, ND-1PSC, ND-1AC, RZ, …)')
   const needsClearance = ['2', '3', '4', '6', '7', '8a', '9a', '9b', '11a', '17a', '17b', '21'].some((k) => T[k] > 0)
   if (needsClearance) attach.push('Property Tax Clearance Record from each county where you own 50% or more of real property (ND-1TC)')

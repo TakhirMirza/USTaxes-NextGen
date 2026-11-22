@@ -1,6 +1,6 @@
 /**
  * Fills the official 2025 North Dakota Form ND-1 (public/forms/2025/nd-nd1.pdf: the Office of State Tax
- * Commissioner’s fill-in form, SFN 28702 12-2025) Schedules ND-1SA (SFN 28710) and ND-1TC (SFN 28742). Whole dollars.
+ * Commissioner’s fill-in form, SFN 28702 12-2025) Schedules ND-1SA (SFN 28710), ND-1CR (SFN 28721) and ND-1TC (SFN 28742). Whole dollars.
  */
 import type { TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
@@ -110,6 +110,23 @@ export function formNd1sa(ret: TaxReturnInput, nd: NdResult): FormFill | null {
   return { id: 'nd-1sa', file: 'nd-nd1sa.pdf', title: 'North Dakota Schedule ND-1SA', values: v }
 }
 
+/** Schedule ND-1CR has no form fields; values are drawn at the positions of its answer lines (full-year resident, lines 1a–7). */
+export function formNd1cr(ret: TaxReturnInput, nd: NdResult): FormFill | null {
+  const c = nd.cr
+  if (!c) return null
+  const fs = ret.filingStatus
+  const name = upper(fs === 'mfj' ? `${ret.taxpayer.firstName} & ${ret.spouse.firstName} ${ret.taxpayer.lastName}` : `${ret.taxpayer.firstName} ${ret.taxpayer.lastName}`)
+  const at = (y: number, text: string, x = 580): NonNullable<FormFill['draw']>[number] => ({ page: 0, x, y, text, right: true, size: 10 })
+  const Y: Record<string, number> = { '1a': 533, '1b': 506, '1c': 473, '2': 453, '3': 373, '4': 352, '5': 332, '6': 305, '7': 196 }
+  const draw: NonNullable<FormFill['draw']> = [
+    { page: 0, x: 34, y: 671, text: name, size: 10 },
+    { page: 0, x: 430, y: 671, text: ssn(ret.taxpayer.ssn), size: 10 },
+    { page: 0, x: 478, y: 552, text: upper(ret.nd.cr.state), size: 10 }
+  ]
+  for (const [k, y] of Object.entries(Y)) draw.push(at(y, k === '3' ? (c['3'] >= 1 ? '1' : c['3'].toFixed(4)) : String(c[k])))
+  return { id: 'nd-1cr', file: 'nd-nd1cr.pdf', title: 'North Dakota Schedule ND-1CR', values: {}, draw }
+}
+
 export function formNd1tc(ret: TaxReturnInput, nd: NdResult): FormFill | null {
   const T = nd.tc
   if (!(T['26'] > 0)) return null
@@ -129,5 +146,5 @@ export function formNd1tc(ret: TaxReturnInput, nd: NdResult): FormFill | null {
 
 export function buildNdPacket(ret: TaxReturnInput, res: TaxReturnResult, nd: NdResult, preparer?: PreparerInfo | null): FormPacket {
   void res
-  return { forms: [formNd1(ret, nd, preparer), formNd1sa(ret, nd), formNd1tc(ret, nd)].filter((x): x is FormFill => x !== null), notIncluded: nd.attach }
+  return { forms: [formNd1(ret, nd, preparer), formNd1sa(ret, nd), formNd1cr(ret, nd), formNd1tc(ret, nd)].filter((x): x is FormFill => x !== null), notIncluded: nd.attach }
 }

@@ -1,5 +1,5 @@
 /**
- * The North Dakota part of the State step: Form ND-1 for full-year residents, with Schedules ND-1SA, ND-1CR (credit only) and ND-1TC.
+ * The North Dakota part of the State step: Form ND-1 for full-year residents, with Schedules ND-1SA, ND-1CR and ND-1TC.
  */
 import { ReactElement, useMemo, useState } from 'react'
 import type { NdInput, Owner, Person } from '../engine/model.ts'
