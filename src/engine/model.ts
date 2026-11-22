@@ -2150,6 +2150,50 @@ export const emptyMt = (): MtInput => ({
   contributions: {}, birthDates: { taxpayer: '', spouse: '' }, creditForward: 0
 })
 
+export interface RiInput {
+  w2: Record<string, StateStatement>
+  /** Schedule W: Rhode Island tax withheld on 1099s (payer, federal ID, amount). */
+  other1099: { payer: string; ein: string; code: string; owner: Owner; tax: number }[]
+  estimatedPayments: number
+  /** Dates of birth (Schedule M lines 1s / 1t, Schedule E, RI-1040H). */
+  birthDates: Record<Owner, string>
+  dependentBirthDates: Record<string, string>
+  /** Schedule M decreasing modifications. */
+  usObligationInterest: number
+  railroadRetirement: number
+  tuition529: number
+  /** 1099-R ids that are pensions/annuities (line 1t) or military service pensions (line 1v). */
+  pensionKind: Record<string, 'pension' | 'military' | 'none'>
+  otherDecreasing: number
+  /** Schedule M increasing modifications. */
+  otherStateBondInterest: number
+  otherIncreasing: number
+  /** Schedule II: credit for tax paid to another state. */
+  otherState: { state: string; income: number; tax: number }
+  /** Schedule CR total (other Rhode Island credits). */
+  otherCredits: number
+  /** Line 12a: use tax; 12b: individual mandate penalty (0 with full-year coverage). */
+  useTax: number
+  fullYearCoverage: boolean
+  mandatePenalty: number
+  /** Checkoff contributions, lines 30–37. */
+  checkoffs: Record<string, number>
+  electoral: boolean
+  electoralParty: string
+  /** RI-1040H property tax relief. */
+  relief: { claim: boolean; owner: boolean; propertyTax: number; rent: number; householdSize: number; dependentsUnder18: number; publicAssistance: number; otherNontaxable: number; disabled: boolean; landlord: string }
+  driversLicense: Record<Owner, string>
+  creditForward: number
+}
+
+export const emptyRi = (): RiInput => ({
+  w2: {}, other1099: [], estimatedPayments: 0, birthDates: { taxpayer: '', spouse: '' }, dependentBirthDates: {}, usObligationInterest: 0, railroadRetirement: 0, tuition529: 0,
+  pensionKind: {}, otherDecreasing: 0, otherStateBondInterest: 0, otherIncreasing: 0, otherState: { state: '', income: 0, tax: 0 }, otherCredits: 0, useTax: 0,
+  fullYearCoverage: true, mandatePenalty: 0, checkoffs: {}, electoral: false, electoralParty: '',
+  relief: { claim: false, owner: false, propertyTax: 0, rent: 0, householdSize: 1, dependentsUnder18: 0, publicAssistance: 0, otherNontaxable: 0, disabled: false, landlord: '' },
+  driversLicense: { taxpayer: '', spouse: '' }, creditForward: 0
+})
+
 export interface MiInput {
   /** Five-digit school district code from the MI-1040 instructions. */
   schoolDistrictCode: string
@@ -2329,6 +2373,7 @@ export interface TaxReturnInput {
   id: IdInput
   me: MeInput
   mt: MtInput
+  ri: RiInput
 }
 
 let counter = 0
@@ -2546,7 +2591,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   ky: emptyKy(),
   ok: emptyOk(),
   ct: emptyCt(),
-  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm(), hi: emptyHi(), id: emptyId(), me: emptyMe(), mt: emptyMt()
+  ut: emptyUt(), ia: emptyIa(), ks: emptyKs(), ar: emptyAr(), ne: emptyNe(), ms: emptyMs(), wv: emptyWv(), nm: emptyNm(), hi: emptyHi(), id: emptyId(), me: emptyMe(), mt: emptyMt(), ri: emptyRi()
 })
 
 /** Merge stored/imported JSON over defaults so older or partial files still load. */
@@ -2716,6 +2761,15 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       return {
         ...e, ...x, w2: normalizeStatements(x.w2), retirementKind: { ...(x.retirementKind ?? {}) }, disabled: pair('disabled'), schools: pair('schools'),
         libraries: pair('libraries'), violence: pair('violence'), electionFund: pair('electionFund'), occupation: { ...e.occupation, ...(x.occupation ?? {}) }
+      }
+    })(),
+    ri: (() => {
+      const e = emptyRi(); const x: Partial<RiInput> = r.ri ?? {}
+      return {
+        ...e, ...x, w2: normalizeStatements(x.w2), other1099: Array.isArray(x.other1099) ? x.other1099.map((o) => ({ payer: o.payer ?? '', ein: o.ein ?? '', code: o.code ?? '', owner: o.owner === 'spouse' ? 'spouse' : 'taxpayer', tax: Number(o.tax) || 0 })) : [],
+        birthDates: { ...e.birthDates, ...(x.birthDates ?? {}) }, dependentBirthDates: { ...(x.dependentBirthDates ?? {}) }, pensionKind: { ...(x.pensionKind ?? {}) },
+        otherState: { ...e.otherState, ...(x.otherState ?? {}) }, checkoffs: { ...(x.checkoffs ?? {}) }, relief: { ...e.relief, ...(x.relief ?? {}) },
+        driversLicense: { ...e.driversLicense, ...(x.driversLicense ?? {}) }
       }
     })(),
     mt: (() => {

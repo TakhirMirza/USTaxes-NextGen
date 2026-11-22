@@ -68,6 +68,8 @@ import type { MeResult } from '../engine/me2025.ts'
 import { buildMePacket } from './me2025.ts'
 import type { MtResult } from '../engine/mt2025.ts'
 import { buildMtPacket } from './mt2025.ts'
+import type { RiResult } from '../engine/ri2025.ts'
+import { buildRiPacket } from './ri2025.ts'
 import { buildIlPacket } from './il2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { buildNyPacket } from './ny2025.ts'
@@ -252,4 +254,8 @@ export function downloadMaineForms(ret: TaxReturnInput, res: TaxReturnResult, me
 
 export function downloadMontanaForms(ret: TaxReturnInput, res: TaxReturnResult, mt: MtResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
   return save(buildMtPacket(ret, res, mt, preparer).forms, '2025 Montana Form 2 — USTaxes NextGen', `2025-Montana-Form-2-${slug(ret)}.pdf`)
+}
+
+export function downloadRhodeIslandForms(ret: TaxReturnInput, res: TaxReturnResult, ri: RiResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
+  return save(buildRiPacket(ret, res, ri, preparer).forms, '2025 Rhode Island RI-1040 — USTaxes NextGen', `2025-Rhode-Island-RI-1040-${slug(ret)}.pdf`)
 }
