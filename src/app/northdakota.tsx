@@ -1,5 +1,5 @@
 /**
- * The North Dakota part of the State step: Form ND-1 for full-year residents.
+ * The North Dakota part of the State step: Form ND-1 for full-year residents, with Schedules ND-1SA, ND-1CR (credit only) and ND-1TC.
  */
 import { ReactElement, useMemo, useState } from 'react'
 import type { NdInput, Owner, Person } from '../engine/model.ts'
@@ -26,6 +26,27 @@ const SOURCES: [string, string][] = [
   ['8', 'Transportation, communication, utilities'], ['9', 'Coal, oil and natural gas'], ['10', 'Banking, insurance, real estate, finance'], ['11', 'Military service'],
   ['12', 'Retirement (pensions, annuities, IRAs)']
 ]
+/** Schedule ND-1TC: [line, label, kind] — money lines add to line 26; info lines are counts, wages or a date. */
+const TC: [string, string, 'money' | 'info'][] = [
+  ['1', 'Family member care (Schedule ND-1FC)', 'money'], ['2', 'Renaissance zone (Schedule RZ)', 'money'],
+  ['3', 'Agricultural commodity processing facility investment', 'money'], ['4', 'Seed capital investment', 'money'],
+  ['5', 'Planned gift (Schedule ND-1PG)', 'money'], ['6', 'Biodiesel or green diesel fuel blending', 'money'],
+  ['7', 'Biodiesel or green diesel fuel sales equipment', 'money'], ['8a', 'Employer internship program', 'money'],
+  ['8b', 'Number of eligible interns employed in 2025', 'info'], ['8c', 'Compensation paid to those interns', 'info'],
+  ['9a', 'Research expense', 'money'], ['9b', 'Research expense credit bought from another taxpayer', 'money'],
+  ['10', 'Employer child care contribution (Schedule ECC)', 'money'], ['11a', 'Workforce recruitment', 'money'],
+  ['11b', 'Eligible employees whose 12th month ended in 2024', 'info'], ['11c', 'Their compensation for the first 12 months', 'info'],
+  ['12a', 'Geothermal device installation date (mm/dd/yyyy)', 'info'], ['12b', 'Geothermal energy device unused carryover', 'money'],
+  ['13', 'Wages paid to a mobilized employee (Schedule ME)', 'money'], ['14', 'Partnership plan long-term care insurance', 'money'],
+  ['15a', 'Endowment fund, from Schedule ND-1QEC line 8', 'money'], ['15b', 'Endowment fund, from ND Schedule K-1', 'money'],
+  ['15c', 'Contribution amount from ND Schedule K-1', 'info'], ['16', 'Housing incentive fund carryover', 'money'],
+  ['17a', 'Automation', 'money'], ['17b', 'Automation carryover', 'money'],
+  ['18', 'Nonprofit private primary school (ND-1PSC)', 'money'], ['19', 'Nonprofit private high school (ND-1PSC)', 'money'],
+  ['20', 'Nonprofit private college (ND-1PSC)', 'money'], ['21', 'Angel investor investment (angel funds certified after June 30, 2017)', 'money'],
+  ['22', 'Developmentally disabled or mentally ill employee', 'money'], ['23', 'Adoption (Schedule ND-1AC)', 'money'],
+  ['24', 'Maternity home, child placing agency or pregnancy help center (Schedule MCP)', 'money'], ['25a', 'Apprentice', 'money'],
+  ['25b', 'Number of eligible apprentices employed in 2025', 'info'], ['25c', 'Compensation paid to those apprentices', 'info']
+]
 const FUNDS: [string, string][] = [['veterans', 'Veterans’ Postwar Trust Fund'], ['wildlife', 'Watchable Wildlife Fund'], ['trees', 'Trees for ND Trust Fund']]
 const firstName = (p: Person, fallback: string): string => p.firstName.trim().split(/\s+/)[0] || fallback
 
@@ -35,6 +56,7 @@ export function NorthDakotaStep({ ret, set, result, preparer }: StepProps & { pr
   const [pdf, setPdf] = useState<{ busy: boolean; note: string }>({ busy: false, note: '' })
   const put = (p: Partial<NdInput>): void => set((r) => ({ ...r, nd: { ...r.nd, ...p } }))
   const putSa = (p: Partial<NdInput['sa']>): void => put({ sa: { ...d.sa, ...p } })
+  const putCr = (p: Partial<NdInput['cr']>): void => put({ cr: { ...d.cr, ...p } })
   const married = ret.filingStatus === 'mfj'
   const owners: Owner[] = married ? ['taxpayer', 'spouse'] : ['taxpayer']
   const names: Record<Owner, string> = { taxpayer: firstName(ret.taxpayer, 'You'), spouse: firstName(ret.spouse, 'Spouse') }
@@ -116,7 +138,7 @@ export function NorthDakotaStep({ ret, set, result, preparer }: StepProps & { pr
             </>}
             <MoneyField label="Employer college expense reimbursement in W-2 wages" hint="Line 9" value={d.sa.collegeReimbursement} onChange={(n) => putSa({ collegeReimbursement: n })} />
             <MoneyField label="Income from an S corporation taxed as a C corporation" hint="Line 10" value={d.sa.sCorpIncome} onChange={(n) => putSa({ sCorpIncome: n })} />
-            <Check label="You or your spouse own 50% or more of real property in North Dakota" hint="Required with lines 4 and 5" checked={d.sa.ownsNdRealProperty} onChange={(v) => putSa({ ownsNdRealProperty: v })} />
+            <Check label="You or your spouse own 50% or more of real property in North Dakota" hint="Required with ND-1SA lines 4–5 and several ND-1TC credits" checked={d.sa.ownsNdRealProperty} onChange={(v) => putSa({ ownsNdRealProperty: v })} />
             {d.sa.ownsNdRealProperty && <TextField label="North Dakota counties" autoComplete="off" value={d.sa.counties} onChange={(s) => putSa({ counties: s })} />}
           </div>
         </details>
@@ -124,9 +146,21 @@ export function NorthDakotaStep({ ret, set, result, preparer }: StepProps & { pr
 
       <Section title="Credits" intro={nd.marriage ? `Marriage penalty credit: ${usd(L['22'])}, worked out from both spouses’ qualified income.` : 'The marriage penalty credit (joint filers) is worked out automatically.'}>
         <div className="grid">
-          <MoneyField label="Credit for income tax paid to another state" hint="Line 21; Schedule ND-1CR" value={d.otherStateCredit} onChange={(n) => put({ otherStateCredit: n })} />
-          <MoneyField label="Other credits" hint="Line 23; Schedule ND-1TC" value={d.otherCredits} onChange={(n) => put({ otherCredits: n })} />
+          <TextField label="Other state where you paid income tax" hint="Schedule ND-1CR; one state" autoComplete="off" value={d.cr.state} onChange={(s) => putCr({ state: s })} />
+          <MoneyField label="Income from that state included in federal AGI" hint="ND-1CR line 1b" value={d.cr.sourceIncome} onChange={(n) => putCr({ sourceIncome: n })} />
+          <MoneyField label="Part of it earned while a North Dakota resident" hint="Line 1c; leave 0 if all of it" value={d.cr.residentIncome} onChange={(n) => putCr({ residentIncome: n })} />
+          <MoneyField label="Net income tax owed to that state" hint="Line 6; from its 2025 return, not the amount withheld" value={d.cr.tax} onChange={(n) => putCr({ tax: n })} />
         </div>
+        {nd.cr && <p className="why">Credit for tax paid to {d.cr.state.trim() || 'the other state'}: {usd(nd.cr['7'])} (the smaller of {usd(nd.cr['6'])} and {(nd.cr['3'] * 100).toFixed(2)}% of your North Dakota tax).</p>}
+        <details open={nd.tc['26'] > 0}>
+          <summary>Schedule ND-1TC credits{nd.tc['26'] > 0 ? ` — ${usd(nd.tc['26'])}` : ''}</summary>
+          <p className="why">Credits on lines 2, 3, 4, 6, 7, 8a, 9a, 9b, 11a, 17a, 17b and 21 need the real property question below the ND-1SA adjustments answered and a Property Tax Clearance Record from each county.</p>
+          <div className="grid">
+            {TC.map(([k, label, kind]) => kind === 'money'
+              ? <MoneyField key={k} label={label} hint={`Line ${k}`} value={d.tc[k] ?? 0} onChange={(n) => put({ tc: { ...d.tc, [k]: n } })} />
+              : <TextField key={k} label={label} hint={`Line ${k}`} autoComplete="off" value={d.tcInfo[k] ?? ''} onChange={(s) => put({ tcInfo: { ...d.tcInfo, [k]: s } })} />)}
+          </div>
+        </details>
       </Section>
 
       <Section title="Voluntary contributions" intro="At least $1 each; taken from your refund or added to what you owe.">

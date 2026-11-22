@@ -44,8 +44,10 @@ export function ndTax(taxable: number, fs: FS): number {
 
 export interface NdResult {
   lines: Record<string, number>
-  /** Schedule ND-1SA lines. */
+  /** Schedule ND-1SA lines, ND-1CR lines (null without a credit), ND-1TC lines. */
   sa: Record<string, number>
+  cr: Record<string, number> | null
+  tc: Record<string, number>
   /** Marriage penalty credit worksheet, or null when it doesn’t apply. */
   marriage: Record<string, number> | null
   /** Net long-term capital gain exclusion worksheet. */
@@ -113,7 +115,22 @@ export function computeNorthDakota(ret: TaxReturnInput, res: TaxReturnResult): N
   L['20'] = ndTax(L['19'], fs)
 
   // ── Credits ──
-  L['21'] = r(pos(d.otherStateCredit))
+  // ── Schedule ND-1CR ──
+  let crs: Record<string, number> | null = null
+  if (pos(d.cr.tax) > 0 && pos(d.cr.sourceIncome) > 0) {
+    const c: Record<string, number> = {}
+    c['1a'] = L['1a']
+    c['1b'] = r(pos(d.cr.sourceIncome))
+    c['1c'] = Math.min(c['1b'], r(pos(d.cr.residentIncome || d.cr.sourceIncome)))
+    c['2'] = L['1a'] - L['5']
+    c['3'] = c['2'] <= 0 || c['1c'] >= c['2'] ? 1 : Math.round(c['1c'] / c['2'] * 10000) / 10000
+    c['4'] = L['20']
+    c['5'] = r(c['4'] * c['3'])
+    c['6'] = r(pos(d.cr.tax))
+    c['7'] = Math.min(c['5'], c['6'])
+    crs = c
+  }
+  L['21'] = crs?.['7'] ?? 0
   let marriage: NdResult['marriage'] = null
   if (joint && L['18'] > 81036) {
     const wagesBy = (o: Owner): number => sum(ret.w2s.filter((w) => w.owner === o).map((w) => w.wages))
@@ -141,7 +158,12 @@ export function computeNorthDakota(ret: TaxReturnInput, res: TaxReturnResult): N
     }
   }
   L['22'] = marriage?.['14'] ?? 0
-  L['23'] = r(pos(d.otherCredits))
+  // ── Schedule ND-1TC ──
+  const TC_LINES = ['1', '2', '3', '4', '5', '6', '7', '8a', '9a', '9b', '10', '11a', '12b', '13', '14', '15a', '15b', '16', '17a', '17b', '18', '19', '20', '21', '22', '23', '24', '25a']
+  const T: Record<string, number> = {}
+  for (const k of TC_LINES) T[k] = r(pos(d.tc[k] ?? 0))
+  T['26'] = TC_LINES.reduce((s, k) => s + T[k], 0)
+  L['23'] = T['26']
   L['24'] = L['21'] + L['22'] + L['23']
   L['25'] = pos(L['20'] - L['24'])
 
@@ -179,8 +201,11 @@ export function computeNorthDakota(ret: TaxReturnInput, res: TaxReturnResult): N
   if (S['6'] > 0) issues.push('The organ donor deduction is limited to $10,000 of qualified expenses.')
   if (S['8a'] > 0 && !/^\d{11}$/.test(a.stillbornCertificate.replace(/\D/g, ''))) issues.push('Enter the 11-digit certificate number from the Certification of Fetal Death (ND-1SA line 8b).')
   if ((S['4'] + S['5'] > 0) && a.ownsNdRealProperty && !a.counties.trim()) issues.push('ND-1SA: list each North Dakota county where you or your spouse own 50% or more of real property.')
-  if (L['21'] > 0) attach.push('Schedule ND-1CR and a copy of the other state’s return')
-  if (L['23'] > 0) attach.push('Schedule ND-1TC (tax credits)')
+  if (L['21'] > 0) attach.push('Schedule ND-1CR (2025 revision) and a copy of the other state’s return')
+  if (L['23'] > 0) attach.push('The schedules and documentation listed on Schedule ND-1TC for each credit (ND-1FC, ND-1PG, ND-1QEC, ND-1PSC, ND-1AC, RZ, …)')
+  const needsClearance = ['2', '3', '4', '6', '7', '8a', '9a', '9b', '11a', '17a', '17b', '21'].some((k) => T[k] > 0)
+  if (needsClearance) attach.push('Property Tax Clearance Record from each county where you own 50% or more of real property (ND-1TC)')
+  if (crs && !d.cr.state.trim()) issues.push('Schedule ND-1CR: enter the name of the other state.')
   if (L['2'] > 0) attach.push('Schedule ND-1PG / ND-1QEC (planned gift or endowment credit)')
   if (L['11'] + L['14'] > 0) attach.push('W-2s / 1099-Rs showing the military pay or retirement')
   if (L['9'] > 0) attach.push('Form 1099-R and the peace officer service documentation')
@@ -189,5 +214,5 @@ export function computeNorthDakota(ret: TaxReturnInput, res: TaxReturnResult): N
   if (L['13'] > 0) issues.push('Line 13 excludes 40% of your qualified dividends.')
   if (L['6'] > 0) issues.push('Line 6 excludes 40% of your net long-term capital gain.')
   if (marriage && L['22'] > 0) issues.push(`Marriage penalty credit: ${'$'}${L['22']} (both spouses had qualified income over $47,550).`)
-  return { lines: L, sa: S, marriage, cg, issues, attach }
+  return { lines: L, sa: S, cr: crs, tc: T, marriage, cg, issues, attach }
 }

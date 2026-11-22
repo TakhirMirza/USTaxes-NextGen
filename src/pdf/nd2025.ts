@@ -1,6 +1,6 @@
 /**
  * Fills the official 2025 North Dakota Form ND-1 (public/forms/2025/nd-nd1.pdf: the Office of State Tax
- * Commissioner’s fill-in form, SFN 28702 12-2025) and Schedule ND-1SA (SFN 28710). Whole dollars.
+ * Commissioner’s fill-in form, SFN 28702 12-2025) Schedules ND-1SA (SFN 28710) and ND-1TC (SFN 28742). Whole dollars.
  */
 import type { TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
@@ -110,7 +110,24 @@ export function formNd1sa(ret: TaxReturnInput, nd: NdResult): FormFill | null {
   return { id: 'nd-1sa', file: 'nd-nd1sa.pdf', title: 'North Dakota Schedule ND-1SA', values: v }
 }
 
+export function formNd1tc(ret: TaxReturnInput, nd: NdResult): FormFill | null {
+  const T = nd.tc
+  if (!(T['26'] > 0)) return null
+  const a = ret.nd.sa
+  const info = ret.nd.tcInfo
+  const v: Record<string, FieldValue> = {}
+  const fs = ret.filingStatus
+  v.Name = upper(fs === 'mfj' ? `${ret.taxpayer.firstName} & ${ret.spouse.firstName} ${ret.taxpayer.lastName}` : `${ret.taxpayer.firstName} ${ret.taxpayer.lastName}`)
+  v.SSN = ssn(ret.taxpayer.ssn)
+  v[a.ownsNdRealProperty ? 'Yes' : 'No'] = true
+  if (a.ownsNdRealProperty && a.counties.trim()) v['County names'] = upper(a.counties)
+  for (const [k, x] of Object.entries(T)) if (k !== '26' && x > 0) v[`TC ${k}`] = String(x)
+  for (const k of ['8b', '8c', '11b', '11c', '12a', '15c', '25b', '25c']) if ((info[k] ?? '').trim()) v[`TC ${k}`] = info[k].trim()
+  v['TC 26'] = String(T['26'])
+  return { id: 'nd-1tc', file: 'nd-nd1tc.pdf', title: 'North Dakota Schedule ND-1TC', values: v }
+}
+
 export function buildNdPacket(ret: TaxReturnInput, res: TaxReturnResult, nd: NdResult, preparer?: PreparerInfo | null): FormPacket {
   void res
-  return { forms: [formNd1(ret, nd, preparer), formNd1sa(ret, nd)].filter((x): x is FormFill => x !== null), notIncluded: nd.attach }
+  return { forms: [formNd1(ret, nd, preparer), formNd1sa(ret, nd), formNd1tc(ret, nd)].filter((x): x is FormFill => x !== null), notIncluded: nd.attach }
 }

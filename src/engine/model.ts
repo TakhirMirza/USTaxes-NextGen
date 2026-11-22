@@ -2356,9 +2356,11 @@ export interface NdInput {
   militaryPay: number
   collegeSave: number
   militaryRetirement: number
-  /** Line 21 (ND-1CR) and line 23 (ND-1TC). */
-  otherStateCredit: number
-  otherCredits: number
+  /** Schedule ND-1CR: the other state, income from there (line 1b), the part earned while a resident (1c) and its tax (6). */
+  cr: { state: string; sourceIncome: number; residentIncome: number; tax: number }
+  /** Schedule ND-1TC credit amounts by line, and the counts, wages and date asked for on lines 8b–c, 11b–c, 12a, 15c, 25b–c. */
+  tc: Record<string, number>
+  tcInfo: Record<string, string>
   estimatedPayments: number
   creditForward: number
   /** Veterans’ Postwar Trust Fund, Watchable Wildlife Fund, Trees for ND Trust Fund. */
@@ -2370,7 +2372,7 @@ export const emptyNd = (): NdInput => ({
   w2: {}, r1099: {}, otherWithholding: 0, schoolCode: '', incomeSourceCode: '', plannedGift: 0,
   sa: { lumpSum: 0, sCorpLoss: 0, renaissance: 0, newBusiness: 0, organDonor: 0, workforce: 0, stillborn: 0, stillbornCertificate: '', stillbornDate: '', collegeReimbursement: 0, sCorpIncome: 0, ownsNdRealProperty: false, counties: '' }, usObligationInterest: 0,
   gainInOtherLines: 0, nativeAmerican: 0, railroad: { taxpayer: 0, spouse: 0 }, rrbTier1InSs: 0, peaceOfficer: 0, militaryPay: 0, collegeSave: 0, militaryRetirement: 0,
-  otherStateCredit: 0, otherCredits: 0, estimatedPayments: 0, creditForward: 0, contributions: {}, consent1099g: false
+  cr: { state: '', sourceIncome: 0, residentIncome: 0, tax: 0 }, tc: {}, tcInfo: {}, estimatedPayments: 0, creditForward: 0, contributions: {}, consent1099g: false
 })
 
 export interface MoInput {
@@ -3026,7 +3028,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     })(),
     nd: (() => {
       const e = emptyNd(); const x: Partial<NdInput> = r.nd ?? {}
-      return { ...e, ...x, w2: normalizeStatements(x.w2), r1099: normalizeStatements(x.r1099), railroad: { ...e.railroad, ...(x.railroad ?? {}) }, sa: { ...e.sa, ...(x.sa ?? {}) }, contributions: { ...(x.contributions ?? {}) } }
+      return { ...e, ...x, w2: normalizeStatements(x.w2), r1099: normalizeStatements(x.r1099), railroad: { ...e.railroad, ...(x.railroad ?? {}) }, sa: { ...e.sa, ...(x.sa ?? {}) }, cr: { ...e.cr, ...(x.cr ?? {}) }, tc: { ...(x.tc ?? {}) }, tcInfo: { ...(x.tcInfo ?? {}) }, contributions: { ...(x.contributions ?? {}) } }
     })(),
     vt: (() => {
       const e = emptyVt(); const x: Partial<VtInput> = r.vt ?? {}

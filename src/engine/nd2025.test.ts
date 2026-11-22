@@ -73,17 +73,37 @@ test('ND marriage penalty credit', () => {
   assert.equal(nd.lines['22'], 311)
 })
 
+test('ND-1CR credit for tax paid to another state', () => {
+  const { nd } = run(base({ filingStatus: 'mfj', w2s: [w2(120000), w2(100000, 'spouse')] }), { cr: { state: 'Minnesota', sourceIncome: 30000, residentIncome: 0, tax: 1500 } })
+  const c = nd.cr!
+  assert.equal(c['1a'], 220000)
+  assert.equal(c['1c'], 30000)
+  assert.equal(c['3'], 0.1364)
+  assert.equal(c['5'], 286)
+  assert.equal(nd.lines['21'], 286)
+  assert.equal(nd.lines['24'], 286 + nd.lines['22'])
+  assert.deepEqual(nd.issues.filter((t) => t.includes('ND-1CR')), [])
+  const small = run(base({ w2s: [w2(90000)] }), { cr: { state: '', sourceIncome: 5000, residentIncome: 0, tax: 20 } }).nd
+  assert.equal(small.lines['21'], 20)
+  assert.ok(small.issues.some((t) => t.includes('ND-1CR')))
+})
+
 test('ND-1: every value lands on one field and the PDF builds', async () => {
   const r0 = emptyReturn()
   const t = w2(120000)
   const { nd, res, ret } = run(base({ filingStatus: 'mfj', w2s: [t, w2(100000, 'spouse')], refundDeposit: { ...r0.refundDeposit, routingNumber: '091300010', accountNumber: '12345678', accountType: 'savings' } }),
     { w2: { [t.id]: { ein: '45-1234567', stateId: '', stateIncome: null, stateTax: 3000 } }, collegeSave: 2000, contributions: { trees: 5 }, consent1099g: true,
-      sa: { ...r0.nd.sa, lumpSum: 1200, organDonor: 12000, stillborn: 1, stillbornCertificate: '12345678901', stillbornDate: '03/04/2025', newBusiness: 800, ownsNdRealProperty: true, counties: 'Burleigh' } })
+      sa: { ...r0.nd.sa, lumpSum: 1200, organDonor: 12000, stillborn: 1, stillbornCertificate: '12345678901', stillbornDate: '03/04/2025', newBusiness: 800, ownsNdRealProperty: true, counties: 'Burleigh' },
+      tc: { '1': 100, '8a': 200, '15a': 50, '8b': 999 }, tcInfo: { '8b': '2', '8c': '15000', '12a': '01/02/2013' } })
+  assert.equal(nd.tc['26'], 350)
+  assert.equal(nd.lines['23'], 350)
   assert.equal(nd.sa['6'], 10000)
   assert.equal(nd.lines['3'], 1200)
   assert.equal(nd.lines['16'], 10000 + 5241 + 800)
   const packet = buildNdPacket(ret, res, nd)
-  assert.deepEqual(packet.forms.map((f) => f.id), ['nd-1', 'nd-1sa'])
+  assert.deepEqual(packet.forms.map((f) => f.id), ['nd-1', 'nd-1sa', 'nd-1tc'])
+  assert.equal(packet.forms[2].values['TC 8b'], '2')
+  assert.equal(packet.forms[2].values.Yes, true)
   const formsDir = new URL('../../public/forms/2025/', import.meta.url)
   const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
   const problems: FillProblem[] = []
