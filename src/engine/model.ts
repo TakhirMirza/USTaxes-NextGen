@@ -1732,12 +1732,13 @@ export interface IaInput {
   /** Line 9: K-12 tuition and textbooks by dependent id; line 24 ECDC: early childhood expenses by dependent id (age 3–5). */
   tuition: Record<string, number>
   earlyChildhood: Record<string, number>
-  /** Line 10, 15, 17, 23, 26: other credits. */
+  /** Line 10 volunteer credit; line 23 fuel tax credit (IA 4136). */
   volunteerCredit: number
-  outOfStateCredit: number
-  otherNonrefundable: number
   fuelTaxCredit: number
-  otherRefundable: number
+  /** IA 130 (one state or jurisdiction): Iowa income it also taxed by type (lines 1–12) and the tax paid by you (20) and by a pass-through entity or fund (21). */
+  oos: IaOutOfState
+  /** IA 148 rows: nonrefundable (Part I, line 17) and refundable (Part II, line 26) credits. */
+  credits148: IaCredit148[]
   /** Line 21: contributions. */
   fishWildlife: number
   childAbuse: number
@@ -1745,11 +1746,26 @@ export interface IaInput {
   creditForward: number
   license: Record<Owner, string>
 }
+export interface IaOutOfState {
+  state: string; wages: number; interest: number; dividends: number; alimony: number; business: number; capitalGain: number; otherGains: number
+  rents: number; farm: number; unemployment: number; gambling: number; other: number; taxPaid: number; passThroughTax: number
+}
+export const emptyIaOos = (): IaOutOfState => ({
+  state: '', wages: 0, interest: 0, dividends: 0, alimony: 0, business: 0, capitalGain: 0, otherGains: 0, rents: 0, farm: 0, unemployment: 0, gambling: 0, other: 0, taxPaid: 0, passThroughTax: 0
+})
+export interface IaCredit148 {
+  refundable: boolean; code: string; certificate: string
+  /** Part I columns C (carryforward), D (this year) and G (expired); Part II column K uses `current`. */
+  carryforward: number; current: number; expired: number
+  /** Part IV, when the credit came from a pass-through entity. */
+  entityName: string; entityFein: string; disregardedFein: string
+}
+export const emptyIaCredit148 = (): IaCredit148 => ({ refundable: false, code: '', certificate: '', carryforward: 0, current: 0, expired: 0, entityName: '', entityFein: '', disregardedFein: '' })
 export const emptyIa = (): IaInput => ({
   w2: {}, withholdingOther: 0, estimatedPayments: 0, birthDate: { taxpayer: '', spouse: '' }, countyNo: '', schoolDistrictNo: '', surtaxRate: 0,
   usObligationInterest: 0, otherStateBondInterest: 0, retirementKind: {}, disabled: { taxpayer: false, spouse: false }, activeDutyPay: 0,
   iowa529: 0, healthInsurance: 0, capitalGainsDeduction: 0, otherAddition: { code: '', amount: 0 }, otherSubtraction: { code: '', amount: 0 }, otherAdjustment: { code: '', amount: 0 },
-  tuition: {}, earlyChildhood: {}, volunteerCredit: 0, outOfStateCredit: 0, otherNonrefundable: 0, fuelTaxCredit: 0, otherRefundable: 0,
+  tuition: {}, earlyChildhood: {}, volunteerCredit: 0, fuelTaxCredit: 0, oos: emptyIaOos(), credits148: [],
   fishWildlife: 0, childAbuse: 0, creditForward: 0, license: { taxpayer: '', spouse: '' }
 })
 
@@ -3029,7 +3045,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       return {
         ...e, ...x, w2: normalizeStatements(x.w2), birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, disabled: { ...e.disabled, ...(x.disabled ?? {}) },
         otherAddition: { ...e.otherAddition, ...(x.otherAddition ?? {}) }, otherSubtraction: { ...e.otherSubtraction, ...(x.otherSubtraction ?? {}) }, otherAdjustment: { ...e.otherAdjustment, ...(x.otherAdjustment ?? {}) },
-        tuition: { ...(x.tuition ?? {}) }, earlyChildhood: { ...(x.earlyChildhood ?? {}) }, license: { ...e.license, ...(x.license ?? {}) }
+        tuition: { ...(x.tuition ?? {}) }, earlyChildhood: { ...(x.earlyChildhood ?? {}) }, license: { ...e.license, ...(x.license ?? {}) },
+        oos: { ...e.oos, ...(x.oos ?? {}) }, credits148: Array.isArray(x.credits148) ? x.credits148.map((c: Partial<IaCredit148>) => ({ ...emptyIaCredit148(), ...c })) : []
       }
     })(),
     ks: (() => {

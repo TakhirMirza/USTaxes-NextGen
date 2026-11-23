@@ -101,3 +101,36 @@ test('IA 1040: every value lands on one field and the PDF builds', async () => {
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 IA')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-IA.pdf`, bytes)
 })
+
+test('IA 130 out-of-state credit and IA 148 credits', async () => {
+  const r0 = emptyReturn()
+  const { ia: x, res, ret } = ia(base({ w2s: [w2(80000)] }), {
+    oos: { ...r0.ia.oos, state: 'Nebraska', wages: 20000, taxPaid: 900 },
+    credits148: [
+      { refundable: false, code: '20', certificate: 'BFTC-123', carryforward: 100, current: 200, expired: 0, entityName: '', entityFein: '', disregardedFein: '' },
+      { refundable: true, code: '66', certificate: '', carryforward: 0, current: 500, expired: 0, entityName: 'Prairie Farms LLC', entityFein: '421234567', disregardedFein: '' }
+    ]
+  })
+  const c = x.oos!
+  assert.equal(c['13'], 20000)
+  assert.equal(c['14'], 80000)
+  assert.equal(c['17'], 25)
+  assert.equal(c['18'], x.lines['14'])
+  assert.equal(c['19'], Math.round(x.lines['14'] * 0.25))
+  assert.equal(c['23'], Math.min(c['19'], 900))
+  assert.equal(x.lines['15'], c['23'])
+  assert.equal(x.part1[0].E, 300)
+  assert.equal(x.lines['17'], Math.min(300, x.lines['16']))
+  assert.equal(x.lines['26'], 500)
+  const packet = buildIaPacket(ret, res, x)
+  assert.deepEqual(packet.forms.map((f) => f.id), ['ia1040', 'ia130', 'ia148'])
+  assert.equal(packet.forms[2].values['1M. Pass-through entity name'], 'PRAIRIE FARMS LLC')
+  assert.equal(packet.forms[2].values['1L. Line number from Part I or Part II'], '11')
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, packet.forms, load, '2025 IA')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-IAS.pdf`, bytes)
+})

@@ -150,8 +150,80 @@ export function formIa1040(ret: TaxReturnInput, res: TaxReturnResult, ia: IaResu
   return { id: 'ia1040', file: 'ia-1040.pdf', title: 'Iowa IA 1040', values: v, pages }
 }
 
+const fullName = (ret: TaxReturnInput): string => upper(ret.filingStatus === 'mfj' ? `${ret.taxpayer.firstName} & ${ret.spouse.firstName} ${ret.taxpayer.lastName}` : `${ret.taxpayer.firstName} ${ret.taxpayer.lastName}`)
+const dollars = (v: Record<string, FieldValue>, name: string, n: number | undefined, always = false, cents = `${name} (cents)`): void => {
+  const x = Math.round(n ?? 0)
+  if (x === 0 && !always) return
+  v[name] = x < 0 ? `-${-x}` : String(x)
+  v[cents] = '00'
+}
+
+/** IA 130 for full-year residents (page 2 lines 23; part-year lines 24–27 left blank). */
+export function formIa130(ret: TaxReturnInput, ia: IaResult): FormFill | null {
+  const c = ia.oos
+  if (!c) return null
+  const v: Record<string, FieldValue> = {
+    'Name(s)': fullName(ret), 'Social Security Number (SSN)': digits(ret.taxpayer.ssn), 'Name of state or other jurisdiction that taxed income': upper(ret.ia.oos.state)
+  }
+  const label: Record<string, string> = {
+    '1': '1 Wages, salaries, tips, etc', '2': '2 Taxable interest income', '3': '3 Ordinary dividend income', '4': '4 Taxable alimony received',
+    '5': '5 Business income or (loss)', '6': '6 Capital gain or (loss)', '7': '7 Other gains or (losses)', '8': '8 Rents, royalties, partnerships, estates, etc',
+    '9': '9 Farm income or (loss)', '10': '10 Unemployment compensation', '11': '11 Gambling winnings', '12': '12 Other income, bonus depreciation, and section 179 adjustment',
+    '13': '13 Iowa gross income taxed by another jurisdiction. Add lines 1-12', '14': '14 Federal total income from federal 1040, line 9',
+    '15': '15 Iowa modifications to federal total income from IA Schedule 1, line 13', '16': '16 Total Iowa income. Add lines 14 and 15',
+    '18': '18 Tax from IA 1040, line 14', '19': '19 Multiply line 18 by the percentage on line 17',
+    '20': '20 Enter the income tax imposed by the other state or jurisdiction and paid by you on income included on line 13',
+    '21': '21 Enter the income tax imposed by the other state or jurisdiction', '22': '22 Enter the sum of lines 20 and 21',
+    '23': '23 Enter the smaller of lines 19 or 22 and enter this amount on IA 1040, line 15'
+  }
+  const centsName: Record<string, string> = { '2': '2 Taxable interest income  (cents)', '11': '11 Gambling winnings (cents)', '13': '13 Iowa gross income taxed by another jurisdiction. Add lines 1-12(cents)', '18': '18 Tax from IA 1040, line 14  (cents)' }
+  for (const [k, name] of Object.entries(label)) dollars(v, name, c[k], ['13', '14', '16', '18', '19', '22', '23'].includes(k), centsName[k] ?? `${name.trim()} (cents)`)
+  v['17 Divide line 13 by line 16 and enter the percentage rounded to the nearest ten-thousandth of a percent. Do not exceed 100.0%'] = c['17'].toFixed(4)
+  return { id: 'ia130', file: 'ia-130.pdf', title: 'Iowa IA 130', values: v }
+}
+
+/** IA 148 pages 1–2: Part I, Part II, Part III and Part IV. */
+export function formIa148(ret: TaxReturnInput, ia: IaResult): FormFill | null {
+  const p1 = ia.part1.slice(0, 10)
+  const p2 = ia.part2.slice(0, 7)
+  if (p1.length + p2.length === 0) return null
+  const v: Record<string, FieldValue> = { 'Name(s)': fullName(ret), 'SSN or FEIN': digits(ret.taxpayer.ssn) }
+  p1.forEach((c, i) => {
+    const n = i + 1
+    v[`${n}A. Tax Credit Code`] = c.code.trim()
+    if (c.certificate.trim()) v[`${n}B. Certificate Number`] = c.certificate.trim()
+    dollars(v, `${n}C. Amount carried forward from prior year`, c.C)
+    dollars(v, `${n}D. Current year amount`, c.D)
+    dollars(v, `${n}E. Total available (add columns C and D)`, c.E, true)
+    dollars(v, `${n}F. Current year amount applied`, c.F, true)
+    dollars(v, `${n}G. Expired amount`, c.G)
+    dollars(v, `${n}H. Amount carried forward to future years (subtract columns F and G from column E)`, c.H, true)
+  })
+  const t1 = p1.reduce((s, c) => s + c.F, 0)
+  const t2 = p2.reduce((s, c) => s + c.K, 0)
+  if (p1.length) dollars(v, 'Part I Total (sum of column F)', t1, true)
+  p2.forEach((c, i) => {
+    const n = i + 11
+    v[`${n}I. Tax Credit Code`] = c.code.trim()
+    if (c.certificate.trim()) v[`${n}J. Certificate Number`] = c.certificate.trim()
+    dollars(v, `${n}K. Current year amount`, c.K, true)
+  })
+  if (p2.length) dollars(v, 'Part II Total (sum of column K)', t2, true)
+  dollars(v, 'Part III Total (sum of Part I and Part II)', t1 + t2, true)
+  const pt = [...p1.map((c, i) => ({ c, line: i + 1 })), ...p2.map((c, i) => ({ c, line: i + 11 }))].filter((x) => x.c.entityName.trim()).slice(0, 6)
+  pt.forEach(({ c, line }, i) => {
+    const n = i + 1
+    v[`${n}L. Line number from Part I or Part II`] = String(line)
+    v[`${n}M. Pass-through entity name`] = upper(c.entityName)
+    v[`${n}N. Pass-through entity FEIN`] = digits(c.entityFein)
+    if (c.disregardedFein.trim()) v[`${n}O. Disregarded entity’s FEIN`] = digits(c.disregardedFein)
+  })
+  return { id: 'ia148', file: 'ia-148.pdf', title: 'Iowa IA 148', values: v }
+}
+
 export function buildIaPacket(ret: TaxReturnInput, res: TaxReturnResult, ia: IaResult, preparer?: PreparerInfo | null): FormPacket {
   const notIncluded = [...ia.attach]
   if (ret.filingStatus === 'mfs') notIncluded.push('Step 2: your spouse’s Iowa taxable income')
-  return { forms: [formIa1040(ret, res, ia, preparer)], notIncluded }
+  const forms = [formIa1040(ret, res, ia, preparer), formIa130(ret, ia), formIa148(ret, ia)]
+  return { forms: forms.filter((x): x is FormFill => x !== null), notIncluded }
 }

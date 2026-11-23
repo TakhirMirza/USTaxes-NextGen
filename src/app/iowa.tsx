@@ -1,12 +1,13 @@
 /**
- * The Iowa part of the State step: Form IA 1040 with Schedule 1 for full-year residents (flat 3.8%).
+ * The Iowa part of the State step: Form IA 1040 with Schedule 1, IA 130 and IA 148 for full-year residents (flat 3.8%).
  */
 import { ReactElement, useMemo, useState } from 'react'
-import type { IaInput, IaRetirementKind, Owner, Person } from '../engine/model.ts'
+import { emptyIaCredit148 } from '../engine/model.ts'
+import type { IaCredit148, IaInput, IaOutOfState, IaRetirementKind, Owner, Person } from '../engine/model.ts'
 import { computeIowa } from '../engine/ia2025.ts'
 import { buildIaPacket } from '../pdf/ia2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
-import { MoneyField, NumberField, Section, TextField, usd } from './fields'
+import { Choice, MoneyField, NumberField, Section, TextField, usd } from './fields'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -28,11 +29,19 @@ const KEY = new Set(['22', '32', '37'])
 const KINDS: [IaRetirementKind, string][] = [['standard', 'IRA, pension or annuity'], ['military', 'Military retirement'], ['railroad', 'Railroad retirement'], ['nonqualified', 'Nonqualified plan (not excluded)']]
 const firstName = (p: Person, fallback: string): string => p.firstName.trim().split(/\s+/)[0] || fallback
 
+const OOS: [keyof IaOutOfState, string, string][] = [
+  ['wages', 'Wages, salaries, tips', '1'], ['interest', 'Taxable interest', '2'], ['dividends', 'Ordinary dividends', '3'], ['alimony', 'Taxable alimony received', '4'],
+  ['business', 'Business income or (loss)', '5'], ['capitalGain', 'Capital gain or (loss)', '6'], ['otherGains', 'Other gains or (losses)', '7'],
+  ['rents', 'Rents, royalties, partnerships, estates', '8'], ['farm', 'Farm income or (loss)', '9'], ['unemployment', 'Unemployment compensation', '10'],
+  ['gambling', 'Gambling winnings', '11'], ['other', 'Other income, bonus depreciation and §179 adjustment', '12']
+]
+
 export function IowaStep({ ret, set, result, preparer }: StepProps & { preparer: PreparerInfo | null }): ReactElement {
   const d = ret.ia
   const ia = useMemo(() => computeIowa(ret, result), [ret, result])
   const [pdf, setPdf] = useState<{ busy: boolean; note: string }>({ busy: false, note: '' })
   const put = (p: Partial<IaInput>): void => set((r) => ({ ...r, ia: { ...r.ia, ...p } }))
+  const putOos = (p: Partial<IaOutOfState>): void => put({ oos: { ...d.oos, ...p } })
   const married = ret.filingStatus === 'mfj'
   const owners: Owner[] = married ? ['taxpayer', 'spouse'] : ['taxpayer']
   const names: Record<Owner, string> = { taxpayer: firstName(ret.taxpayer, 'You'), spouse: firstName(ret.spouse, 'Spouse') }
@@ -139,13 +148,48 @@ export function IowaStep({ ret, set, result, preparer }: StepProps & { preparer:
             <MoneyField key={`e-${x.id}`} label={`${x.name.trim() || 'Dependent'}: preschool and early childhood expenses`} hint="Line 24 ECDC; 25% of up to $1,000" value={d.earlyChildhood[x.id] ?? 0} onChange={(n) => put({ earlyChildhood: { ...d.earlyChildhood, [x.id]: n } })} />
           ))}
           <MoneyField label="Volunteer firefighter / EMS / reserve peace officer credit" hint="Line 10" value={d.volunteerCredit} onChange={(n) => put({ volunteerCredit: n })} />
-          <MoneyField label="Out-of-state tax credit" hint="Line 15, from IA 130" value={d.outOfStateCredit} onChange={(n) => put({ outOfStateCredit: n })} />
-          <MoneyField label="Other nonrefundable credits" hint="Line 17, from IA 148" value={d.otherNonrefundable} onChange={(n) => put({ otherNonrefundable: n })} />
           <MoneyField label="Iowa fuel tax credit" hint="Line 23, from IA 4136" value={d.fuelTaxCredit} onChange={(n) => put({ fuelTaxCredit: n })} />
-          <MoneyField label="Other refundable credits" hint="Line 26, from IA 148" value={d.otherRefundable} onChange={(n) => put({ otherRefundable: n })} />
           <MoneyField label="Fish and wildlife contribution" hint="Line 21" value={d.fishWildlife} onChange={(n) => put({ fishWildlife: n })} />
           <MoneyField label="Child abuse prevention contribution" hint="Line 21" value={d.childAbuse} onChange={(n) => put({ childAbuse: n })} />
         </div>
+        <details open={ia.oos !== null}>
+          <summary>Out-of-state tax credit (IA 130){ia.oos ? ` — ${usd(L['15'])}` : ''}</summary>
+          <p className="why">For income that another state or jurisdiction also taxed. Enter each kind of that income as it is included on your Iowa return, and the tax that state imposed on it (from its return, not the amount withheld). One state; for more, complete another IA 130 by hand.</p>
+          <div className="grid">
+            <TextField label="State or jurisdiction" autoComplete="off" value={d.oos.state} onChange={(s) => putOos({ state: s })} />
+            {OOS.map(([k, label, line]) => <MoneyField key={k} label={label} hint={`Line ${line}`} allowNegative={['business', 'capitalGain', 'otherGains', 'rents', 'farm', 'other'].includes(k)} value={d.oos[k] as number} onChange={(n) => putOos({ [k]: n })} />)}
+            <MoneyField label="Tax imposed by that state and paid by you" hint="Line 20" value={d.oos.taxPaid} onChange={(n) => putOos({ taxPaid: n })} />
+            <MoneyField label="Tax paid there by a pass-through entity or mutual fund" hint="Line 21" value={d.oos.passThroughTax} onChange={(n) => putOos({ passThroughTax: n })} />
+          </div>
+          {ia.oos && <p className="why">{ia.oos['17'].toFixed(4)}% of your Iowa income was taxed there, so the credit is the smaller of {usd(ia.oos['19'])} and {usd(ia.oos['22'])}: {usd(ia.oos['23'])}.</p>}
+        </details>
+        <details open={d.credits148.length > 0}>
+          <summary>Business and other tax credits (IA 148){L['17'] + L['26'] > 0 ? ` — ${usd(L['17'] + L['26'])}` : ''}</summary>
+          <p className="why">Use the two-digit tax credit code from the IA 148 instructions and the certificate number when one was issued. Nonrefundable credits (Part I) are applied in order up to your tax; refundable credits (Part II) are paid even with no tax.</p>
+          {d.credits148.map((c, i) => {
+            const set1 = (p: Partial<IaCredit148>): void => put({ credits148: d.credits148.map((y, j) => (j === i ? { ...y, ...p } : y)) })
+            const row = c.refundable || !c.code.trim() ? null : ia.part1[d.credits148.slice(0, i).filter((y) => !y.refundable && y.code.trim()).length]
+            return (
+              <fieldset key={i} className="statement">
+                <legend>{c.refundable ? 'Refundable' : 'Nonrefundable'} credit{c.code.trim() ? ` ${c.code.trim()}` : ''}</legend>
+                <div className="grid">
+                  <Choice legend="Kind" value={c.refundable ? 'r' : 'n'} onChange={(k) => set1({ refundable: k === 'r' })} options={[{ value: 'n', label: 'Nonrefundable (Part I)' }, { value: 'r', label: 'Refundable (Part II)' }]} />
+                  <TextField label="Tax credit code" autoComplete="off" value={c.code} onChange={(s) => set1({ code: s.replace(/\D/g, '').slice(0, 2) })} />
+                  <TextField label="Certificate number" hint="If one was issued" autoComplete="off" value={c.certificate} onChange={(s) => set1({ certificate: s })} />
+                  {!c.refundable && <MoneyField label="Carried forward from prior years" hint="Column C" value={c.carryforward} onChange={(n) => set1({ carryforward: n })} />}
+                  <MoneyField label="This year’s amount" hint={c.refundable ? 'Column K' : 'Column D; earned or from a pass-through entity'} value={c.current} onChange={(n) => set1({ current: n })} />
+                  {!c.refundable && <MoneyField label="Expired amount" hint="Column G" value={c.expired} onChange={(n) => set1({ expired: n })} />}
+                  <TextField label="Pass-through entity name" hint="Part IV; leave blank if earned yourself" autoComplete="off" value={c.entityName} onChange={(s) => set1({ entityName: s })} />
+                  {c.entityName.trim() && <TextField label="Pass-through entity FEIN" autoComplete="off" value={c.entityFein} onChange={(s) => set1({ entityFein: s.replace(/[^\d-]/g, '').slice(0, 10) })} />}
+                  {c.entityName.trim() && <TextField label="Disregarded entity’s FEIN" hint="Only if reported through one" autoComplete="off" value={c.disregardedFein} onChange={(s) => set1({ disregardedFein: s.replace(/[^\d-]/g, '').slice(0, 10) })} />}
+                </div>
+                {row && <p className="why">Applied this year: {usd(row.F)}; carried forward: {usd(row.H)}.</p>}
+                <div className="actions"><button type="button" className="button" onClick={() => put({ credits148: d.credits148.filter((_, j) => j !== i) })}>Remove this credit</button></div>
+              </fieldset>
+            )
+          })}
+          <div className="actions"><button type="button" className="button" onClick={() => put({ credits148: [...d.credits148, emptyIaCredit148()] })}>Add an IA 148 credit</button></div>
+        </details>
         {ia.careCredit && <p className="why">Line 24 uses the {ia.careCredit === 'care' ? 'child and dependent care credit (a percentage of your federal credit)' : 'early childhood development credit'}, the larger of the two.</p>}
       </Section>
 

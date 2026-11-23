@@ -11,7 +11,7 @@
  * childhood development credit (25% of $1,000 per child aged 3–5); the Iowa EITC (15% of the federal credit).
  * Whole dollars.
  */
-import type { Owner, TaxReturnInput } from './model.ts'
+import type { IaCredit148, Owner, TaxReturnInput } from './model.ts'
 import type { TaxReturnResult } from './compute.ts'
 
 const r = (n: number): number => Math.round(n)
@@ -41,6 +41,10 @@ export interface IaResult {
   alternateTax: boolean
   taxReduction: boolean
   careCredit: 'care' | 'early' | null
+  /** IA 130 lines (null without the credit) and IA 148 Part I and II rows. */
+  oos: Record<string, number> | null
+  part1: (IaCredit148 & { C: number; D: number; E: number; F: number; G: number; H: number })[]
+  part2: (IaCredit148 & { K: number })[]
   issues: string[]
   attach: string[]
 }
@@ -141,9 +145,34 @@ export function computeIowa(ret: TaxReturnInput, res: TaxReturnResult): IaResult
   }
   L['13'] = 0
   L['14'] = L['12'] - L['13']
-  L['15'] = Math.min(L['14'], r(pos(d.outOfStateCredit)))
+  // ── IA 130 ──
+  const o = d.oos
+  let oos: Record<string, number> | null = null
+  const OOS_KEYS: [string, keyof typeof o][] = [['1', 'wages'], ['2', 'interest'], ['3', 'dividends'], ['4', 'alimony'], ['5', 'business'], ['6', 'capitalGain'], ['7', 'otherGains'], ['8', 'rents'], ['9', 'farm'], ['10', 'unemployment'], ['11', 'gambling'], ['12', 'other']]
+  if (pos(o.taxPaid) + pos(o.passThroughTax) > 0) {
+    const c: Record<string, number> = {}
+    for (const [k, key] of OOS_KEYS) c[k] = r(Number(o[key]) || 0)
+    c['13'] = OOS_KEYS.reduce((s, [k]) => s + c[k], 0)
+    c['14'] = L['1a']
+    c['15'] = S['13'] - (A['10'] ?? 0)
+    c['16'] = c['14'] + c['15']
+    c['17'] = c['16'] > 0 ? Math.min(100, Math.max(0, Math.round(c['13'] / c['16'] * 1000000) / 10000)) : 0
+    c['18'] = L['14']
+    c['19'] = r(c['18'] * c['17'] / 100)
+    c['20'] = r(pos(o.taxPaid)); c['21'] = r(pos(o.passThroughTax)); c['22'] = c['20'] + c['21']
+    c['23'] = Math.min(c['19'], c['22'])
+    oos = c
+  }
+  L['15'] = Math.min(L['14'], oos?.['23'] ?? 0)
   L['16'] = pos(L['14'] - L['15'])
-  L['17'] = Math.min(L['16'], r(pos(d.otherNonrefundable)))
+  // ── IA 148 Part I: applied in order up to the tax left after line 16 ──
+  let room = L['16']
+  const part1 = d.credits148.filter((c) => !c.refundable && c.code.trim()).map((c) => {
+    const C = r(pos(c.carryforward)); const D = r(pos(c.current)); const E = C + D; const G = Math.min(E, r(pos(c.expired)))
+    const F = Math.min(E - G, room); room -= F
+    return { ...c, C, D, E, F, G, H: E - F - G }
+  })
+  L['17'] = part1.reduce((s, c) => s + c.F, 0)
   L['18'] = pos(L['16'] - L['17'])
   L['19'] = r(L['18'] * pos(d.surtaxRate) / 100)
   L['20'] = L['18'] + L['19']
@@ -157,6 +186,8 @@ export function computeIowa(ret: TaxReturnInput, res: TaxReturnResult): IaResult
     L['21'] = L['21fish'] = L['21child'] = 0
     L['22'] = 0
     alternateTax = taxReduction = false
+    oos = null
+    for (const c of part1) { c.H += c.F; c.F = 0 }
   }
 
   // ── Step 6: refundable credits and payments ──
@@ -167,7 +198,8 @@ export function computeIowa(ret: TaxReturnInput, res: TaxReturnResult): IaResult
   const careCredit: IaResult['careCredit'] = cdcc === 0 && ecdc === 0 ? null : cdcc >= ecdc ? 'care' : 'early'
   L['24'] = Math.max(cdcc, ecdc)
   L['25'] = r(pos(f['27a']) * 0.15)
-  L['26'] = r(pos(d.otherRefundable))
+  const part2 = d.credits148.filter((c) => c.refundable && c.code.trim()).map((c) => ({ ...c, K: r(pos(c.current)) }))
+  L['26'] = part2.reduce((s, c) => s + c.K, 0)
   L['27'] = 0
   const w2s = ret.w2s.filter((w) => owners.includes(w.owner))
   L['28'] = r(w2s.reduce((s, w) => s + pos(d.w2[w.id]?.stateTax ?? 0), 0) + pos(d.withholdingOther))
@@ -188,8 +220,13 @@ export function computeIowa(ret: TaxReturnInput, res: TaxReturnResult): IaResult
   attach.push('A copy of your federal return and your W-2s')
   if (careCredit === 'care') attach.push('Federal Form 2441 (for the Iowa child and dependent care credit)')
   if (S['16'] > 0) attach.push('IA 100 (capital gains deduction)')
-  if (L['15'] > 0) attach.push('IA 130 (out-of-state tax credit) — not filled in here')
-  if (L['17'] + L['26'] > 0) attach.push('IA 148 (tax credits schedule) — not filled in here')
+  if (oos) attach.push(`The income tax return you filed with ${o.state.trim() || 'the other state'} (and any pass-through entity statement) for IA 130`)
+  if (part1.length + part2.length > 0) attach.push('The certificate or schedule required for each IA 148 tax credit (see the IA 148 instructions)')
+  if (oos && !o.state.trim()) issues.push('IA 130: enter the name of the other state or jurisdiction.')
+  if (part1.length > 10 || part2.length > 7) issues.push('IA 148 has room for 10 nonrefundable and 7 refundable credits; use a second IA 148 for the rest.')
+  const reduced = ['46', '47', '58', '59', '62', '97']
+  if (d.credits148.some((c) => reduced.includes(c.code.trim().replace(/^0+/, '')))) issues.push('Tax credit codes 46, 47, 58, 59, 62 and 97 are subject to the IA 148 Part V claim reduction; complete Part V by hand and enter the allowable claim as the current year amount.')
+  if (part1.some((c) => c.H > 0)) issues.push('Some IA 148 nonrefundable credit is more than your tax; the rest (column H) may carry forward if the credit allows it.')
   if (L['23'] > 0) attach.push('IA 4136 (fuel tax credit) — not filled in here')
   if (addCode || subCode || d.otherAdjustment.amount > 0) attach.push('An explanation for each Schedule 1 line 11 / line 19 entry')
   if (lowIncomeExempt) issues.push(`Net income ${netIncome.toLocaleString('en-US')} is not more than $${threshold.toLocaleString('en-US')}: the low-income exemption applies and you owe no Iowa tax${L['30'] > 0 ? '; payments and refundable credits are refunded' : ''}.`)
@@ -201,5 +238,5 @@ export function computeIowa(ret: TaxReturnInput, res: TaxReturnResult): IaResult
   if (L['34'] > 0 && L['34'] > L['22'] * 0.1 && L['29'] === 0) issues.push('A balance due may mean an underpayment penalty (IA 2210).')
   if (ret.dependents.length > 4) issues.push('More than four dependents: attach a page listing the rest.')
 
-  return { lines: L, step3, schedule1: { A, B, lines: S }, netIncome, threshold, lowIncomeExempt, alternateTax, taxReduction, careCredit, issues, attach }
+  return { lines: L, step3, schedule1: { A, B, lines: S }, netIncome, threshold, lowIncomeExempt, alternateTax, taxReduction, careCredit, oos, part1, part2, issues, attach }
 }
