@@ -188,3 +188,37 @@ test('CO non-itemizer charitable subtraction over $500', () => {
   assert.equal(r.ad['12'], 1300)
   assert.equal(r.lines['12'], 44250 - 1300)
 })
+
+test('AZ Form 140PTC property tax credit claim', async () => {
+  const r0 = emptyReturn()
+  const pension = { ...empty1099R(), payer: 'Pension', grossDistribution: 3000, taxableAmount: 3000 }
+  const ret = base({ taxpayer: { ...r0.taxpayer, firstName: 'Pat', lastName: 'Doe', ssn: '123456789', age: 70 }, retirement: [pension] })
+  const r = { ...ret, residentState: 'AZ', az: { ...ret.az, ptc: { ...r0.az.ptc, claim: true, birthDate: '01/02/1955', livedAlone: true, own: true, propertyTax: 600 } } }
+  const res = computeReturn(r)
+  const a = computeArizona(r, res)
+  const t = a.ptc!
+  assert.equal(t.J, 3000)
+  assert.equal(t.lines['11'], 212)
+  assert.equal(t.lines['15'], 212)
+  assert.equal(t.lines['17'], 25)
+  assert.equal(t.lines['19'], 237)
+  assert.ok(t.qualifies)
+  assert.equal(a.lines['56'], 0)
+  const { azPtcCredit } = await import('./az2025.ts')
+  assert.equal(azPtcCredit(1750, true), 502); assert.equal(azPtcCredit(1751, true), 479); assert.equal(azPtcCredit(3751, true), 0)
+  assert.equal(azPtcCredit(2500, false), 502); assert.equal(azPtcCredit(4901, false), 123); assert.equal(azPtcCredit(5501, false), 0)
+  const { buildAzPacket } = await import('../pdf/az2025.ts')
+  const { buildPdf, fillForm } = await import('../pdf/fill.ts')
+  const lib = await import('pdf-lib')
+  const { readFile, writeFile } = await import('node:fs/promises')
+  const packet = buildAzPacket(r, res, a)
+  const f = packet.forms.find((x) => x.id === 'az140ptc')!
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const problems: { field: string }[] = []
+  await fillForm(lib, await readFile(new URL(f.file, formsDir)), { ...f }, problems as never)
+  assert.deepEqual(problems, [])
+  if (process.env.WRITE_PDF) {
+    const { bytes } = await buildPdf(lib, [f], (file: string) => readFile(new URL(file, formsDir)), '2025 AZ 140PTC')
+    await writeFile(`${process.env.WRITE_PDF}-AZPTC.pdf`, bytes)
+  }
+})

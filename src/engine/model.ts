@@ -1155,13 +1155,26 @@ export interface AzInput {
   /** Lines 64–74 voluntary gifts, by line number. */
   donations: Record<string, number>
   politicalParty: '' | 'Democratic' | 'Libertarian' | 'Republican'
+  /** Form 140PTC. */
+  ptc: AzPtc
 }
+/** Form 140PTC property tax refund (credit) claim. */
+export interface AzPtc {
+  claim: boolean; birthDate: string; livedAlone: boolean; own: boolean; ssi: boolean
+  /** Line 12 property taxes you paid; line 13 the landlord’s property tax on your rent (Form 201). */
+  propertyTax: number; landlordTax: number
+  /** Part 1 column 3: income of other household members (line I). */
+  otherPersonsIncome: number
+  /** Line 16: who claims you as a dependent, if anyone. */
+  claimedByName: string; claimedBySsn: string; claimedByAddress: string
+}
+export const emptyAzPtc = (): AzPtc => ({ claim: false, birthDate: '', livedAlone: true, own: false, ssi: false, propertyTax: 0, landlordTax: 0, otherPersonsIncome: 0, claimedByName: '', claimedBySsn: '', claimedByAddress: '' })
 export const emptyAz = (): AzInput => ({
   w2: {}, withholding1099: 0, estimatedPayments: 0, extensionPayment: 0, otherStateBondInterest: 0, usObligationInterest: 0,
   governmentPension: { taxpayer: 0, spouse: 0 }, militaryRetirement: { taxpayer: 0, spouse: 0 }, activeMilitaryPay: 0, ltcgAfter2011: null,
   contributions529: 0, contributionsAble: 0, beneficiaries: 1, qualifyingParents: 0, otherExemptions: 0, otherAdditions: 0, otherSubtractions: 0,
   itemizedAdjustment: 0, spouseItemizes: false, charityCreditGifts: 0, charityCarryover: 0, nonrefundableCredits: 0, refundableCredits: 0,
-  creditForward: 0, donations: {}, politicalParty: ''
+  creditForward: 0, donations: {}, politicalParty: '', ptc: emptyAzPtc()
 })
 
 export interface CoInput {
@@ -1662,6 +1675,8 @@ export interface CtInput {
   otherStates: { name: string; code: string; income: number; tax: number }[]
   /** Line 51 when modified Connecticut AGI differs from Connecticut AGI (null: line 5 is used). */
   modifiedAgi: number | null
+  /** Schedule CT-Dependent: dates of birth (MM/DD/YYYY) by dependent id. */
+  dependentBirthDates: Record<string, string>
   /** Line 13 (Schedule CT-IT Credit) and line 15 (use tax). */
   itCredits: number
   useTax: number
@@ -1672,7 +1687,7 @@ const emptyPropertyTax = (): CtPropertyTax => ({ town: '', description: '', date
 export const emptyCt = (): CtInput => ({
   w2: {}, other1099: { ein: '', income: 0, tax: 0 }, estimatedPayments: 0, extensionPayment: 0, townOfResidence: '', otherStateBondInterest: 0, usObligationInterest: 0,
   chetContributions: 0, ableContributions: 0, otherAddition: { description: '', amount: 0 }, otherSubtraction: { description: '', amount: 0 }, retirementKind: {},
-  residence: emptyPropertyTax(), auto1: emptyPropertyTax(), auto2: emptyPropertyTax(), otherStates: [], modifiedAgi: null, itCredits: 0, useTax: 0, creditForward: 0
+  residence: emptyPropertyTax(), auto1: emptyPropertyTax(), auto2: emptyPropertyTax(), otherStates: [], modifiedAgi: null, dependentBirthDates: {}, itCredits: 0, useTax: 0, creditForward: 0
 })
 
 export interface UtInput {
@@ -3052,7 +3067,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     oh: { ...emptyOh(), ...(r.oh ?? {}), w2: normalizeStatements(r.oh?.w2), r1099: normalizeStatements(r.oh?.r1099), donations: { ...(r.oh?.donations ?? {}) }, dependentBirthDates: { ...(r.oh?.dependentBirthDates ?? {}) } },
     nj: { ...emptyNj(), ...(r.nj ?? {}), w2: normalizeStatements(r.nj?.w2), disabled: { ...emptyNj().disabled, ...(r.nj?.disabled ?? {}) }, veteran: { ...emptyNj().veteran, ...(r.nj?.veteran ?? {}) }, electionFund: { ...emptyNj().electionFund, ...(r.nj?.electionFund ?? {}) }, donations: { ...(r.nj?.donations ?? {}) }, dependentBirthYears: { ...(r.nj?.dependentBirthYears ?? {}) }, pensionTaxable: typeof r.nj?.pensionTaxable === 'number' ? r.nj.pensionTaxable : null, pensionExcludable: typeof r.nj?.pensionExcludable === 'number' ? r.nj.pensionExcludable : null },
     ma: { ...emptyMa(), ...(r.ma ?? {}), w2: normalizeStatements(r.ma?.w2), commuter: { ...emptyMa().commuter, ...(r.ma?.commuter ?? {}) }, veteran: { ...emptyMa().veteran, ...(r.ma?.veteran ?? {}) }, electionFund: { ...emptyMa().electionFund, ...(r.ma?.electionFund ?? {}) }, donations: { ...(r.ma?.donations ?? {}) }, birthDate: { ...emptyMa().birthDate, ...(r.ma?.birthDate ?? {}) }, dependentBirthDates: { ...(r.ma?.dependentBirthDates ?? {}) }, health: { taxpayer: normalizeMaHealth(r.ma?.health?.taxpayer), spouse: normalizeMaHealth(r.ma?.health?.spouse) } },
-    az: { ...emptyAz(), ...(r.az ?? {}), w2: normalizeStatements(r.az?.w2), governmentPension: { ...emptyAz().governmentPension, ...(r.az?.governmentPension ?? {}) }, militaryRetirement: { ...emptyAz().militaryRetirement, ...(r.az?.militaryRetirement ?? {}) }, donations: { ...(r.az?.donations ?? {}) } },
+    az: { ...emptyAz(), ...(r.az ?? {}), w2: normalizeStatements(r.az?.w2), governmentPension: { ...emptyAz().governmentPension, ...(r.az?.governmentPension ?? {}) }, militaryRetirement: { ...emptyAz().militaryRetirement, ...(r.az?.militaryRetirement ?? {}) }, donations: { ...(r.az?.donations ?? {}) }, ptc: { ...emptyAzPtc(), ...(r.az?.ptc ?? {}) } },
     co: { ...emptyCo(), ...(r.co ?? {}), w2: normalizeStatements(r.co?.w2), militaryRetirement: { ...emptyCo().militaryRetirement, ...(r.co?.militaryRetirement ?? {}) }, idState: { ...emptyCo().idState, ...(r.co?.idState ?? {}) }, idLast4: { ...emptyCo().idLast4, ...(r.co?.idLast4 ?? {}) }, idIssued: { ...emptyCo().idIssued, ...(r.co?.idIssued ?? {}) }, birthDate: { ...emptyCo().birthDate, ...(r.co?.birthDate ?? {}) } },
     mn: { ...emptyMn(), ...(r.mn ?? {}), w2: normalizeStatements(r.mn?.w2), birthDate: { ...emptyMn().birthDate, ...(r.mn?.birthDate ?? {}) }, campaignCode: { ...emptyMn().campaignCode, ...(r.mn?.campaignCode ?? {}) } },
     wi: { ...emptyWi(), ...(r.wi ?? {}), w2: normalizeStatements(r.wi?.w2), donations: { ...(r.wi?.donations ?? {}) } },
@@ -3214,7 +3229,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
         otherSubtraction: { ...e.otherSubtraction, ...(x.otherSubtraction ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) },
         residence: { ...e.residence, ...(x.residence ?? {}) }, auto1: { ...e.auto1, ...(x.auto1 ?? {}) }, auto2: { ...e.auto2, ...(x.auto2 ?? {}) },
         otherStates: Array.isArray(x.otherStates) ? x.otherStates.map((o: Partial<CtInput['otherStates'][number]>) => ({ name: '', code: '', income: 0, tax: 0, ...o })) : [],
-        modifiedAgi: typeof x.modifiedAgi === 'number' ? x.modifiedAgi : null }
+        modifiedAgi: typeof x.modifiedAgi === 'number' ? x.modifiedAgi : null, dependentBirthDates: { ...(x.dependentBirthDates ?? {}) } }
     })(),
     ut: (() => {
       const e = emptyUt(); const x: Partial<UtInput> = r.ut ?? {}

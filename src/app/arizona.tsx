@@ -6,7 +6,7 @@ import type { AzInput, Owner, Person } from '../engine/model.ts'
 import { AZ_DONATION_LINES, computeArizona } from '../engine/az2025.ts'
 import { buildAzPacket } from '../pdf/az2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
-import { Check, MoneyField, NumberField, Section, usd } from './fields'
+import { Check, MoneyField, NumberField, Section, TextField, usd } from './fields'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -36,6 +36,7 @@ export function ArizonaStep({ ret, set, result, preparer }: StepProps & { prepar
   const az = useMemo(() => computeArizona(ret, result), [ret, result])
   const [pdf, setPdf] = useState<{ busy: boolean; note: string }>({ busy: false, note: '' })
   const put = (p: Partial<AzInput>): void => set((r) => ({ ...r, az: { ...r.az, ...p } }))
+  const putPtc = (p: Partial<AzInput['ptc']>): void => put({ ptc: { ...d.ptc, ...p } })
   const joint = az.status === 'mfj'
   const owners: Owner[] = joint ? ['taxpayer', 'spouse'] : ['taxpayer']
   const names: Record<Owner, string> = { taxpayer: firstName(ret.taxpayer, 'You'), spouse: firstName(ret.spouse, 'Spouse') }
@@ -146,6 +147,29 @@ export function ArizonaStep({ ret, set, result, preparer }: StepProps & { prepar
             )}
           </div>
         </details>
+      </Section>
+
+      <Section title="Property tax refund (Form 140PTC)" intro="A separate claim for residents 65 or older or receiving Title 16 SSI, with very low household income (up to $3,750 living alone, $5,500 with others). It also figures the increased excise tax credit, so line 56 of Form 140 is left blank when you file it.">
+        <Check label="File Form 140PTC" checked={d.ptc.claim} onChange={(on) => putPtc({ claim: on })} />
+        {d.ptc.claim && (
+          <>
+            <div className="grid">
+              <TextField label="Your date of birth" hint="Box 79" placeholder="MM/DD/YYYY" autoComplete="off" value={d.ptc.birthDate} onChange={(s) => putPtc({ birthDate: s.replace(/[^\d/]/g, '').slice(0, 10) })} />
+              <MoneyField label="Property taxes you paid in 2025" hint="Line 12, if you owned your home" value={d.ptc.propertyTax} onChange={(n) => putPtc({ propertyTax: n })} />
+              <MoneyField label="Property tax paid by your landlord on your rent" hint="Line 13, from Form 201" value={d.ptc.landlordTax} onChange={(n) => putPtc({ landlordTax: n })} />
+              <MoneyField label="Income of other people in your household" hint="Part 1, column 3" value={d.ptc.otherPersonsIncome} onChange={(n) => putPtc({ otherPersonsIncome: n })} />
+              <TextField label="Who claims you as a dependent" hint="Line 16; leave blank if no one" autoComplete="off" value={d.ptc.claimedByName} onChange={(s) => putPtc({ claimedByName: s })} />
+              {d.ptc.claimedByName.trim() && <TextField label="Their SSN" autoComplete="off" value={d.ptc.claimedBySsn} onChange={(s) => putPtc({ claimedBySsn: s.replace(/[^\d-]/g, '').slice(0, 11) })} />}
+              {d.ptc.claimedByName.trim() && <TextField label="Their address" autoComplete="off" value={d.ptc.claimedByAddress} onChange={(s) => putPtc({ claimedByAddress: s })} />}
+            </div>
+            <div className="checks">
+              <Check label="I owned my home on December 31, 2025 (not renting)" checked={d.ptc.own} onChange={(on) => putPtc({ own: on })} />
+              <Check label="I lived alone" checked={d.ptc.livedAlone} onChange={(on) => putPtc({ livedAlone: on })} />
+              <Check label="I received Title 16 SSI payments in 2025" checked={d.ptc.ssi} onChange={(on) => putPtc({ ssi: on })} />
+            </div>
+            {az.ptc && <p className="why">Household income {usd(az.ptc.J)}: credit {usd(az.ptc.lines['15'])} plus excise tax credit {usd(az.ptc.lines['17'])} = {usd(az.ptc.lines['19'])} (line 19).</p>}
+          </>
+        )}
       </Section>
 
       {az.issues.length > 0 && (

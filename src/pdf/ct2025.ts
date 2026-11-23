@@ -178,9 +178,42 @@ export function formCtEitc(ret: TaxReturnInput, ct1: CtResult): FormFill {
   return { id: 'cteitc', file: 'ct-eitc.pdf', title: 'Connecticut Schedule CT-EITC', values: {}, draw }
 }
 
+const cd = at(612)
+/** Schedule CT-Dependent relationship code: 1 child/stepchild, 2 niece/nephew, 3 grandchild, 4 foster child, 5 other. */
+export function ctRelationshipCode(rel: string): string {
+  const s = rel.toLowerCase()
+  if (/foster/.test(s)) return '4'
+  if (/grand/.test(s)) return '3'
+  if (/niece|nephew/.test(s)) return '2'
+  if (/son|daughter|child|step/.test(s)) return '1'
+  return '5'
+}
+
+/** Schedule CT-Dependent (landscape, no fillable fields). */
+export function formCtDependent(ret: TaxReturnInput): FormFill | null {
+  const deps = ret.dependents
+  if (!deps.length) return null
+  const draw: Draw[] = []
+  draw.push(...comb(cd, 0, 491, 13.6, 57, '###-##-####', digits(ret.taxpayer.ssn)))
+  draw.push(cd(0, 396, 182, 'X', { size: 10 }))
+  deps.slice(0, 4).forEach((x, i) => {
+    const base = 330 + i * 36
+    const [first, last] = splitName(x.name)
+    draw.push(cd(0, 56, base, upper(first).slice(0, 22), { size: 9 }), cd(0, 214, base, upper(last).slice(0, 20), { size: 9 }))
+    const dob = digits(ret.ct.dependentBirthDates[x.id] ?? '')
+    if (dob.length === 8) draw.push(...comb(cd, 0, 369, 11.1, base, '##-##-####', dob, 9))
+    draw.push(...comb(cd, 0, 488, 11.1, base, '###-##-####', digits(x.ssn), 9))
+    draw.push(cd(0, 685, base, ctRelationshipCode(x.relationship), { size: 10 }))
+  })
+  draw.push(cd(0, 207, 504, String(deps.length), { size: 10 }))
+  return { id: 'ctdep', file: 'ct-dependent.pdf', title: 'Connecticut Schedule CT-Dependent', values: {}, draw }
+}
+
 export function buildCtPacket(ret: TaxReturnInput, res: TaxReturnResult, ct1: CtResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formCt1040(ret, res, ct1, preparer)]
   if (ct1.eitc['16'] > 0) forms.push(formCtEitc(ret, ct1))
+  const dep = formCtDependent(ret)
+  if (dep) forms.push(dep)
   const notIncluded = [...ct1.attach]
   if (ct1.eitc['16'] > 0) notIncluded.push('Schedule CT-EITC lines 6a–6c and 7a–7c: list wages without Connecticut withholding and self-employment income by hand')
   if (ct1.eitcChildren > 3) notIncluded.push('Schedule CT-EITC: children after the third on an attached list')

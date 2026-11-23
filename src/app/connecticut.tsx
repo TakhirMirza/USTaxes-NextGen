@@ -126,6 +126,16 @@ export function ConnecticutStep({ ret, set, result, preparer }: StepProps & { pr
         {joint && property('auto2', 'Motor vehicle 2', 'Year, make and model')}
       </Section>
 
+      {ret.dependents.length > 0 && (
+        <Section title="Dependents (Schedule CT-Dependent)" intro="Connecticut asks for each dependent’s date of birth; names, SSNs and relationships come from your federal entries.">
+          <div className="grid">
+            {ret.dependents.map((x) => (
+              <TextField key={x.id} label={`${x.name.trim() || 'Dependent'}: date of birth`} placeholder="MM/DD/YYYY" autoComplete="off" value={d.dependentBirthDates[x.id] ?? ''} onChange={(s) => put({ dependentBirthDates: { ...d.dependentBirthDates, [x.id]: s.replace(/[^\d/]/g, '').slice(0, 10) } })} />
+            ))}
+          </div>
+        </Section>
+      )}
+
       <Section title="Credit for income taxes paid to other jurisdictions (Schedule 2)" intro="For income from another state, the District of Columbia or a political subdivision that taxed it. Enter the non-Connecticut income from the Schedule 2 Worksheet and the income tax paid there (from that return, not the amount withheld). Two jurisdictions fit on the form.">
         {[0, 1].filter((i) => i < d.otherStates.length + 1).map((i) => {
           const o = d.otherStates[i] ?? { name: '', code: '', income: 0, tax: 0 }

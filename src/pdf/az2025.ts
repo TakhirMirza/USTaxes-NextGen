@@ -147,8 +147,55 @@ export function formAz140(ret: TaxReturnInput, res: TaxReturnResult, az: AzResul
   return { id: 'az140', file: FILE, title: 'Arizona Form 140', values, pages }
 }
 
+/** Form 140PTC property tax refund (credit) claim, filed separately. */
+export function formAz140ptc(ret: TaxReturnInput, az: AzResult): FormFill | null {
+  const t = az.ptc
+  if (!t) return null
+  const p = ret.az.ptc
+  const c = ret.contact
+  const joint = ret.filingStatus === 'mfj'
+  const v: Record<string, FieldValue> = {}
+  const n = (x: number): string => String(Math.round(x))
+  v.FirstNameTP = ret.taxpayer.firstName.trim().toUpperCase(); v.LastNameTP = ret.taxpayer.lastName.trim().toUpperCase()
+  v['SSN_TP.1'] = ret.taxpayer.ssn.replace(/\D/g, '')
+  if (joint) { v.FirstNameSpouse = ret.spouse.firstName.trim().toUpperCase(); v.LastNameSpouse = ret.spouse.lastName.trim().toUpperCase(); v.SSN_Spouse = ret.spouse.ssn.replace(/\D/g, '') }
+  v.HomeAddress = c.street.trim().toUpperCase(); v.Apt = c.apt.trim().toUpperCase(); v.City = c.city.trim().toUpperCase(); v.State = c.state.trim().toUpperCase(); v.Zip = c.zip.replace(/\D/g, '').slice(0, 5)
+  if (c.phone) v['Phone.Daytime'] = c.phone.replace(/\D/g, '')
+  v.DateBirth = p.birthDate.replace(/\D/g, '')
+  const old = ret.taxpayer.age >= 65 || ret.taxpayer.age65OrOlder
+  v.rdo4 = p.own ? '#1' : '#0'
+  v.rdo5 = '#0'; v.rdo6 = '#0'; v.rdo7 = '#0'
+  v.rdo8 = old ? '#0' : '#1'; v.rdo9 = p.ssi ? '#0' : '#1'
+  const L = t.lines
+  v['10'] = n(L['10'])
+  v[p.livedAlone ? 'chk.11a' : 'chk.11b'] = true
+  v['11'] = n(L['11'])
+  if (L['12']) v['12'] = n(L['12'])
+  if (L['13']) v['13'] = n(L['13'])
+  v['14'] = n(L['14']); v['15'] = n(L['15'])
+  if (p.claimedByName.trim()) { v.TaxpayerName = p.claimedByName.trim().toUpperCase(); v.TPssn = p.claimedBySsn.replace(/\D/g, ''); v.TPaddress = p.claimedByAddress.trim().toUpperCase() }
+  if (L['17']) v['17'] = n(L['17'])
+  if (L['18'] !== undefined) v['18'] = n(L['18'])
+  v['19'] = n(L['19'])
+  // Page 2
+  v.NameTP = `${ret.taxpayer.firstName} ${ret.taxpayer.lastName}`.trim().toUpperCase(); v['SSN_TP.2'] = ret.taxpayer.ssn.replace(/\D/g, '')
+  for (const [k, cols] of Object.entries(t.income)) {
+    const row = k.toLowerCase()
+    cols.forEach((x, j) => { if (x || j === 3) v[`part1.${row}${j + 1}`] = n(x) })
+  }
+  v['part1.j4'] = n(t.J)
+  t.dependents.forEach((x, i) => {
+    const r = ['a', 'b', 'c'][i]
+    v[`D10${r}.1.1`] = x.name.trim().toUpperCase(); v[`D10${r}.1.3`] = x.ssn.replace(/\D/g, ''); v[`D10${r}.1.4`] = x.relationship.trim().toUpperCase(); v[`D10${r}.1.5`] = String(x.months)
+  })
+  if (L['p2'] !== undefined) for (const k of ['2', '3', '4', '5', '6']) v[`part2.${k}`] = n(L[`p${k}`])
+  return { id: 'az140ptc', file: 'az-140ptc.pdf', title: 'Arizona Form 140PTC (filed separately)', values: v }
+}
+
 export function buildAzPacket(ret: TaxReturnInput, res: TaxReturnResult, az: AzResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formAz140(ret, res, az, preparer)]
+  const ptc = formAz140ptc(ret, az)
+  if (ptc) forms.push(ptc)
   const notIncluded = az.attach.filter((a) => !a.startsWith('Form 140 page'))
   if (az.lines['18'] > 0) notIncluded.push('Page 5: the total is on line S (other adjustments); move amounts to their own lettered lines if they fit one')
   if (az.lines['36'] > 0) notIncluded.push('Page 6: the total is on line V (other adjustments); move amounts to their own lettered lines if they fit one')

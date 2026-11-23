@@ -97,7 +97,7 @@ test('CT-1040 and CT-EITC: values are printed on the official forms', async () =
   const { ct: r, res, ret } = ct(base({ filingStatus: 'hoh', w2s: [w], dependents: [kid(4)], refundDeposit: { routingNumber: '011900254', accountNumber: '5551212', accountType: 'checking' } }),
     { w2: withheld(w, 400), usObligationInterest: 50, residence: { town: 'Hartford', description: '450 Columbus Blvd', datePaid: '07012025', amount: 2500 } })
   const packet = buildCtPacket(ret, res, r)
-  assert.deepEqual(packet.forms.map((x) => x.id), ['ct1040', 'cteitc'])
+  assert.deepEqual(packet.forms.map((x) => x.id), ['ct1040', 'cteitc', 'ctdep'])
   const formsDir = new URL('../../public/forms/2025/', import.meta.url)
   const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
   const problems: FillProblem[] = []
@@ -123,4 +123,17 @@ test('CT Schedule 2: credit for income taxes paid to qualifying jurisdictions', 
   assert.deepEqual(problems, [])
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 CT')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-CTS2.pdf`, bytes)
+})
+
+test('Schedule CT-Dependent', async () => {
+  const { ct: c, res, ret } = ct(base({ filingStatus: 'hoh', w2s: [w2(60000)], dependents: [{ ...emptyDependent(), name: 'Ann Doe', relationship: 'Daughter', age: 7, ssn: '111223333', monthsLivedWithYou: 12, childRelationship: true }] }))
+  const r2 = { ...ret, ct: { ...ret.ct, dependentBirthDates: { [ret.dependents[0].id]: '03/14/2018' } } }
+  const packet = buildCtPacket(r2, res, c)
+  const dep = packet.forms.find((f) => f.id === 'ctdep')!
+  assert.ok(dep.draw!.some((t) => t.text === 'ANN'))
+  assert.ok(dep.draw!.some((t) => t.text === '1' && t.x === 685))
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const { bytes } = await buildPdf(lib, [dep], load, '2025 CT-Dependent')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-CTDEP.pdf`, bytes)
 })

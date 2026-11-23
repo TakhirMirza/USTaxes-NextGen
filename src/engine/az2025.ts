@@ -51,6 +51,63 @@ export function azFamilyMaxIncome(status: AzStatus, dependents: number): number 
 
 export interface AzDependentRow { name: string; ssn: string; relationship: string; months: number; under17: boolean }
 
+/** 2025 Form 140PTC credit schedules: Schedule 1 (lived alone) and Schedule 2 (lived with others). */
+const PTC_CREDITS = [502, 479, 457, 435, 412, 390, 368, 345, 323, 301, 279, 256, 234, 212, 189, 167, 145, 123, 100, 78, 56, 0]
+export function azPtcCredit(income: number, alone: boolean): number {
+  const [first, step] = alone ? [1750, 100] : [2500, 150]
+  if (income <= first) return PTC_CREDITS[0]
+  return PTC_CREDITS[Math.min(PTC_CREDITS.length - 1, Math.ceil((income - first) / step))]
+}
+
+export interface AzPtcResult {
+  /** Part 1 household income: rows A–I by column (1 you, 2 spouse, 3 others, 4 total) and line J. */
+  income: Record<string, [number, number, number, number]>
+  J: number
+  lines: Record<string, number>
+  qualifies: boolean
+  dependents: { name: string; ssn: string; relationship: string; months: number }[]
+}
+
+export function computeAzPtc(ret: TaxReturnInput, res: TaxReturnResult): AzPtcResult | null {
+  const p = ret.az.ptc
+  if (!p.claim) return null
+  const joint = ret.filingStatus === 'mfj'
+  const r = Math.round
+  const f = res.f1040
+  const wages = (o: 'taxpayer' | 'spouse'): number => r(ret.w2s.filter((w) => w.owner === o).reduce((s, w) => s + w.wages, 0))
+  const pension = (o: 'taxpayer' | 'spouse'): number => r(ret.retirement.filter((x) => x.owner === o).reduce((s, x) => s + Math.max(0, x.taxableAmount), 0))
+  const s1 = res.schedule1
+  const row = (a: number, b: number, c = 0): [number, number, number, number] => [a, joint ? b : 0, c, a + (joint ? b : 0) + c]
+  const income: AzPtcResult['income'] = {
+    A: row(wages('taxpayer'), wages('spouse')),
+    B: row(r((f['2b'] ?? 0) + (f['3b'] ?? 0)), 0),
+    C: row(r(s1.businessIncome), 0),
+    D: row(r((f['7a'] ?? 0) + s1.otherGains), 0),
+    E: row(pension('taxpayer'), pension('spouse')),
+    F: row(r(s1.rentalIncome), 0),
+    G: row(0, 0),
+    H: row(0, 0),
+    I: row(r(s1.unemployment + s1.otherIncome + s1.hsaTaxable), 0, r(Math.max(0, p.otherPersonsIncome)))
+  }
+  const J = Object.values(income).reduce((s, x) => s + x[3], 0)
+  const L: Record<string, number> = {}
+  L['10'] = J
+  L['11'] = azPtcCredit(J, p.livedAlone)
+  L['12'] = p.own ? r(Math.max(0, p.propertyTax)) : 0
+  L['13'] = p.own ? 0 : r(Math.max(0, p.landlordTax))
+  L['14'] = L['12'] + L['13']
+  L['15'] = Math.min(L['11'], L['14'])
+  const claimed = ret.canBeClaimedAsDependent || !!p.claimedByName.trim()
+  const deps = claimed ? [] : ret.dependents.slice(0, 3).map((x) => ({ name: x.name, ssn: x.ssn, relationship: x.relationship, months: x.monthsLivedWithYou }))
+  if (!claimed) {
+    L['p2'] = deps.length; L['p3'] = joint ? 2 : 1; L['p4'] = L['p2'] + L['p3']; L['p5'] = L['p4'] * 25; L['p6'] = Math.min(L['p5'], 100)
+    L['17'] = L['p6']; L['18'] = L['p2']
+  } else L['17'] = 0
+  L['19'] = L['15'] + L['17']
+  const old = ret.taxpayer.age >= 65 || ret.taxpayer.age65OrOlder
+  return { income, J, lines: L, qualifies: (old || p.ssi) && L['11'] > 0, dependents: deps }
+}
+
 export interface AzResult {
   status: AzStatus
   lines: Record<string, number>
@@ -61,6 +118,8 @@ export interface AzResult {
   counts: { age65: number; blind: number; under17: number; over17: number; parents: number; other: number }
   credits: { dependentFactor: number; familyQualifies: boolean; familyPeople: number; excisePeople: number }
   statements: { owner: Owner; employer: string; ein: string; stateId: string; wages: number; tax: number }[]
+  /** Form 140PTC (null unless claimed). */
+  ptc: AzPtcResult | null
   issues: string[]
   attach: string[]
 }
@@ -182,7 +241,8 @@ export function computeArizona(ret: TaxReturnInput, res: TaxReturnResult): AzRes
   L['55'] = r(pos(d.extensionPayment))
   const exciseLimit = status === 'mfj' || status === 'hoh' ? 25000 : 12500
   const excisePeople = !ret.canBeClaimedAsDependent && fagi <= exciseLimit ? familyDeps + (joint ? 2 : 1) : 0
-  L['56'] = Math.min(excisePeople * 25, 100)
+  // Filing Form 140PTC: the excise tax credit is figured there instead.
+  L['56'] = d.ptc.claim ? 0 : Math.min(excisePeople * 25, 100)
   L['57'] = 0
   L['58'] = r(pos(d.refundableCredits))
   L['59'] = L['53'] + L['54c'] + L['55'] + L['56'] + L['57'] + L['58']
@@ -212,9 +272,15 @@ export function computeArizona(ret: TaxReturnInput, res: TaxReturnResult): AzRes
   if (L['29a'] === 0 && ret.retirement.some((x) => !x.ira && x.taxableAmount > 0)) issues.push('If a pension is from the U.S. government or an Arizona state or local government, up to $2,500 of it per person is not taxed: enter it under government pensions.')
   if (factor < 1 && L['49'] > 0) issues.push(`Federal AGI is over the limit, so the Dependent Tax Credit is ${Math.round(factor * 100)}% of the full amount (Table V).`)
   if (fagi <= exciseLimit && L['56'] > 0) issues.push('Increased Excise Tax Credit: do not claim it if someone else in your household already claimed $100, or if you file Form 140PTC (then it is figured there).')
-  if (age65 > 0 && fagi < 10000) issues.push('At 65 or older with low income you may also qualify for the Property Tax Credit (Form 140PTC), which is not prepared here.')
+  if (age65 > 0 && fagi < 10000 && !d.ptc.claim) issues.push('At 65 or older with low income you may also qualify for the Property Tax Credit (Form 140PTC): see the Arizona step.')
   if (statements.some((x) => x.tax > 0 && !x.ein)) issues.push('Enter each W-2’s employer ID for your records.')
   if (ret.filingStatus === 'mfs') issues.push('Arizona is a community property state: a separate return reports half of community income (see page 5 item A / page 6 item A).')
+  const ptc = computeAzPtc(ret, res)
+  if (ptc) {
+    if (!ptc.qualifies) issues.push(ptc.lines['11'] === 0 ? `Form 140PTC: household income ${ptc.J.toLocaleString('en-US')} is above the limit, so no property tax credit is allowed.` : 'Form 140PTC is only for people 65 or older or receiving Title 16 SSI payments.')
+    attach.push('Form 140PTC is filed separately (by April 15, 2026) with proof of property taxes paid or Form 201 from your landlord' + (ret.az.ptc.ssi ? ', and proof of SSI payments' : ''))
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(ret.az.ptc.birthDate.trim())) issues.push('Form 140PTC: enter your date of birth (box 79).')
+  }
   if (L['60'] > 1000 && L['54a'] === 0) issues.push('A large balance due may mean an estimated payment penalty (Form 221).')
 
   return {
@@ -222,6 +288,6 @@ export function computeArizona(ret: TaxReturnInput, res: TaxReturnResult): AzRes
     deduction: { method: itemizes ? 'itemized' : 'standard', standard, itemized },
     dependents, counts: { age65, blind, under17, over17, parents, other },
     credits: { dependentFactor: factor, familyQualifies, familyPeople, excisePeople },
-    statements, issues, attach
+    statements, ptc, issues, attach
   }
 }
