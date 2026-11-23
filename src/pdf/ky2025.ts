@@ -1,5 +1,6 @@
 /**
- * Fills the official 2025 Kentucky Form 740 (42A740, public/forms/2025/ky740.pdf) from a computed return. Two
+ * Fills the official 2025 Kentucky Form 740 (42A740, public/forms/2025/ky740.pdf) and Schedules M, A and ITC from a
+ * computed return. Two
  * columns on page 1: A for the spouse on a combined return (status 2), B for yourself or a joint return. Whole
  * dollars; the form prints the cents.
  */
@@ -79,6 +80,116 @@ export function formKy740(ret: TaxReturnInput, res: TaxReturnResult, ky: KyResul
   return { id: 'ky740', file: 'ky740.pdf', title: 'Kentucky Form 740', values: v, pages: [0, 1, 2] }
 }
 
+const shortName = (ret: TaxReturnInput): string => {
+  const t = ret.taxpayer
+  const s = ret.spouse
+  if (ret.filingStatus !== 'mfj') return upper(`${t.firstName} ${t.lastName}`)
+  return upper(upper(s.lastName) === upper(t.lastName) ? `${t.firstName} & ${s.firstName} ${t.lastName}` : `${t.firstName} ${t.lastName} & ${s.firstName} ${s.lastName}`)
+}
+
+/** Schedule M, with the Pension Income Exclusion Worksheet (page 2 of this copy) when there is retirement income. */
+export function formKySchM(ret: TaxReturnInput, ky: KyResult): FormFill | null {
+  const two = ky.status === 'combined'
+  const M = ky.schM
+  const any = (['A', 'B'] as const).some((c) => (M[c]['6'] ?? 0) + (M[c]['17'] ?? 0) > 0)
+  if (!any) return null
+  const v: Record<string, FieldValue> = { SchMTPName: shortName(ret), SchMTPSSN: digits(ret.taxpayer.ssn) }
+  const lines = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17']
+  for (const c of (two ? ['A', 'B'] : ['B']) as ('A' | 'B')[]) {
+    for (const k of lines) v[`SchMLine${k}${c}`] = ['6', '15', '17'].includes(k) ? keep0(M[c][k]) : money(M[c][k])
+  }
+  if ((M.A['5'] ?? 0) + (M.B['5'] ?? 0) > 0) v['SchMLine5(a)Text'] = upper(ret.ky.otherAdditionsText)
+  if ((M.A['14'] ?? 0) + (M.B['14'] ?? 0) > 0) v['SchMLine14(a)Text'] = upper(ret.ky.otherSubtractionsText)
+  const pension = (M.A['9'] ?? 0) + (M.B['9'] ?? 0) > 0
+  if (pension) {
+    for (const c of (two ? ['A', 'B'] : ['B']) as ('A' | 'B')[]) {
+      const total = ky.pensionWs[c]
+      if (!total) continue
+      v[`SchMWkstCol${c}(a)`] = keep0(total)
+      v[`SchMWkstCol${c}(d)`] = keep0(total)
+      if (total > 31110) v[`SchMWkstCol ${c} YES-NO`] = '#1'
+    }
+  }
+  return { id: 'ky-schm', file: 'ky-schm.pdf', title: 'Kentucky Schedule M', values: v, pages: pension ? [0, 1] : [0] }
+}
+
+export function formKySchA(ret: TaxReturnInput, ky: KyResult): FormFill | null {
+  if (!ky.itemize) return null
+  const S = ky.schA
+  const sa = ret.ky.schA
+  const v: Record<string, FieldValue> = { '740ATPName': shortName(ret), '740ATPSSN': digits(ret.taxpayer.ssn) }
+  for (const k of ['1', '2', '3', '5', '7', '8', '9', '10', '12', '13']) v[`740ALine${k}`] = money(S[k])
+  for (const k of ['6', '11', '14', '15']) v[`740ALine${k}`] = keep0(S[k])
+  if (S['2'] > 0) v.SchALine2Text1 = upper(sa.individualInfo)
+  if (S['13'] > 0) v['740ALine13Desc'] = upper(sa.otherText || 'OTHER')
+  if (S['16'] !== undefined) {
+    v['740ALine16'] = keep0(S['16'])
+    v['740ALine17'] = S['17'].toFixed(2)
+    v['740ALine18'] = S['18'].toFixed(2)
+    v['740ALine19'] = keep0(S['19'])
+    v['740ALine20'] = keep0(S['20'])
+  }
+  return { id: 'ky-scha', file: 'ky-scha.pdf', title: 'Kentucky Schedule A', values: v }
+}
+
+/** Schedule ITC: Section A (page 1), Sections B and C (page 2), Worksheet A (page 3) and the MGI worksheet (page 4) of this copy. */
+export function formKyItc(ret: TaxReturnInput, res: TaxReturnResult, ky: KyResult): FormFill | null {
+  const L = ky.lines
+  const A = ky.colA
+  const B = ky.colB
+  const two = ky.status === 'combined'
+  const married = ret.filingStatus === 'mfj'
+  const secA = (ky.itc.E['25'] ?? 0) + (ky.itc.F['25'] ?? 0) > 0
+  const personal = (B['17'] ?? 0) + (A['17'] ?? 0) > 0
+  const family = L['21'] > 0
+  if (!secA && !personal && !family) return null
+  const v: Record<string, FieldValue> = { SchITCTPName: shortName(ret), SchITCTPSSN: digits(ret.taxpayer.ssn) }
+  for (let i = 1; i <= 25; i++) {
+    const k = String(i)
+    if (two) v[`SchITCSecALine${k}E`] = k === '25' ? (secA ? keep0(ky.itc.E['25']) : '') : money(ky.itc.E[k])
+    v[`SchITCSecALine${k}F`] = k === '25' ? (secA ? keep0(ky.itc.F['25']) : '') : money(ky.itc.F[k])
+  }
+  // Section B
+  const pc = (o: 'taxpayer' | 'spouse'): [number, number, number] => {
+    const p = o === 'taxpayer' ? ret.taxpayer : ret.spouse
+    return [(p.age65OrOlder || p.age >= 65) ? 40 : 0, p.blind ? 40 : 0, ret.ky.nationalGuard[o] ? 20 : 0]
+  }
+  const [t1, t2, t3] = pc('taxpayer')
+  v.SchITCSecBTPDOB = ret.ky.birthDate.taxpayer.trim()
+  v.SchITCSecBLine1 = money(t1); v.SchITCSecBLine2 = money(t2); v.SchITCSecBLine3 = money(t3); v.SchITCSecBLine4 = keep0(t1 + t2 + t3)
+  if (married) {
+    const [s1, s2, s3] = pc('spouse')
+    v.SchITCSecBSpouseDOB = ret.ky.birthDate.spouse.trim()
+    v.SchITCSecBLine5 = money(s1); v.SchITCSecBLine6 = money(s2); v.SchITCSecBLine7 = money(s3); v.SchITCSecBLine8 = keep0(s1 + s2 + s3)
+    if (two) { v.SchITCSecBLine10 = keep0(B['17']); v.SchITCSecBLine11 = keep0(A['17']) } else v.SchITCSecBLine12 = keep0(B['17'])
+  } else v.SchITCSecBLine9 = keep0(B['17'])
+  // Section C
+  const kids = ret.dependents.filter((x) => x.childRelationship && (x.age < 19 || (x.student && x.age < 24) || x.disabled))
+  kids.slice(0, 3).forEach((x, i) => {
+    v[`SchITCDepenentName${i + 1}`] = upper(x.name)
+    v[`SchITCSecBDepSSN${i + 1}`] = digits(x.ssn)
+    v[`SchITCSecBDepRelationship${i + 1}`] = upper(x.relationship)
+    v[`SchITCSecBQualChildCheckbox${i + 1}`] = true
+  })
+  const pages = [0, 1]
+  const w = ky.wsA
+  if (w) {
+    v.SchITCWkstAState = upper(ret.ky.otherState.state)
+    for (let i = 1; i <= 12; i++) v[`SchITCWkstALine${i}`] = keep0(w[String(i)])
+    pages.push(2)
+  }
+  if (family) {
+    const agi = Math.max(0, Math.round(res.f1040['11a']))
+    const muni = Math.max(0, Math.round(res.f1040['2a']))
+    const kyAgi = (two ? Math.max(0, A['9']) : 0) + Math.max(0, B['9'])
+    v['SchITCMGIWkst(a)'] = keep0(agi); v['SchITCMGIWkst(c)'] = money(muni); v['SchITCMGIWkst(e)'] = keep0(agi + muni)
+    v['SchITCMGIWkst(f)'] = keep0(kyAgi); v['SchITCMGIWkst(i)'] = keep0(kyAgi); v['SchITCMGIWkst(j)'] = keep0(ky.mgi)
+    pages.push(3)
+  }
+  return { id: 'ky-itc', file: 'ky-itc.pdf', title: 'Kentucky Schedule ITC', values: v, pages }
+}
+
 export function buildKyPacket(ret: TaxReturnInput, res: TaxReturnResult, ky: KyResult, preparer?: PreparerInfo | null): FormPacket {
-  return { forms: [formKy740(ret, res, ky, preparer)], notIncluded: [...ky.attach] }
+  const forms = [formKy740(ret, res, ky, preparer), formKySchM(ret, ky), formKySchA(ret, ky), formKyItc(ret, res, ky)]
+  return { forms: forms.filter((x): x is FormFill => x !== null), notIncluded: [...ky.attach] }
 }

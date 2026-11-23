@@ -1562,13 +1562,23 @@ export interface KyInput {
   otherStateBondInterest: number
   usObligationInterest: number
   militaryPay: number
-  /** Schedule M lines 5 and 14: other additions and subtractions. */
+  /** Schedule M lines 5 and 14: other additions and subtractions, with what they are. */
   otherAdditions: number
+  otherAdditionsText: string
   otherSubtractions: number
-  /** Schedule ITC Section B: Kentucky National Guard members. */
+  otherSubtractionsText: string
+  /** Schedule M: K-1 resident adjustments (lines 2, 11), federal and Kentucky depreciation (3, 12), federal NOL (4), state refund in federal AGI (7), Kentucky NOL deduction (16). */
+  schM: { k1Additions: number; federalDepreciation: number; federalNol: number; stateRefund: number; k1Subtractions: number; kyDepreciation: number; knol: number }
+  /** Schedule A items without a federal counterpart here (mortgage interest, gifts and other deductions come from the federal entries). */
+  schA: { individualMortgage: number; individualInfo: string; points: number; investmentInterest: number; artistic: number; carryover: number; gambling: number; otherText: string }
+  /** Schedule ITC Section B: dates of birth (MM/DD/YYYY) and Kentucky National Guard members. */
+  birthDate: Record<Owner, string>
   nationalGuard: Record<Owner, boolean>
-  /** Line 15: Schedule ITC Section A credits; line 23: education tuition credit (Form 8863-K). */
-  itcCredits: number
+  /** Schedule ITC Section A credits by line (1–24, except 6) and whose they are (column E spouse, F yourself). */
+  itc: Record<string, Record<Owner, number>>
+  /** Section A line 6: credit for tax paid to one other state (Worksheet A). */
+  otherState: { state: string; owner: Owner; income: number; tax: number }
+  /** Line 23: education tuition credit (Form 8863-K). */
   tuitionCredit: number
   /** Line 27: Kentucky use tax. Line 40: credit forward to 2026. */
   useTax: number
@@ -1579,8 +1589,10 @@ export interface KyInput {
   forceJoint: boolean
 }
 export const emptyKy = (): KyInput => ({
-  w2: {}, withholdingOther: 0, estimatedPayments: 0, otherStateBondInterest: 0, usObligationInterest: 0, militaryPay: 0, otherAdditions: 0, otherSubtractions: 0,
-  nationalGuard: { taxpayer: false, spouse: false }, itcCredits: 0, tuitionCredit: 0, useTax: 0, creditForward: 0, license: { taxpayer: '', spouse: '' }, forceJoint: false
+  w2: {}, withholdingOther: 0, estimatedPayments: 0, otherStateBondInterest: 0, usObligationInterest: 0, militaryPay: 0, otherAdditions: 0, otherAdditionsText: '', otherSubtractions: 0, otherSubtractionsText: '',
+  schM: { k1Additions: 0, federalDepreciation: 0, federalNol: 0, stateRefund: 0, k1Subtractions: 0, kyDepreciation: 0, knol: 0 },
+  schA: { individualMortgage: 0, individualInfo: '', points: 0, investmentInterest: 0, artistic: 0, carryover: 0, gambling: 0, otherText: '' },
+  birthDate: { taxpayer: '', spouse: '' }, nationalGuard: { taxpayer: false, spouse: false }, itc: {}, otherState: { state: '', owner: 'taxpayer', income: 0, tax: 0 }, tuitionCredit: 0, useTax: 0, creditForward: 0, license: { taxpayer: '', spouse: '' }, forceJoint: false
 })
 
 export type OkRetirementKind = 'other' | 'okgov' | 'csrs' | 'military' | 'railroad'
@@ -3142,7 +3154,10 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     })(),
     ky: (() => {
       const e = emptyKy(); const x: Partial<KyInput> = r.ky ?? {}
-      return { ...e, ...x, w2: normalizeStatements(x.w2), nationalGuard: { ...e.nationalGuard, ...(x.nationalGuard ?? {}) }, license: { ...e.license, ...(x.license ?? {}) } }
+      return { ...e, ...x, w2: normalizeStatements(x.w2), nationalGuard: { ...e.nationalGuard, ...(x.nationalGuard ?? {}) }, license: { ...e.license, ...(x.license ?? {}) },
+        schM: { ...e.schM, ...(x.schM ?? {}) }, schA: { ...e.schA, ...(x.schA ?? {}) }, birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) },
+        itc: Object.fromEntries(Object.entries(x.itc ?? {}).map(([k, v]) => [k, { taxpayer: Number(v?.taxpayer) || 0, spouse: Number(v?.spouse) || 0 }])),
+        otherState: { ...e.otherState, ...(x.otherState ?? {}) } }
     })(),
     ok: (() => {
       const e = emptyOk(); const x: Partial<OkInput> = r.ok ?? {}

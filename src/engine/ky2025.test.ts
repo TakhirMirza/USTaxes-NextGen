@@ -102,3 +102,44 @@ test('Form 740: every value lands on one field and the PDF builds', async () => 
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 KY')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-KY.pdf`, bytes)
 })
+
+test('KY schedules: Schedule M, Schedule A and Schedule ITC with Worksheet A', async () => {
+  const r0 = emptyReturn()
+  const pension = { ...empty1099R('taxpayer'), payer: 'Pension Fund', grossDistribution: 40000, taxableAmount: 40000, code: '7' }
+  const { ky: k, res, ret } = ky(base({
+    taxpayer: { ...r0.taxpayer, firstName: 'Pat', lastName: 'Doe', ssn: '123456789', age: 66 }, w2s: [w2(60000)], retirement: [pension],
+    itemized: { ...r0.itemized, mortgageInterest: 8000, charityCash: 2000 }
+  }), {
+    otherAdditions: 100, otherAdditionsText: 'Other', schM: { ...r0.ky.schM, stateRefund: 300 }, schA: { ...r0.ky.schA, gambling: 500 },
+    itc: { '7': { taxpayer: 200, spouse: 0 } }, otherState: { state: 'Ohio', owner: 'taxpayer', income: 10000, tax: 600 }, birthDate: { taxpayer: '01/02/1959', spouse: '' }
+  })
+  assert.equal(k.schM.B['6'], 100); assert.equal(k.schM.B['9'], 31110); assert.equal(k.schM.B['17'], 31410)
+  assert.equal(k.colB['9'], 68690)
+  assert.equal(k.schA['15'], 10500); assert.ok(k.itemize)
+  assert.equal(k.colB['11'], 58190); assert.equal(k.colB['12'], 2328)
+  const w = k.wsA!
+  assert.equal(w['7'], 48190); assert.equal(w['8'], 1928); assert.equal(w['10'], 400); assert.equal(w['12'], 400)
+  assert.equal(k.itc.F['6'], 400); assert.equal(k.itc.F['25'], 600); assert.equal(k.colB['15'], 600)
+  assert.equal(k.colB['17'], 40)
+  const packet = buildKyPacket(ret, res, k)
+  assert.deepEqual(packet.forms.map((f) => f.id), ['ky740', 'ky-schm', 'ky-scha', 'ky-itc'])
+  assert.deepEqual(packet.forms[3].pages, [0, 1, 2])
+  assert.equal(packet.forms[1].values['SchMWkstColB(d)'], '40000')
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, packet.forms, load, '2025 KY')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-KYS.pdf`, bytes)
+})
+
+test('KY combined return: Schedule A split between spouses', () => {
+  const r0 = emptyReturn()
+  const { ky: k } = ky(base({ filingStatus: 'mfj', w2s: [w2(60000), w2(40000, 'spouse')], itemized: { ...r0.itemized, mortgageInterest: 9000 } }))
+  assert.equal(k.status, 'combined')
+  assert.equal(k.schA['16'], 9000)
+  assert.equal(k.schA['17'] + k.schA['18'], 100)
+  assert.equal(k.schA['19'] + k.schA['20'], 9000)
+  assert.equal(k.colA['10'], k.schA['19'])
+})
