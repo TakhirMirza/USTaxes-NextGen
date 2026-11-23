@@ -280,8 +280,78 @@ export function formAl40(ret: TaxReturnInput, res: TaxReturnResult, al: AlResult
   return { id: 'al40', file: 'al40.pdf', title: 'Alabama Form 40', values: v, pages: [...new Set(pages)].sort((a, b) => a - b) }
 }
 
+type Draw = NonNullable<FormFill['draw']>[number]
+/** Schedules D & E have no form fields; `base` is the baseline measured from the top of the page. */
+const sd = (page: number, x: number, base: number, text: string, o: { right?: boolean; size?: number } = {}): Draw => ({ page, x, y: 792 - base, text, right: o.right, size: o.size ?? 9 })
+const amt = (n: number): string => (n < 0 ? `(${Math.abs(Math.round(n))})` : String(Math.round(n)))
+const shortDate = (s: string): string => {
+  const m = s.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/)
+  return m ? `${m[1].padStart(2, '0')}/${m[2].padStart(2, '0')}/${m[3].slice(-2)}` : upper(s).slice(0, 9)
+}
+
+/** Schedules D and E (Form 40), front and back. */
+export function formAlSchDE(ret: TaxReturnInput, al: AlResult): FormFill | null {
+  const hasD = al.schD.length > 0
+  const hasE = al.schE.properties.length + al.schE.entities.length > 0
+  if (!hasD && !hasE) return null
+  const draw: Draw[] = []
+  const joint = ret.filingStatus === 'mfj'
+  const name = upper(joint ? `${ret.taxpayer.firstName} & ${ret.spouse.firstName} ${ret.taxpayer.lastName}` : `${ret.taxpayer.firstName} ${ret.taxpayer.lastName}`)
+  const ssn = digits(ret.taxpayer.ssn).replace(/^(\d{3})(\d{2})(\d{4})$/, '$1-$2-$3')
+  const pages: number[] = []
+  if (hasD) {
+    pages.push(0)
+    draw.push(sd(0, 27, 108, name), sd(0, 540, 108, ssn))
+    const rows = al.schD.length > 20 ? [...al.schD.slice(0, 19), { kind: `Others (${al.schD.length - 19}) — see attached statement`, acquired: '', sold: '', received: 0, depreciation: 0, basis: 0, improvements: 0, net: al.schD.slice(19).reduce((s, x) => s + x.net, 0) }] : al.schD
+    rows.forEach((x, i) => {
+      const base = 197 + i * 24
+      draw.push(sd(0, 27, base, x.kind.slice(0, 38), { size: 7 }))
+      if (x.acquired) draw.push(sd(0, 182, base, shortDate(x.acquired), { size: 6 }))
+      if (x.sold) draw.push(sd(0, 218, base, shortDate(x.sold), { size: 6 }))
+      if (x.received) draw.push(sd(0, 309, base, amt(x.received), { right: true, size: 8 }))
+      if (x.depreciation) draw.push(sd(0, 369, base, amt(x.depreciation), { right: true, size: 8 }))
+      if (x.basis) draw.push(sd(0, 429, base, amt(x.basis), { right: true, size: 8 }))
+      if (x.improvements) draw.push(sd(0, 489, base, amt(x.improvements), { right: true, size: 8 }))
+      draw.push(sd(0, 566, base, amt(x.net), { right: true, size: 8 }))
+    })
+    draw.push(sd(0, 566, 701, amt(al.partI['3']), { right: true }))
+  }
+  if (hasE) {
+    pages.push(1)
+    draw.push(sd(1, 27, 108, name), sd(1, 535, 108, ssn))
+    const props = al.schE.properties.slice(0, 3)
+    const colX = [300, 384, 468]
+    props.forEach((p, i) => {
+      const base = 157 + i * 24
+      draw.push(sd(1, 40, base, upper(p.description).slice(0, 80), { size: 8 }))
+      draw.push(sd(1, p.personalUse ? 557 : 577, base, 'X'))
+    })
+    const lineY: Record<string, number> = { '3': 252, '4': 264, '5': 288, '6': 300, '7': 312, '8': 324, '9': 336, '10': 348, '11': 360, '12': 372, '13': 384, '14': 396, '15': 408, '16': 420, '17': 432, '18': 444, '19': 504, '20': 516, '21': 528, '22': 552 }
+    for (const [k, y] of Object.entries(lineY)) {
+      props.forEach((p, i) => { if (p.lines[k] || ['19', '21', '22'].includes(k)) draw.push(sd(1, colX[i], y, amt(p.lines[k]), { right: true, size: 8 })) })
+      if (['3', '4', '12', '19', '20'].includes(k)) {
+        const total = props.reduce((s, p) => s + p.lines[k], 0)
+        if (total || k === '3') draw.push(sd(1, 566, y, amt(total), { right: true, size: 8 }))
+      }
+    }
+    if (props.some((p) => p.lines['18'])) draw.push(sd(1, 100, 444, 'OTHER EXPENSES', { size: 7 }))
+    draw.push(sd(1, 566, 576, amt(al.schE.line23), { right: true }))
+    al.schE.entities.slice(0, 4).forEach((e, i) => {
+      const base = 635 + i * 24
+      draw.push(sd(1, 30, base - 12, upper(e.name).slice(0, 60), { size: 8 }))
+      draw.push(sd(1, e.kind === 'partnership' ? 373 : 407, base, 'X'))
+      draw.push(sd(1, 428, base, e.ein.trim(), { size: 8 }))
+      draw.push(sd(1, 566, base, amt(e.amount), { right: true, size: 8 }))
+    })
+    draw.push(sd(1, 566, 731, amt(al.schE.line24), { right: true }), sd(1, 566, 755, amt(al.schE.line25), { right: true }))
+  }
+  return { id: 'alschde', file: 'al-schde.pdf', title: 'Alabama Schedules D and E', values: {}, draw, pages }
+}
+
 export function buildAlPacket(ret: TaxReturnInput, res: TaxReturnResult, al: AlResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formAl40(ret, res, al, preparer)]
+  const de = formAlSchDE(ret, al)
+  if (de) forms.push(de)
   const notIncluded = [...al.attach]
   if (al.status === 'hof') notIncluded.push('Schedule HOF: answer whether you rent or own the home and the marriage question')
   if (ret.dependents.length > 12) notIncluded.push('Schedule DS: dependents after the twelfth on an attached list')

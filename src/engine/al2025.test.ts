@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import * as lib from 'pdf-lib'
 import { computeReturn } from './compute.ts'
-import { empty1099R, emptyDependent, emptyReturn, emptyW2 } from './model.ts'
+import { empty1099R, emptyDependent, emptyK1, emptyRental, emptyReturn, emptyTransaction, emptyW2 } from './model.ts'
 import type { AlInput, TaxReturnInput } from './model.ts'
 import { alDependentExemption, alStandardDeduction, alTax, alVehicleInterest, computeAlabama } from './al2025.ts'
 import { buildAlPacket } from '../pdf/al2025.ts'
@@ -104,4 +104,28 @@ test('Form 40: every value lands on one field and the PDF builds', async () => {
   assert.deepEqual(problems, [])
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 AL')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-AL.pdf`, bytes)
+})
+
+test('AL Schedules D and E: full capital loss, rentals and K-1s', async () => {
+  const t = (description: string, term: 'short' | 'long', proceeds: number, costBasis: number) => ({ ...emptyTransaction(), description, term, proceeds, costBasis, dateAcquired: '01/02/2020', dateSold: '06/30/2025' })
+  const rental = { ...emptyRental(), address: '12 Oak St, Mobile, AL', fairRentalDays: 365, rents: 12000, expenses: { ...emptyRental().expenses, mortgageInterest: 5000, taxes: 2000, depreciation: 3000 } }
+  const k1 = { ...emptyK1(), entityName: 'Gulf Partners LP', ein: '63-1234567', ordinary: 1500 }
+  const { al: a, res, ret } = al(base({ w2s: [w2(50000)], capitalTransactions: [t('100 sh ABC', 'long', 20000, 10000), t('50 sh XYZ', 'short', 2000, 10000), t('Fund DEF', 'long', 4000, 10000)], rentals: [rental], k1s: [k1] }))
+  assert.equal(res.f1040['7a'], -3000)
+  assert.equal(a.partI['3'], -4000)
+  assert.equal(a.schD.length, 3)
+  assert.equal(a.schE.properties[0].lines['22'], 2000)
+  assert.equal(a.schE.line24, 1500)
+  assert.equal(a.partI['5'], 3500)
+  const packet = buildAlPacket(ret, res, a)
+  const de = packet.forms.find((f) => f.id === 'alschde')!
+  assert.deepEqual(de.pages, [0, 1])
+  assert.ok(de.draw!.some((d) => d.text === '(4000)'))
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, [de], load, '2025 AL D&E')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-ALDE.pdf`, bytes)
 })

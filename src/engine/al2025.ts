@@ -57,6 +57,10 @@ export function alVehicleInterest(interest: number, agi: number, mfj: boolean): 
 
 export interface AlRetirementRow { id: string; owner: Owner; payer: string; ira: boolean; code: string; gross: number; taxable: number; stateId: string; fein: string; stateTax: number; reason: string }
 
+export interface AlScheduleDRow { kind: string; acquired: string; sold: string; received: number; depreciation: number; basis: number; improvements: number; net: number }
+export interface AlScheduleEProperty { description: string; personalUse: boolean; lines: Record<string, number> }
+export interface AlScheduleEEntity { name: string; kind: 'partnership' | 'scorp'; ein: string; amount: number }
+
 export interface AlResult {
   status: AlStatus
   lines: Record<string, number>
@@ -64,6 +68,9 @@ export interface AlResult {
   partI: Record<string, number>
   partII: Record<string, number>
   schA: Record<string, number>
+  /** Schedule D rows (line 1 = partI['3']) and Schedule E (line 25 = partI['5']). */
+  schD: AlScheduleDRow[]
+  schE: { properties: AlScheduleEProperty[]; entities: AlScheduleEEntity[]; line23: number; line24: number; line25: number }
   itemize: boolean
   /** Schedule B rows: payer, exempt and taxable amounts. */
   interestRows: { payer: string; exempt: number; taxable: number }[]
@@ -133,9 +140,41 @@ export function computeAlabama(ret: TaxReturnInput, res: TaxReturnResult): AlRes
   const s1 = res.schedule1
   P1['1'] = 0
   P1['2'] = r(s1.businessIncome)
-  P1['3'] = r(f['7a'] + s1.otherGains)
+  // ── Schedule D: every sale, gain or loss in full (no $3,000 loss limit or carryover in Alabama) ──
+  const schD: AlScheduleDRow[] = ret.capitalTransactions.map((t) => ({
+    kind: t.description, acquired: t.dateAcquired, sold: t.dateSold, received: r(t.proceeds), depreciation: 0, basis: r(t.costBasis - (t.adjustment || 0)), improvements: 0,
+    net: r(t.proceeds) - r(t.costBasis - (t.adjustment || 0))
+  }))
+  const capDist = r(ret.dividends.reduce((s, x) => s + pos(x.capitalGainDistributions), 0))
+  if (capDist) schD.push({ kind: 'Capital gain distributions (1099-DIV box 2a)', acquired: '', sold: '', received: capDist, depreciation: 0, basis: 0, improvements: 0, net: capDist })
+  const k1Gains = r(ret.k1s.reduce((s, k) => s + k.shortTermGain + k.longTermGain, 0))
+  if (k1Gains) schD.push({ kind: 'Capital gain or (loss) from Schedules K-1', acquired: '', sold: '', received: k1Gains, depreciation: 0, basis: 0, improvements: 0, net: k1Gains })
+  if (r(s1.otherGains)) schD.push({ kind: 'Gain or (loss) from Form 4797 (business property)', acquired: '', sold: '', received: r(s1.otherGains), depreciation: 0, basis: 0, improvements: 0, net: r(s1.otherGains) })
+  P1['3'] = schD.reduce((s, x) => s + x.net, 0)
   P1['4'] = rs.taxpayer.net + (joint ? rs.spouse.net : 0)
-  P1['5'] = r(s1.rentalIncome)
+  // ── Schedule E: rentals and royalties property by property (Part I) and pass-through entities (Part II) ──
+  const schEProps: AlScheduleEProperty[] = ret.rentals.map((p) => {
+    const e = p.expenses
+    const rr = res.scheduleE.properties.find((x) => x.id === p.id)
+    const lines: Record<string, number> = {
+      '3': r(p.rents), '4': r(p.royalties), '5': r(e.advertising), '6': r(e.auto), '7': r(e.cleaning), '8': r(e.commissions), '9': r(e.insurance),
+      '10': r(e.legal), '11': r(e.management), '12': r(e.mortgageInterest), '13': r(e.otherInterest), '14': r(e.repairs), '15': r(e.supplies),
+      '16': r(e.taxes), '17': r(e.utilities), '18': r(e.other)
+    }
+    lines['19'] = ['5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18'].reduce((s, k) => s + lines[k], 0)
+    lines['20'] = r(e.depreciation + (rr?.assetDepreciation ?? 0))
+    lines['21'] = lines['19'] + lines['20']
+    lines['22'] = lines['3'] + lines['4'] - lines['21']
+    return { description: `${({ single: 'Single family', multi: 'Multi-family', vacation: 'Vacation/short-term', commercial: 'Commercial', land: 'Land', royalties: 'Royalties', selfrental: 'Self-rental', other: 'Other' } as Record<string, string>)[p.type] ?? p.type} — ${p.address}`.trim(), personalUse: p.personalUseDays > Math.max(14, p.fairRentalDays * 0.1), lines }
+  })
+  const schEEntities: AlScheduleEEntity[] = ret.k1s.map((k) => ({
+    name: k.entityName, kind: k.kind, ein: k.ein,
+    amount: r(k.ordinary + k.rentalRealEstate + k.otherRental + k.guaranteedPayments + k.royalties)
+  })).filter((x) => x.amount !== 0)
+  const e23 = schEProps.reduce((s, x) => s + x.lines['22'], 0)
+  const e24 = schEEntities.reduce((s, x) => s + x.amount, 0)
+  const schE = { properties: schEProps, entities: schEEntities, line23: e23, line24: e24, line25: e23 + e24 }
+  P1['5'] = schE.line25
   P1['6'] = 0
   P1['7'] = r(s1.additionalIncome - s1.businessIncome - s1.otherGains - s1.rentalIncome - s1.unemployment)
   P1['8'] = P1['1'] + P1['2'] + P1['3'] + P1['4'] + P1['5'] + P1['6'] + P1['7']
@@ -220,8 +259,12 @@ export function computeAlabama(ret: TaxReturnInput, res: TaxReturnResult): AlRes
   if (L['22'] > 0) attach.push('W-2s and 1099s showing Alabama tax withheld')
   if (res.deduction.used === 'itemized' || L['12'] > 0) attach.push('Pages 1 and 2 and Schedule 1 of your federal Form 1040 (federal tax deduction, line 12)')
   if (P1['2'] !== 0) attach.push('Federal Schedule C (business income)')
-  if (P1['3'] !== 0) attach.push('Alabama Schedule D (capital gains) — not filled in here; the federal amount is used')
-  if (P1['5'] !== 0) attach.push('Alabama Schedule E (rents, partnerships) — not filled in here; the federal amount is used')
+  if (schD.length > 20) attach.push('A statement listing the Schedule D sales after the twentieth (or attach federal Form 8949)')
+  if (schEProps.length > 3) attach.push('Another Schedule E for rental properties after the third')
+  if (schEEntities.length > 4) attach.push('A statement listing pass-through entities after the fourth (Schedule E Part II)')
+  if (schEEntities.length) issues.push('Schedule E Part II uses the federal Schedule K-1 amounts; if the entity gave you an Alabama Schedule K-1 with different amounts, use those.')
+  if (res.scheduleE.disallowed > 0) issues.push('Your federal rental loss is limited by the passive activity rules; Alabama Schedule E shows each property’s full income or loss. Check whether the limit also applies for Alabama.')
+  if (ret.rentals.some((p) => p.assets.length > 0) || ret.capitalTransactions.length > 0) issues.push('Alabama did not adopt federal bonus depreciation for some years; if your Alabama depreciation or basis differs, adjust Schedule D column (e) or Schedule E line 20.')
   if (L['18'] < L['17']) attach.push('Schedule OC (credits)')
   if (L['19'] > 0) attach.push('Schedule ATP (use tax)')
   if (fs === 'qss') issues.push(`Alabama has no surviving spouse status: the return is filed as ${status === 'hof' ? 'head of family' : 'single'}.`)
@@ -231,5 +274,5 @@ export function computeAlabama(ret: TaxReturnInput, res: TaxReturnResult): AlRes
   if (A['11a'] > 0 && !d.vehiclePurchaseDate.trim()) issues.push('Enter the date the new vehicle was bought for the vehicle loan interest deduction (Schedule A line 11).')
   if (L['30'] > 500 && L['23'] === 0) issues.push('A balance due may mean an underpayment penalty (Form 2210AL).')
 
-  return { status, lines: L, partI: P1, partII: P2, schA: A, itemize, interestRows, dividendRows, rsExempt, rsTaxable, rs, statements, fit: F, issues, attach }
+  return { schD, schE, status, lines: L, partI: P1, partII: P2, schA: A, itemize, interestRows, dividendRows, rsExempt, rsTaxable, rs, statements, fit: F, issues, attach }
 }
