@@ -112,3 +112,22 @@ test('KS Schedule A: itemizing in Kansas without itemizing federally', async () 
   const { bytes } = await buildPdf(lib, [sa], load, '2025 KS Sch A')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-KSA.pdf`, bytes)
 })
+
+test('KS line 13: Worksheet for Residents per state and the foreign tax limitation', () => {
+  const w = w2(60000)
+  const { ks: r } = ks(base({ w2s: [w] }), { w2: withheld(w, 2600), otherStates: [{ state: 'mo', tax: 900, income: 20000 }, { state: 'NE', tax: 100, income: 6000 }], foreign: { country: 'Canada', taxPaid: 500, federalCredit: 300, income: 3000 } })
+  assert.equal(r.lines['12'], 2548)
+  const [mo, ne, ca] = r.otherStates
+  assert.equal(r.lines['3'], 60000)
+  // Missouri: 2,548 × 20,000 / 60,000 = 849, less than the 900 paid.
+  assert.deepEqual([mo.name, mo.l1, mo.l5, mo.l6, mo.l7], ['MO', 900, 33.3333, 849, 849])
+  // Nebraska: the 100 paid is less than 2,548 × 10% = 255.
+  assert.deepEqual([ne.l6, ne.l7], [255, 100])
+  // Canada: line 1 is 500 − 300 = 200; 2,548 × 5% = 127.
+  assert.deepEqual([ca.name, ca.l1, ca.l6, ca.l7], ['Canada', 200, 127, 127])
+  assert.equal(r.lines['13'], 849 + 100 + 127)
+  assert.equal(r.lines['16'], 2548 - 1076)
+  assert.ok(r.attach.some((x) => x.includes('1116')))
+  // Without the worksheet, an amount figured by hand still works.
+  assert.equal(ks(base({ w2s: [w] }), { otherStateCredit: 400 }).ks.lines['13'], 400)
+})

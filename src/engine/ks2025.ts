@@ -34,7 +34,11 @@ export function ksTax(taxable: number, joint: boolean): number {
   return r(ksFormula(mid, joint))
 }
 
+export interface KsOtherState { name: string; l1: number; l2: number; l3: number; l4: number; /** percent, 4 decimals */ l5: number; l6: number; l7: number }
+
 export interface KsResult {
+  /** Line 13 worksheets (Worksheet for Residents), one per state or foreign country. */
+  otherStates: KsOtherState[]
   /** Kansas Schedule A lines. */
   schA: Record<string, number>
   itemizedFederally: boolean
@@ -116,7 +120,19 @@ export function computeKansas(ret: TaxReturnInput, res: TaxReturnResult): KsResu
   L['8'] = ksTax(L['7'], joint)
   L['11'] = 0
   L['12'] = L['8'] + L['11']
-  L['13'] = Math.min(L['12'], r(pos(d.otherStateCredit)))
+  // Line 13: Worksheet for Residents, one per state (and one for a foreign country, line 1 limited to the tax paid minus the federal foreign tax credit).
+  const rows = d.otherStates.filter((o) => o.state.trim() && (o.tax > 0 || o.income > 0)).map((o) => ({ name: o.state.trim().toUpperCase(), paid: o.tax, income: o.income }))
+  const fo = d.foreign
+  if (fo.taxPaid > 0 || fo.income > 0) rows.push({ name: fo.country.trim() || 'Foreign country', paid: pos(fo.taxPaid - fo.federalCredit), income: fo.income })
+  const otherStates: KsOtherState[] = rows.map((o) => {
+    const l1 = r(pos(o.paid))
+    const l3 = r(pos(o.income))
+    const pct = L['3'] > 0 ? Math.min(1, l3 / L['3']) : 0
+    const l6 = r(L['12'] * pct)
+    return { name: o.name, l1, l2: L['12'], l3, l4: L['3'], l5: Math.round(pct * 1e6) / 1e4, l6, l7: Math.min(l1, l6) }
+  })
+  const worked = otherStates.length > 0
+  L['13'] = Math.min(L['12'], worked ? otherStates.reduce((s, o) => s + o.l7, 0) : r(pos(d.otherStateCredit)))
   L['14'] = Math.min(L['12'] - L['13'], r(pos(res.schedule3.dependentCare) * 0.5))
   L['15'] = Math.min(L['12'] - L['13'] - L['14'], r(pos(d.otherCredits)))
   L['16'] = pos(L['12'] - L['13'] - L['14'] - L['15'])
@@ -146,7 +162,8 @@ export function computeKansas(ret: TaxReturnInput, res: TaxReturnResult): KsResu
   if (S['A9'] + S['A26'] > 0) attach.push('Schedule S, Part A (modifications)')
   if (itemize) attach.push('The supporting documents the Kansas Schedule A instructions call for (e.g. Form 1098, receipts for gifts of $250 or more)')
   if (itemize && ka.mixedUseMortgage) issues.push('Kansas Schedule A line 8: you said not all mortgage loans were used to buy, build or improve your home; limit the interest as the instructions describe.')
-  if (L['13'] > 0) attach.push('The other state’s return (credit for taxes paid to other states)')
+  if (L['13'] > 0) attach.push('The other state’s return and supporting schedules (credit for taxes paid to other states)')
+  if (d.foreign.taxPaid > 0) attach.push('Federal Form 1116, if you completed one (foreign tax credit)')
   if (L['14'] > 0) attach.push('Federal Form 2441')
   if (L['15'] > 0) attach.push('The schedules for your other credits')
   if (dependent) issues.push('Someone can claim you as a dependent: Kansas limits your standard deduction (see the booklet) and you claim no dependents.')
@@ -156,5 +173,5 @@ export function computeKansas(ret: TaxReturnInput, res: TaxReturnResult): KsResu
   if (L['28'] > 500 && L['20'] === 0) issues.push('A balance due over $500 may mean an estimated tax penalty (Form K-210).')
   if (ret.dependents.length > 6) issues.push('More than six dependents: enclose a separate list.')
 
-  return { schA: A, itemizedFederally, lines: L, exemptions: ex, scheduleS: S, itemize, itemized, standard, issues, attach }
+  return { otherStates, schA: A, itemizedFederally, lines: L, exemptions: ex, scheduleS: S, itemize, itemized, standard, issues, attach }
 }

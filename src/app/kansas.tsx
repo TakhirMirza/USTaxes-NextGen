@@ -7,6 +7,7 @@ import { computeKansas } from '../engine/ks2025.ts'
 import { buildKsPacket } from '../pdf/ks2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { Check, MoneyField, NumberField, Section, TextField, usd } from './fields'
+import { OtherStatesList } from './otherstates'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -103,12 +104,33 @@ export function KansasStep({ ret, set, result, preparer }: StepProps & { prepare
           <MoneyField label="ABLE account contributions" hint="A21" value={d.able} onChange={(n) => put({ able: n })} />
           <MoneyField label="Other additions" hint="A8; enclose a list" value={d.otherAdditions} onChange={(n) => put({ otherAdditions: n })} />
           <MoneyField label="Other subtractions" hint="A25; enclose a list" value={d.otherSubtractions} onChange={(n) => put({ otherSubtractions: n })} />
-          <MoneyField label="Credit for taxes paid to other states" hint="Line 13" value={d.otherStateCredit} onChange={(n) => put({ otherStateCredit: n })} />
+          {d.otherStateCredit > 0 && d.otherStates.length === 0 && <MoneyField label="Credit for taxes paid to other states (amount you figured)" hint="Line 13; or use the worksheet below" value={d.otherStateCredit} onChange={(n) => put({ otherStateCredit: n })} />}
           <MoneyField label="Other credits" hint="Line 15; enclose the credit schedules" value={d.otherCredits} onChange={(n) => put({ otherCredits: n })} />
         </div>
         {sRows.length > 0 && (
           <table className="lines"><tbody>
             {sRows.map(([k, label]) => <tr key={k}><th scope="row"><span className="line-no">{k}</span>{label}</th><td>{usd(ks.scheduleS[k])}</td></tr>)}
+          </tbody></table>
+        )}
+      </Section>
+
+      <Section title="Credit for taxes paid to other states (line 13)" intro="Worksheet for Residents, one per state: the income tax you actually owed to that state and its localities (from that state’s return, not the amount withheld) and the income from that state included in your Kansas AGI. The credit is the smaller of that tax and the Kansas tax times that income’s share of KAGI. Enclose the other state’s return.">
+        <OtherStatesList rows={d.otherStates} max={10} empty={() => ({ state: '', tax: 0, income: 0 })} onChange={(rows) => put({ otherStates: rows, ...(rows.length ? { otherStateCredit: 0 } : {}) })}
+          fields={[['tax', '2025 income tax paid to that state', 'Line 1; including its cities and counties'], ['income', 'Income from that state included in KAGI', 'Line 3']]} />
+        <details>
+          <summary>Tax paid to a foreign country</summary>
+          <p className="why">Kansas allows only the part of the foreign tax that the federal foreign tax credit did not cover. No credit if you deducted the foreign tax on federal Schedule A.</p>
+          <div className="grid">
+            <TextField label="Country" autoComplete="off" value={d.foreign.country} onChange={(s) => put({ foreign: { ...d.foreign, country: s } })} />
+            <MoneyField label="2025 tax paid to the foreign country" value={d.foreign.taxPaid} onChange={(n) => put({ foreign: { ...d.foreign, taxPaid: n } })} />
+            <MoneyField label="Federal foreign tax credit allowed" hint="Schedule 3 line 1" value={d.foreign.federalCredit} onChange={(n) => put({ foreign: { ...d.foreign, federalCredit: n } })} />
+            <MoneyField label="Foreign income included in KAGI" value={d.foreign.income} onChange={(n) => put({ foreign: { ...d.foreign, income: n } })} />
+          </div>
+        </details>
+        {ks.otherStates.length > 0 && (
+          <table className="lines"><tbody>
+            {ks.otherStates.map((o) => <tr key={o.name}><th scope="row">{o.name}: lesser of {usd(o.l1)} and {usd(o.l2)} × {o.l5.toFixed(4)}% = {usd(o.l6)}</th><td>{usd(o.l7)}</td></tr>)}
+            <tr><th scope="row"><span className="line-no">13</span>Credit for taxes paid to other states</th><td>{usd(ks.lines['13'])}</td></tr>
           </tbody></table>
         )}
       </Section>

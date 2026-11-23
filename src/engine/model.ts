@@ -1833,11 +1833,16 @@ export interface KsInput {
   creditForward: number
   /** Kansas Schedule A items with no federal counterpart here. */
   schA: { individualMortgage: number; individualInfo: string; points: number; carryover: number; mixedUseMortgage: boolean }
+  /** Line 13 Worksheet for Residents, one per state: 2025 income tax actually paid to that state (and its localities) and the income from it included in KAGI. */
+  otherStates: { state: string; tax: number; income: number }[]
+  /** Worksheet for Foreign Tax Credit: tax paid to a foreign country, the federal foreign tax credit allowed, and the foreign income included in KAGI. */
+  foreign: { country: string; taxPaid: number; federalCredit: number; income: number }
 }
 export const emptyKs = (): KsInput => ({
   w2: {}, withholdingOther: 0, estimatedPayments: 0, extensionPayment: 0, schoolDistrict: '', county: '', otherStateBondInterest: 0, kpersContributions: 0, otherAdditions: 0,
   usObligationInterest: 0, stateRefundInFagi: 0, qtp529: 0, able: 0, otherSubtractions: 0, exemptRetirement: {}, disabledVeterans: 0, otherStateCredit: 0, otherCredits: 0,
-  contributions: {}, creditForward: 0, schA: { individualMortgage: 0, individualInfo: '', points: 0, carryover: 0, mixedUseMortgage: false }
+  contributions: {}, creditForward: 0, schA: { individualMortgage: 0, individualInfo: '', points: 0, carryover: 0, mixedUseMortgage: false },
+  otherStates: [], foreign: { country: '', taxPaid: 0, federalCredit: 0, income: 0 }
 })
 
 export type ArRetirementKind = 'standard' | 'military' | 'nonqualified'
@@ -3103,7 +3108,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     })(),
     ks: (() => {
       const e = emptyKs(); const x: Partial<KsInput> = r.ks ?? {}
-      return { ...e, ...x, w2: normalizeStatements(x.w2), exemptRetirement: { ...(x.exemptRetirement ?? {}) }, contributions: { ...(x.contributions ?? {}) }, schA: { ...e.schA, ...(x.schA ?? {}) } }
+      return { ...e, ...x, w2: normalizeStatements(x.w2), exemptRetirement: { ...(x.exemptRetirement ?? {}) }, contributions: { ...(x.contributions ?? {}) }, schA: { ...e.schA, ...(x.schA ?? {}) },
+        otherStates: Array.isArray(x.otherStates) ? x.otherStates.map((o: Partial<KsInput['otherStates'][number]>) => ({ state: o.state ?? '', tax: o.tax ?? 0, income: o.income ?? 0 })) : [], foreign: { ...e.foreign, ...(x.foreign ?? {}) } }
     })(),
     ar: (() => {
       const e = emptyAr(); const x: Partial<ArInput> = r.ar ?? {}
