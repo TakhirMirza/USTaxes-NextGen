@@ -90,3 +90,25 @@ test('K-40 and Schedule S: every value lands on one field and the PDF builds', a
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 KS')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-KS.pdf`, bytes)
 })
+
+test('KS Schedule A: itemizing in Kansas without itemizing federally', async () => {
+  const r0 = emptyReturn()
+  const { ks: k, res, ret } = ks(base({ w2s: [w2(60000)], itemized: { ...r0.itemized, medical: 6000, realEstateTax: 2500, mortgageInterest: 1500, charityCash: 300 } }), { schA: { ...r0.ks.schA, points: 200 } })
+  assert.equal(res.deduction.used, 'standard')
+  assert.equal(k.schA['3'], Math.round(res.f1040['11a'] * 0.075))
+  assert.equal(k.schA['4'], Math.max(0, 6000 - k.schA['3']))
+  assert.equal(k.schA['9'], 1700)
+  assert.equal(k.schA['14'], k.schA['4'] + 2500 + 1700 + 300)
+  assert.ok(k.itemize)
+  assert.equal(k.lines['4'], k.schA['14'])
+  const packet = buildKsPacket(ret, res, k)
+  const sa = packet.forms.find((f) => f.id === 'ksscha')!
+  assert.equal(sa.values['8c Points not reported to you on Form 1098'], '200')
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, [sa], load, '2025 KS Sch A')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-KSA.pdf`, bytes)
+})

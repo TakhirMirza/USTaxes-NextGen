@@ -47,6 +47,8 @@ export function wvFamilyCreditPercent(size: number, modifiedAgi: number, mfs: bo
 }
 
 export interface WvResult {
+  /** Schedule E, one per state. */
+  schE: { state: string; lines: Record<string, number> }[]
   lines: Record<string, number>
   /** Schedule M lines by column: 'A' (you) and 'B' (spouse). */
   m: { A: Record<string, number>; B: Record<string, number> }
@@ -155,10 +157,24 @@ export function computeWestVirginia(ret: TaxReturnInput, res: TaxReturnResult): 
   ftc['7'] = L['8']
   ftc['8'] = r(ftc['7'] * ftc['6'])
   const recap: Record<string, number> = {}
-  recap['1'] = r(pos(d.otherStateCredit))
   recap['2'] = ftc['8']
   recap['18'] = r(pos(res.schedule3.dependentCare) * 0.5)
   recap['other'] = r(pos(d.otherCredits))
+  // ── Schedule E, one per state; line 9 also leaves room for the credits already taken ──
+  let used = 0
+  const schE = d.otherStates.filter((o) => o.state.trim() && pos(o.tax) > 0 && pos(o.income) > 0).map((o) => {
+    const e: Record<string, number> = {}
+    e['1'] = r(pos(o.tax)); e['2'] = L['8']; e['3'] = r(pos(o.income)); e['4'] = L['4']
+    e['5'] = e['4'] > 0 ? r(e['2'] * e['3'] / e['4']) : 0
+    e['6'] = pos(L['7'] - e['3'])
+    e['7'] = wvTax(e['6'], mfs).tax
+    e['8'] = pos(e['2'] - e['7'])
+    e['9'] = pos(e['2'] - (recap['2'] + recap['18'] + recap['other']) - used)
+    e['10'] = Math.min(e['1'], e['2'], e['5'], e['8'], e['9'])
+    used += e['10']
+    return { state: o.state.trim().toUpperCase().slice(0, 2), lines: e }
+  })
+  recap['1'] = used
   recap['total'] = recap['1'] + recap['2'] + recap['18'] + recap['other']
   L['9'] = Math.min(L['8'], recap['total'])
   L['10'] = pos(L['8'] - L['9'])
@@ -187,7 +203,7 @@ export function computeWestVirginia(ret: TaxReturnInput, res: TaxReturnResult): 
   if (recap['total'] > 0) attach.push('Tax Credit Recap Schedule (RECAP)')
   if (recap['2'] > 0) attach.push('Schedule FTC-1 (Family Tax Credit)')
   if (recap['18'] > 0) attach.push('Federal Form 2441 (required for the child care credit)')
-  if (recap['1'] > 0) attach.push('Schedule E (credit for tax paid to another state) — not filled in here')
+  if (schE.length) attach.push('Keep each other state’s return (or the information and withholding statements) in your files (Schedule E)')
   if (L['21A'] > 0) attach.push('Your vehicle personal property tax receipts (motor vehicle property tax adjustment credit)')
   if (owners.some((o) => d.disabled[o])) attach.push('Schedule H (physician’s certification of disability)')
   if (L['5'] > 0) issues.push('Federal AGI is $10,000 or less: the low-income earned income exclusion applies (line 5).')
@@ -198,5 +214,5 @@ export function computeWestVirginia(ret: TaxReturnInput, res: TaxReturnResult): 
   if (ret.dependents.length > 4) issues.push('More than four dependents: list the rest on Schedule DP.')
   if (L['24'] > 600 && L['16'] === 0) issues.push('A balance due over $600 may mean an underpayment penalty (Form IT-210).')
 
-  return { lines: L, m: M, m33, m34, m47, exemptions: ex, usedTable: tax.table, ftc, recap, issues, attach }
+  return { schE, lines: L, m: M, m33, m34, m47, exemptions: ex, usedTable: tax.table, ftc, recap, issues, attach }
 }

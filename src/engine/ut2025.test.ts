@@ -80,3 +80,24 @@ test('TC-40: every value lands on one field and the PDF builds', async () => {
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 UT')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-UT.pdf`, bytes)
 })
+
+test('UT TC-40S credit for tax paid to another state', async () => {
+  const { ut: u, res, ret } = ut(base({ w2s: [w2(80000)] }), { otherStates: [{ state: 'id', income: 20000, tax: 600 }] })
+  const x = u.tc40s[0]
+  assert.equal(x.state, 'ID')
+  assert.equal(x.lines['2'], 80000)
+  assert.equal(x.lines['3'], 0.25)
+  assert.equal(x.lines['5'], Math.round(u.lines['22'] * 0.25))
+  assert.equal(x.lines['7'], Math.min(x.lines['5'], 600))
+  assert.ok(u.nonapportionable.some((n) => n.code === '17' && n.amount === x.lines['7']))
+  const packet = buildUtPacket(ret, res, u)
+  const s = packet.forms.find((f) => f.id === 'uttc40s')!
+  assert.equal(s.values['40S One PT1 Line 3 percent'], '0.2500')
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, [s], load, '2025 UT TC-40S')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-UT40S.pdf`, bytes)
+})

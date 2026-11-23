@@ -103,3 +103,22 @@ test('IT-140 with Schedule M, RECAP and FTC-1: the PDF builds', async () => {
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 WV')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-WV.pdf`, bytes)
 })
+
+test('WV Schedule E credit for tax paid to another state', async () => {
+  const { wv: w, res, ret } = wv(base({ w2s: [w2(70000)] }), { otherStates: [{ state: 'va', tax: 900, income: 20000 }] })
+  const e = w.schE[0].lines
+  assert.equal(e['2'], w.lines['8'])
+  assert.equal(e['5'], Math.round(e['2'] * 20000 / w.lines['4']))
+  assert.equal(e['7'], wvTax(w.lines['7'] - 20000, false).tax)
+  assert.equal(e['10'], Math.min(e['1'], e['2'], e['5'], e['8'], e['9']))
+  assert.equal(w.recap['1'], e['10'])
+  const packet = buildWvPacket(ret, res, w)
+  assert.ok(packet.forms.some((f) => f.id === 'wvsche1'))
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, packet.forms.filter((f) => f.id === 'wvsche1'), load, '2025 WV Sch E')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-WVE.pdf`, bytes)
+})

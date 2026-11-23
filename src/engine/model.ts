@@ -1706,15 +1706,15 @@ export interface UtInput {
   retirementKind: Record<string, 'standard' | 'military' | 'railroad'>
   /** TC-40A Part 3 code 20: my529 credit (TC-675H box 1A or 1B). */
   my529Credit: number
-  /** TC-40A Part 4: credit for income tax paid to another state (code 17) and one more nonapportionable credit. */
-  otherStateCredit: number
+  /** TC-40S (up to three states): two-letter code, federal AGI taxed by both Utah and that state (line 1) and the actual tax paid there (line 6). */
+  otherStates: { state: string; income: number; tax: number }[]
   otherCredit: { code: string; amount: number }
   /** Line 31: Utah use tax. Line 43: voluntary subtractions from the refund (TC-40 page 3, Part 6) — not supported. */
   useTax: number
 }
 export const emptyUt = (): UtInput => ({
   w2: {}, withholding1099: 0, prepayments: 0, birthDate: { taxpayer: '', spouse: '' }, usObligationInterest: 0, otherStateBondInterest: 0, retirementKind: {},
-  my529Credit: 0, otherStateCredit: 0, otherCredit: { code: '', amount: 0 }, useTax: 0
+  my529Credit: 0, otherStates: [], otherCredit: { code: '', amount: 0 }, useTax: 0
 })
 
 export type IaRetirementKind = 'standard' | 'military' | 'railroad' | 'nonqualified'
@@ -1831,11 +1831,13 @@ export interface KsInput {
   contributions: Record<string, number>
   /** Line 34: credit forward to 2026. */
   creditForward: number
+  /** Kansas Schedule A items with no federal counterpart here. */
+  schA: { individualMortgage: number; individualInfo: string; points: number; carryover: number; mixedUseMortgage: boolean }
 }
 export const emptyKs = (): KsInput => ({
   w2: {}, withholdingOther: 0, estimatedPayments: 0, extensionPayment: 0, schoolDistrict: '', county: '', otherStateBondInterest: 0, kpersContributions: 0, otherAdditions: 0,
   usObligationInterest: 0, stateRefundInFagi: 0, qtp529: 0, able: 0, otherSubtractions: 0, exemptRetirement: {}, disabledVeterans: 0, otherStateCredit: 0, otherCredits: 0,
-  contributions: {}, creditForward: 0
+  contributions: {}, creditForward: 0, schA: { individualMortgage: 0, individualInfo: '', points: 0, carryover: 0, mixedUseMortgage: false }
 })
 
 export type ArRetirementKind = 'standard' | 'military' | 'nonqualified'
@@ -1989,8 +1991,9 @@ export interface WvInput {
   wv529: number
   able: number
   otherStateBondInterest: number
-  /** RECAP line 1: credit for income tax paid to another state (Schedule E); other RECAP credits. */
-  otherStateCredit: number
+  /** Schedule E, one per state: two-letter code, income tax computed on that state's return (line 1) and the net income from there in West Virginia income (line 3). */
+  otherStates: { state: string; tax: number; income: number }[]
+  /** Other RECAP credits. */
   otherCredits: number
   /** Line 21A: motor vehicle property tax adjustment credit (refundable); line 13: use tax. */
   motorVehicleCredit: number
@@ -2001,7 +2004,7 @@ export interface WvInput {
 }
 export const emptyWv = (): WvInput => ({
   w2: {}, withholdingOther: 0, estimatedPayments: 0, dependentBirthDate: {}, birthYear: { taxpayer: '', spouse: '' }, disabled: { taxpayer: false, spouse: false },
-  retirementKind: {}, usObligationInterest: 0, stateRefundInFagi: 0, wv529: 0, able: 0, otherStateBondInterest: 0, otherStateCredit: 0, otherCredits: 0,
+  retirementKind: {}, usObligationInterest: 0, stateRefundInFagi: 0, wv529: 0, able: 0, otherStateBondInterest: 0, otherStates: [], otherCredits: 0,
   motorVehicleCredit: 0, useTax: 0, donations: { A: 0, B: 0, C: 0 }, creditForward: 0
 })
 
@@ -3090,7 +3093,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     })(),
     ks: (() => {
       const e = emptyKs(); const x: Partial<KsInput> = r.ks ?? {}
-      return { ...e, ...x, w2: normalizeStatements(x.w2), exemptRetirement: { ...(x.exemptRetirement ?? {}) }, contributions: { ...(x.contributions ?? {}) } }
+      return { ...e, ...x, w2: normalizeStatements(x.w2), exemptRetirement: { ...(x.exemptRetirement ?? {}) }, contributions: { ...(x.contributions ?? {}) }, schA: { ...e.schA, ...(x.schA ?? {}) } }
     })(),
     ar: (() => {
       const e = emptyAr(); const x: Partial<ArInput> = r.ar ?? {}
@@ -3113,7 +3116,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       const e = emptyWv(); const x: Partial<WvInput> = r.wv ?? {}
       return {
         ...e, ...x, w2: normalizeStatements(x.w2), dependentBirthDate: { ...(x.dependentBirthDate ?? {}) }, birthYear: { ...e.birthYear, ...(x.birthYear ?? {}) },
-        disabled: { ...e.disabled, ...(x.disabled ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, donations: { ...e.donations, ...(x.donations ?? {}) }
+        disabled: { ...e.disabled, ...(x.disabled ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, donations: { ...e.donations, ...(x.donations ?? {}) },
+        otherStates: Array.isArray(x.otherStates) ? x.otherStates.map((o: Partial<WvInput['otherStates'][number]>) => ({ state: '', tax: 0, income: 0, ...o })) : []
       }
     })(),
     hi: (() => {
@@ -3233,7 +3237,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     })(),
     ut: (() => {
       const e = emptyUt(); const x: Partial<UtInput> = r.ut ?? {}
-      return { ...e, ...x, w2: normalizeStatements(x.w2), birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, otherCredit: { ...e.otherCredit, ...(x.otherCredit ?? {}) } }
+      return { ...e, ...x, w2: normalizeStatements(x.w2), birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, otherCredit: { ...e.otherCredit, ...(x.otherCredit ?? {}) },
+        otherStates: Array.isArray(x.otherStates) ? x.otherStates.map((o: Partial<UtInput['otherStates'][number]>) => ({ state: '', income: 0, tax: 0, ...o })) : [] }
     })()
   })
 }

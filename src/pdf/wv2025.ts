@@ -140,8 +140,21 @@ export function formWvIt140(ret: TaxReturnInput, res: TaxReturnResult, wv: WvRes
   return { id: 'wvit140', file: 'wv-it140.pdf', title: 'West Virginia IT-140', values: {}, draw, pages }
 }
 
+/** Schedule E has no form fields; one page per state, values drawn at the answer lines. */
+export function formsWvSchE(wv: WvResult): FormFill[] {
+  const Y: Record<string, number> = { '1': 319, '2': 340, '3': 364, '4': 388, '5': 412, '6': 440, '7': 460, '8': 484, '9': 508, '10': 532 }
+  return wv.schE.map((x, i) => {
+    const draw: NonNullable<FormFill['draw']> = [
+      { page: 0, x: 44, y: 792 - 131, text: 'X', size: 10 },
+      { page: 0, x: 222, y: 792 - 312, text: x.state, size: 10 }
+    ]
+    for (const [k, y] of Object.entries(Y)) draw.push({ page: 0, x: 545, y: 792 - y, text: String(Math.round(x.lines[k])), right: true, size: 10 })
+    return { id: `wvsche${i + 1}`, file: 'wv-sche.pdf', title: `West Virginia Schedule E (${x.state})`, values: {}, draw }
+  })
+}
+
 export function buildWvPacket(ret: TaxReturnInput, res: TaxReturnResult, wv: WvResult, preparer?: PreparerInfo | null): FormPacket {
   const notIncluded = wv.attach.filter((x) => !['Schedule M', 'Tax Credit Recap Schedule (RECAP)', 'Schedule FTC-1 (Family Tax Credit)'].includes(x))
   notIncluded.push('Print in black ink on single-sided pages; do not staple the barcode area')
-  return { forms: [formWvIt140(ret, res, wv, preparer)], notIncluded }
+  return { forms: [formWvIt140(ret, res, wv, preparer), ...formsWvSchE(wv)], notIncluded }
 }

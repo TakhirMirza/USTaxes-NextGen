@@ -35,6 +35,9 @@ export function ksTax(taxable: number, joint: boolean): number {
 }
 
 export interface KsResult {
+  /** Kansas Schedule A lines. */
+  schA: Record<string, number>
+  itemizedFederally: boolean
   lines: Record<string, number>
   exemptions: { count: number; base: number; hoh: number; dependents: number; newborns: number; veterans: number }
   scheduleS: Record<string, number>
@@ -92,10 +95,18 @@ export function computeKansas(ret: TaxReturnInput, res: TaxReturnResult): KsResu
   const boxes = owners.reduce((s, o) => s + (person(o).age >= 65 || person(o).age65OrOlder ? 1 : 0) + (person(o).blind ? 1 : 0), 0)
   const chart = KS_STANDARD[fs]
   const standard = chart[Math.min(boxes, chart.length - 1)]
+  // ── Kansas Schedule A (may be used whether or not you itemized federally) ──
   const itemizedFederally = res.deduction.used === 'itemized'
   const it = ret.itemized
-  const itemized = itemizedFederally ? r(pos(res.scheduleA.medical) + pos(it.realEstateTax) + pos(it.personalPropertyTax) + pos(res.scheduleA.interest) + pos(res.scheduleA.charity)) : 0
-  const itemize = itemizedFederally && itemized > standard
+  const ka = d.schA
+  const A: Record<string, number> = {}
+  A['1'] = r(pos(it.medical)); A['2'] = r(f['11a']); A['3'] = r(pos(A['2']) * 0.075); A['4'] = pos(A['1'] - A['3'])
+  A['5'] = r(pos(it.realEstateTax)); A['6'] = r(pos(it.personalPropertyTax)); A['7'] = A['5'] + A['6']
+  A['8a'] = r(pos(it.mortgageInterest)); A['8b'] = r(pos(ka.individualMortgage)); A['8c'] = r(pos(ka.points)); A['9'] = A['8a'] + A['8b'] + A['8c']
+  A['10'] = r(pos(it.charityCash)); A['11'] = r(pos(it.charityNonCash)); A['12'] = r(pos(ka.carryover)); A['13'] = A['10'] + A['11'] + A['12']
+  A['14'] = A['4'] + A['7'] + A['9'] + A['13']
+  const itemized = A['14']
+  const itemize = itemized > standard
   L['4'] = itemize ? itemized : standard
   L['5'] = exemptionTotal
   L['6'] = L['4'] + L['5']
@@ -133,16 +144,17 @@ export function computeKansas(ret: TaxReturnInput, res: TaxReturnResult): KsResu
 
   // ── Notes ──
   if (S['A9'] + S['A26'] > 0) attach.push('Schedule S, Part A (modifications)')
-  if (itemize) attach.push('Kansas Schedule A (itemized deductions) — not filled in here')
+  if (itemize) attach.push('The supporting documents the Kansas Schedule A instructions call for (e.g. Form 1098, receipts for gifts of $250 or more)')
+  if (itemize && ka.mixedUseMortgage) issues.push('Kansas Schedule A line 8: you said not all mortgage loans were used to buy, build or improve your home; limit the interest as the instructions describe.')
   if (L['13'] > 0) attach.push('The other state’s return (credit for taxes paid to other states)')
   if (L['14'] > 0) attach.push('Federal Form 2441')
   if (L['15'] > 0) attach.push('The schedules for your other credits')
   if (dependent) issues.push('Someone can claim you as a dependent: Kansas limits your standard deduction (see the booklet) and you claim no dependents.')
-  if (itemizedFederally && !itemize) issues.push(`Kansas itemized deductions (${itemized.toLocaleString('en-US')}) are less than the Kansas standard deduction, so the standard deduction is used.`)
+  if (itemizedFederally && !itemize && itemized > 0) issues.push(`Kansas itemized deductions (${itemized.toLocaleString('en-US')}) are less than the Kansas standard deduction, so the standard deduction is used.`)
   if (ret.retirement.some((x) => owners.includes(x.owner) && x.taxableAmount > 0) && Object.keys(d.exemptRetirement).length === 0) issues.push('KPERS, federal civil service, military and railroad retirement are exempt in Kansas: mark them among your 1099-Rs.')
   if (d.qtp529 > (joint ? 6000 : 3000) * Math.max(1, ret.dependents.length)) issues.push('The 529 subtraction is limited to $3,000 per beneficiary ($6,000 if married filing jointly).')
   if (L['28'] > 500 && L['20'] === 0) issues.push('A balance due over $500 may mean an estimated tax penalty (Form K-210).')
   if (ret.dependents.length > 6) issues.push('More than six dependents: enclose a separate list.')
 
-  return { lines: L, exemptions: ex, scheduleS: S, itemize, itemized, standard, issues, attach }
+  return { schA: A, itemizedFederally, lines: L, exemptions: ex, scheduleS: S, itemize, itemized, standard, issues, attach }
 }

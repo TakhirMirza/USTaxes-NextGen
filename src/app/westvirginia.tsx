@@ -7,6 +7,7 @@ import { computeWestVirginia } from '../engine/wv2025.ts'
 import { buildWvPacket } from '../pdf/wv2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { MoneyField, Section, TextField, usd } from './fields'
+import { OtherStatesList } from './otherstates'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -111,10 +112,15 @@ export function WestVirginiaStep({ ret, set, result, preparer }: StepProps & { p
           <MoneyField label="State income tax refund in federal AGI" hint="Line 38" value={d.stateRefundInFagi} onChange={(n) => put({ stateRefundInFagi: n })} />
           <MoneyField label="WV 529 (SMART529) contributions" hint="Line 39" value={d.wv529} onChange={(n) => put({ wv529: n })} />
           <MoneyField label="WV ABLE contributions" hint="Line 43" value={d.able} onChange={(n) => put({ able: n })} />
-          <MoneyField label="Credit for tax paid to another state" hint="RECAP line 1, Schedule E" value={d.otherStateCredit} onChange={(n) => put({ otherStateCredit: n })} />
           <MoneyField label="Other nonrefundable credits" hint="Other RECAP lines" value={d.otherCredits} onChange={(n) => put({ otherCredits: n })} />
           <MoneyField label="Use tax" hint="Line 13, Schedule UT" value={d.useTax} onChange={(n) => put({ useTax: n })} />
         </div>
+        <details open={d.otherStates.length > 0}>
+          <summary>Credit for income tax paid to another state (Schedule E){wv.recap['1'] > 0 ? ` — ${usd(wv.recap['1'])}` : ''}</summary>
+          <p className="why">One Schedule E per state. Enter the income tax computed on that state’s return (not the amount withheld) and the net income from that state included in your West Virginia income. Taxes of cities or other countries do not count.</p>
+          <OtherStatesList rows={d.otherStates} max={10} empty={() => ({ state: '', tax: 0, income: 0 })} onChange={(rows) => put({ otherStates: rows })}
+            fields={[['tax', 'Income tax computed on that state’s return', 'Line 1'], ['income', 'Net income from that state in West Virginia income', 'Line 3']]} />
+        </details>
       </Section>
 
       {L['25'] > 0 && (

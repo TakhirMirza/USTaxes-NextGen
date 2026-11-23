@@ -109,9 +109,27 @@ export function formUtTc40(ret: TaxReturnInput, res: TaxReturnResult, ut: UtResu
   return { id: 'uttc40', file: 'ut-tc40.pdf', title: 'Utah TC-40', values: v, pages }
 }
 
+/** TC-40S, up to three states. */
+export function formUtTc40s(ret: TaxReturnInput, ut: UtResult): FormFill | null {
+  if (!ut.tc40s.length) return null
+  const v: Record<string, FieldValue> = { '40S SSN': digits(ret.taxpayer.ssn), "40S Taxpayer's name": upper(ret.taxpayer.lastName) }
+  ut.tc40s.slice(0, 3).forEach((x, i) => {
+    const w = WORDS[i]
+    v[`40S ${w} State`] = x.state
+    v[`40S ${w} PT1 Line1 amount`] = keep0(x.lines['1'])
+    v[`40S ${w} PT1 Line2 amount`] = keep0(x.lines['2'])
+    v[`40S ${w} PT1 Line 3 percent`] = x.lines['3'].toFixed(4)
+    for (const k of ['4', '5', '6', '7']) v[`40S ${w} PT1 Line ${k} amount`] = keep0(x.lines[k])
+  })
+  return { id: 'uttc40s', file: 'ut-tc40s.pdf', title: 'Utah TC-40S', values: v }
+}
+
 export function buildUtPacket(ret: TaxReturnInput, res: TaxReturnResult, ut: UtResult, preparer?: PreparerInfo | null): FormPacket {
   const notIncluded = [...ut.attach]
   if (ut.apportionable.some((x) => x.code === '18')) notIncluded.push('TC-40A Part 3: write your (and your spouse’s) birthdate next to the retirement credit (code 18)')
   if (ut.lines['33'] > 0 && ret.ut.withholding1099 > 0) notIncluded.push('TC-40W: add the 1099s with Utah withholding (W-2 rows are filled in)')
-  return { forms: [formUtTc40(ret, res, ut, preparer)], notIncluded }
+  const forms = [formUtTc40(ret, res, ut, preparer)]
+  const s = formUtTc40s(ret, ut)
+  if (s) forms.push(s)
+  return { forms, notIncluded }
 }

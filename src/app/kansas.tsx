@@ -6,7 +6,7 @@ import type { KsInput, Owner, Person } from '../engine/model.ts'
 import { computeKansas } from '../engine/ks2025.ts'
 import { buildKsPacket } from '../pdf/ks2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
-import { MoneyField, NumberField, Section, TextField, usd } from './fields'
+import { Check, MoneyField, NumberField, Section, TextField, usd } from './fields'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -34,6 +34,7 @@ export function KansasStep({ ret, set, result, preparer }: StepProps & { prepare
   const ks = useMemo(() => computeKansas(ret, result), [ret, result])
   const [pdf, setPdf] = useState<{ busy: boolean; note: string }>({ busy: false, note: '' })
   const put = (p: Partial<KsInput>): void => set((r) => ({ ...r, ks: { ...r.ks, ...p } }))
+  const putA = (p: Partial<KsInput['schA']>): void => put({ schA: { ...d.schA, ...p } })
   const married = ret.filingStatus === 'mfj'
   const owners: Owner[] = married ? ['taxpayer', 'spouse'] : ['taxpayer']
   const names: Record<Owner, string> = { taxpayer: firstName(ret.taxpayer, 'You'), spouse: firstName(ret.spouse, 'Spouse') }
@@ -110,7 +111,16 @@ export function KansasStep({ ret, set, result, preparer }: StepProps & { prepare
             {sRows.map(([k, label]) => <tr key={k}><th scope="row"><span className="line-no">{k}</span>{label}</th><td>{usd(ks.scheduleS[k])}</td></tr>)}
           </tbody></table>
         )}
-        <p className="why">{ks.itemize ? `Itemizing (Kansas Schedule A): ${usd(ks.itemized)}.` : `Standard deduction ${usd(ks.standard)}.`}</p>
+      </Section>
+
+      <Section title="Itemized deductions (Kansas Schedule A)" intro={`Kansas lets you itemize whether or not you itemized federally. Medical expenses (over 7.5% of federal AGI), real estate and personal property taxes, Form 1098 mortgage interest and gifts come from your federal entries; Kansas income tax and sales tax are not deductible. Schedule A total: ${usd(ks.itemized)}${ks.itemize ? ' — used on line 4.' : ` — the standard deduction (${usd(ks.standard)}) is larger.`}`}>
+        <div className="grid">
+          <MoneyField label="Mortgage interest not on a Form 1098" hint="Line 8b" value={d.schA.individualMortgage} onChange={(n) => putA({ individualMortgage: n })} />
+          {d.schA.individualMortgage > 0 && <TextField label="Paid to: name, identifying number and address" autoComplete="off" value={d.schA.individualInfo} onChange={(s) => putA({ individualInfo: s })} />}
+          <MoneyField label="Points not on a Form 1098" hint="Line 8c" value={d.schA.points} onChange={(n) => putA({ points: n })} />
+          <MoneyField label="Charitable contribution carryover from a prior year" hint="Line 12" value={d.schA.carryover} onChange={(n) => putA({ carryover: n })} />
+        </div>
+        <Check label="Not all of my home mortgage loans were used to buy, build or improve my home" hint="Line 8 box; the interest may be limited" checked={d.schA.mixedUseMortgage} onChange={(on) => putA({ mixedUseMortgage: on })} />
       </Section>
 
       <Section title="Contributions" intro="Lines 35–42. They reduce your refund or add to what you owe.">

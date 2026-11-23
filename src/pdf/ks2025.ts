@@ -139,9 +139,42 @@ export function formKsSchS(ret: TaxReturnInput, ks: KsResult): FormFill {
   return { id: 'ksschs', file: 'ks-schs.pdf', title: 'Kansas Schedule S', values: v, pages: [0] }
 }
 
+const KSA: Record<string, string> = {
+  '1': '1. Medical and dental expenses see instructions', '2': '2. Enter your adjusted gross income amount from Form 1040 or 1040SR line 11', '3': '3. Multiply line 2 by 75 0075',
+  '4': '4. Total medical and dental expenses allowed - subtract line 3 form line 1. If line 3 is more than line 1, enter zero',
+  '5': '5. State and local real estate taxes see instructions', '6': '6. State and local personal property taxes', '7': '7. Total taxes you paid add lines 5 and 6',
+  '8a': '8a Home mortgage interest and points reported to you on Form 1098', '8b': '8b Home mortgage interest NOT reported to you on Form 1098', '8c': '8c Points not reported to you on Form 1098',
+  '9': '9 Total interest you paid - add lines 8a through 8d', '10': '10 Gifts by cash or check', '11': '11 Gifts made other than by cash or check', '12': '12 Carryover from prior year',
+  '13': '13 Total gifts to charity - add lines 10 through 12', '14': '14 Total Kansas itemized deductions - add lines 4, 7, 9, and 13'
+}
+export function formKsSchA(ret: TaxReturnInput, ks: KsResult): FormFill | null {
+  if (!ks.itemize) return null
+  const A = ks.schA
+  const t = ret.taxpayer
+  const s = ret.spouse
+  const v: Record<string, FieldValue> = {
+    'Your First Name': upper(t.firstName), 'Last Name': upper(t.lastName), 'Enter the first four letters of your last name': four(t.lastName), 'Your Security number': ssn(t.ssn)
+  }
+  if (ret.filingStatus === 'mfj') {
+    v['Spouse First Name'] = upper(s.firstName); v['Spouse Last Name'] = upper(s.lastName)
+    v['Enter the first four letters of your spouses'] = four(s.lastName); v['Spouse Security number'] = ssn(s.ssn)
+  }
+  if (ks.itemizedFederally) v['Check this box if you claimed itemized deductions on your federal return'] = true
+  if (ret.ks.schA.mixedUseMortgage) v["Check this box if you didn't use all of your home mortgage loan(s) to buy, buold, or improve your home"] = true
+  for (const [k, name] of Object.entries(KSA)) if (A[k] || ['4', '7', '9', '13', '14'].includes(k)) v[name] = whole(A[k])
+  if (A['8b'] > 0 && ret.ks.schA.individualInfo.trim()) {
+    const info = upper(ret.ks.schA.individualInfo)
+    v['identifying number and address'] = info.slice(0, 45)
+    if (info.length > 45) v['identifying number and address, contd'] = info.slice(45, 120)
+  }
+  return { id: 'ksscha', file: 'ks-scha.pdf', title: 'Kansas Schedule A', values: v }
+}
+
 export function buildKsPacket(ret: TaxReturnInput, res: TaxReturnResult, ks: KsResult, preparer?: PreparerInfo | null): FormPacket {
   const forms = [formKsK40(ret, res, ks, preparer)]
   if (ks.scheduleS['A9'] + ks.scheduleS['A26'] > 0) forms.push(formKsSchS(ret, ks))
+  const sa = formKsSchA(ret, ks)
+  if (sa) forms.push(sa)
   const notIncluded = [...ks.attach.filter((x) => !x.startsWith('Schedule S'))]
   notIncluded.push('Dependents’ dates of birth on the K-40 front (MMDDYYYY)')
   return { forms, notIncluded }

@@ -7,6 +7,7 @@ import { computeUtah } from '../engine/ut2025.ts'
 import { buildUtPacket } from '../pdf/ut2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { MoneyField, Section, TextField, usd } from './fields'
+import { OtherStatesList } from './otherstates'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -100,11 +101,16 @@ export function UtahStep({ ret, set, result, preparer }: StepProps & { preparer:
           <MoneyField label="Interest on U.S. government obligations" hint="Subtraction code 71" value={d.usObligationInterest} onChange={(n) => put({ usObligationInterest: n })} />
           <MoneyField label="Interest on other states’ municipal bonds" hint="Addition code 57" value={d.otherStateBondInterest} onChange={(n) => put({ otherStateBondInterest: n })} />
           <MoneyField label="my529 credit" hint="Form TC-675H, credit code 20" value={d.my529Credit} onChange={(n) => put({ my529Credit: n })} />
-          <MoneyField label="Credit for income tax paid to another state" hint="From TC-40S, code 17" value={d.otherStateCredit} onChange={(n) => put({ otherStateCredit: n })} />
           <TextField label="Other nonapportionable credit: code" hint="Two characters from the TC-40 instructions" autoComplete="off" value={d.otherCredit.code} onChange={(s) => put({ otherCredit: { ...d.otherCredit, code: s.toUpperCase().slice(0, 2) } })} />
           <MoneyField label="Other nonapportionable credit: amount" value={d.otherCredit.amount} onChange={(n) => put({ otherCredit: { ...d.otherCredit, amount: n } })} />
           <MoneyField label="Utah use tax" hint="Line 31; untaxed out-of-state purchases" value={d.useTax} onChange={(n) => put({ useTax: n })} />
         </div>
+        <details open={d.otherStates.length > 0}>
+          <summary>Credit for income tax paid to another state (TC-40S){ut.tc40s.length ? ` — ${usd(ut.tc40s.reduce((t, x) => t + x.lines['7'], 0))}` : ''}</summary>
+          <p className="why">For federal AGI taxed by both Utah and another state. Enter the tax actually paid to that state on that income (from its return, not the amount withheld). The credit is limited to Utah’s tax on the same share of income.</p>
+          <OtherStatesList rows={d.otherStates} max={6} empty={() => ({ state: '', income: 0, tax: 0 })} onChange={(rows) => put({ otherStates: rows })}
+            fields={[['income', 'Federal AGI taxed by both Utah and that state', 'Line 1'], ['tax', 'Income tax actually paid to that state', 'Line 6']]} />
+        </details>
         {credits.length > 0 && (
           <table className="lines"><tbody>
             {credits.map((x) => <tr key={x.code}><th scope="row"><span className="line-no">{x.code}</span>{CREDITS[x.code] ?? 'Credit'}</th><td>{usd(x.amount)}</td></tr>)}

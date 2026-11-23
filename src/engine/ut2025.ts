@@ -21,6 +21,8 @@ export const UT_PHASEOUT: Record<TaxReturnInput['filingStatus'], number> = { sin
 const FED_STANDARD: Record<TaxReturnInput['filingStatus'], number> = { single: 15750, mfj: 31500, mfs: 15750, hoh: 23625, qss: 31500 }
 
 export interface UtResult {
+  /** TC-40S blocks. */
+  tc40s: { state: string; lines: Record<string, number> }[]
   lines: Record<string, number>
   dependents: { a: number; b: number; c: number; d: number }
   exempt: boolean
@@ -130,7 +132,18 @@ export function computeUtah(ret: TaxReturnInput, res: TaxReturnResult): UtResult
   L['23'] = L['22']
   L['25'] = pos(L['23'] - L['24'])
   const nonapportionable: { code: string; amount: number }[] = []
-  if (d.otherStateCredit > 0) nonapportionable.push({ code: '17', amount: r(d.otherStateCredit) })
+  // ── TC-40S: one block per state ──
+  const tc40s = d.otherStates.filter((o) => o.state.trim() && pos(o.tax) > 0 && pos(o.income) > 0).map((o) => {
+    const c: Record<string, number> = { '1': r(pos(o.income)), '2': L['4'] }
+    c['3'] = c['2'] > 0 ? Math.min(1, Math.round(c['1'] / c['2'] * 10000) / 10000) : 1
+    c['4'] = L['22']
+    c['5'] = r(c['4'] * c['3'])
+    c['6'] = r(pos(o.tax))
+    c['7'] = Math.min(c['5'], c['6'])
+    return { state: o.state.trim().toUpperCase().slice(0, 2), lines: c }
+  })
+  const credit17 = Math.min(tc40s.reduce((s, x) => s + x.lines['7'], 0), L['25'])
+  if (credit17 > 0) nonapportionable.push({ code: '17', amount: credit17 })
   if (d.otherCredit.amount > 0 && /^[0-9A-Z]{2}$/.test(d.otherCredit.code.toUpperCase())) nonapportionable.push({ code: d.otherCredit.code.toUpperCase(), amount: r(d.otherCredit.amount) })
   L['26'] = nonapportionable.reduce((s, x) => s + x.amount, 0)
   L['27'] = pos(L['25'] - L['26'])
@@ -161,12 +174,13 @@ export function computeUtah(ret: TaxReturnInput, res: TaxReturnResult): UtResult
   // ── Notes ──
   if (L['33'] > 0) attach.push('TC-40W (withholding schedule); keep your W-2s and 1099s')
   if (L['5'] + L['8'] + L['24'] + L['26'] > 0) attach.push('TC-40A, page 1 (supplemental schedule)')
-  if (d.otherStateCredit > 0) attach.push('TC-40S (credit for income tax paid to another state) and the other state’s return — TC-40S is not filled in here')
+  if (tc40s.length) attach.push('A copy of each other state’s return (TC-40S)')
+  if (tc40s.length > 3) issues.push('TC-40S has room for three states; use another TC-40S for the rest.')
   if (exempt) issues.push('Federal AGI is not more than the federal standard deduction: you are a qualified exempt taxpayer and owe no Utah income tax.')
   if (apportionable.some((x) => x.code === '18')) issues.push('Retirement credit (code 18): enter your birthdate on TC-40A, Part 3; it cannot be combined with the Social Security or military retirement credit.')
   if (ret.retirement.some((x) => owners.includes(x.owner)) && Object.keys(d.retirementKind).length === 0) issues.push('Mark military or railroad retirement among your 1099-Rs: military retirement gets a 4.5% credit and railroad retirement is subtracted.')
   if (statements.length > 4) issues.push('TC-40W has room for four W-2s; attach another TC-40W page for the rest.')
   if (L['39'] > 0 && L['34'] === 0 && L['39'] > L['32'] * 0.1) issues.push('A balance due over 10% of your tax may mean a prepayment penalty.')
 
-  return { lines: L, dependents: dep, exempt, additions, subtractions, apportionable, nonapportionable, statements, worksheets: W, issues, attach }
+  return { tc40s, lines: L, dependents: dep, exempt, additions, subtractions, apportionable, nonapportionable, statements, worksheets: W, issues, attach }
 }
