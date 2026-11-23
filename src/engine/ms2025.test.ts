@@ -84,3 +84,28 @@ test('80-105, 80-107 and 80-108: every value lands on one field and the PDF buil
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 MS')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-MS.pdf`, bytes)
 })
+
+test('MS Form 80-160 and Form 80-401', async () => {
+  const { ms: x, res, ret } = ms(base({ w2s: [w2(70000)] }), {
+    otherStates: [{ state: 'AL', income: 30000, deduction: 3000, exemption: 1500, tax: 1000 }],
+    credits401: [{ code: '25', earned: 500, passThrough: 0, carryover: 0, expired: 0 }], adopteeSsns: '111-22-3333'
+  })
+  assert.equal(x.lines['17'], 2275)
+  const f = x.f160!
+  assert.equal(f.total4, 25500); assert.equal(f.a7, 15500); assert.equal(f.b7, 682)
+  assert.equal(f.cols[0]['5'], 100); assert.equal(f.cols[0]['10'], 682)
+  assert.equal(x.lines['18'], 682)
+  assert.equal(x.f401[0].E, 500); assert.equal(x.lines['19'], 500)
+  assert.equal(x.lines['20'], 2275 - 682 - 500)
+  const packet = buildMsPacket(ret, res, x)
+  const p401 = packet.forms.find((y) => y.id === 'ms80401')!
+  assert.equal(p401.values.AdopteeSSN1, '111223333')
+  assert.equal(packet.forms.find((y) => y.id === 'ms80160')!.values['3-5'], '100.00')
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const g of packet.forms) await fillForm(lib, await load(g.file), { ...g }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, packet.forms, load, '2025 MS')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-MSS.pdf`, bytes)
+})

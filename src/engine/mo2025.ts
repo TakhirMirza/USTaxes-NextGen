@@ -16,7 +16,7 @@
  *  - MO-PTS: the property tax credit chart (credit = band midpoint − income × k / 1600).
  * Whole dollars.
  */
-import type { Owner, TaxReturnInput } from './model.ts'
+import type { MoTcCredit, Owner, TaxReturnInput } from './model.ts'
 import type { TaxReturnResult } from './compute.ts'
 
 const r = (n: number): number => Math.round(n)
@@ -53,6 +53,8 @@ export type MoStatus = 'single' | 'dependent' | 'combined' | 'separate' | 'hoh' 
 type Col = Record<string, number>
 
 export interface MoResult {
+  /** Form MO-TC. */
+  moTc: { rows: (MoTcCredit & { col: 1 | 2 })[]; line11: Record<1 | 2, number>; line12: Record<1 | 2, number>; line13: number }
   status: MoStatus
   two: boolean
   Y: Col
@@ -266,7 +268,17 @@ export function computeMissouri(ret: TaxReturnInput, res: TaxReturnResult): MoRe
     + sum(ret.retirement.filter((x) => owners.includes(x.owner)).map((x) => pos(d.r1099[x.id]?.stateTax ?? 0))))
   L['38'] = r(pos(d.estimatedPayments))
   L['41'] = r(pos(d.extensionPayment))
-  L['42'] = r(pos(d.miscCredits))
+  // ── MO-TC: column 1 yourself (or the return), column 2 your spouse on a combined return; each limited to that tax unless refundable ──
+  const tcRows = d.moTc.filter((c) => c.code.trim() && pos(c.amount) > 0).slice(0, 10).map((c) => ({ ...c, col: (two && c.owner === 'spouse' ? 2 : 1) as 1 | 2, amount: r(pos(c.amount)) }))
+  const tc12: Record<1 | 2, number> = { 1: Y['35'], 2: two ? S['35'] : 0 }
+  const tc11: Record<1 | 2, number> = { 1: 0, 2: 0 }
+  for (const c of tcRows) tc11[c.col] += c.amount
+  const allowed = (col: 1 | 2): number => {
+    const ref = tcRows.filter((c) => c.col === col && c.refundable).reduce((s, c) => s + c.amount, 0)
+    return Math.min(tc11[col] - ref, tc12[col]) + ref
+  }
+  const tc13 = allowed(1) + allowed(2)
+  L['42'] = tc13
 
   // MO-PTS / MO-CRP.
   let pts: MoResult['pts'] = null
@@ -338,11 +350,13 @@ export function computeMissouri(ret: TaxReturnInput, res: TaxReturnResult): MoRe
   if (cr) attach.push(`A copy of your ${d.otherState.state.trim() || 'other state'} return (Form MO-CR)`)
   if (pts) attach.push('Form SSA-1099 or the disability / VA letter for MO-PTS; paid property tax receipts or Form 5674 (verification of rent paid)')
   if (wftc) attach.push('Federal Schedule EIC (Form MO-WFTC)')
-  if (L['42'] > 0) attach.push('Form MO-TC with the credit certificates (not prepared here)')
+  if (tcRows.length) attach.push('The documents listed on Form MO-TC for each credit (certificates, Form ATC with federal Form 8839, etc.)')
+  if (d.moTc.filter((c) => c.code.trim() && c.amount > 0).length > 10) issues.push('Form MO-TC has room for 10 credits; attach another MO-TC for the rest.')
+  if (tcRows.some((c) => !c.refundable) && (tc11[1] > tc12[1] || tc11[2] > tc12[2])) issues.push('Some MO-TC credits are more than the tax they apply to; the excess is not used this year (it may carry forward under the credit’s own rules).')
   if (A.Y['13'] + (A.S['13'] ?? 0) > 0) attach.push('Form 5695 (qualified health insurance premiums worksheet)')
   if (two) issues.push(`Combined return: federal AGI split ${'$'}${Y['1'].toLocaleString('en-US')} (you) / ${'$'}${S['1'].toLocaleString('en-US')} (spouse). Shared income (interest, dividends, gains) is split evenly; change the spouse’s share if it isn’t.`)
   if (gain > 0) issues.push('MO-A line 18: all of your net capital gain is subtracted (new for 2025).')
   if (!d.county) issues.push('Choose your county of residence.')
   if (L['54'] > 0 && L['36'] - L['37'] > 100) issues.push('If you underpaid estimated tax you may owe a penalty (Form MO-2210, not prepared here).')
-  return { status, two, Y, S: two ? S : {}, lines: L, a: A, part2, part3: { A: A3, B: B3, C: C3, D: D3 }, cr, crCol, pts, crp, wftc, itemize, issues, attach }
+  return { moTc: { rows: tcRows, line11: tc11, line12: tc12, line13: tc13 }, status, two, Y, S: two ? S : {}, lines: L, a: A, part2, part3: { A: A3, B: B3, C: C3, D: D3 }, cr, crCol, pts, crp, wftc, itemize, issues, attach }
 }

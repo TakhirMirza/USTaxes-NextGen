@@ -126,9 +126,33 @@ export function ConnecticutStep({ ret, set, result, preparer }: StepProps & { pr
         {joint && property('auto2', 'Motor vehicle 2', 'Year, make and model')}
       </Section>
 
+      <Section title="Credit for income taxes paid to other jurisdictions (Schedule 2)" intro="For income from another state, the District of Columbia or a political subdivision that taxed it. Enter the non-Connecticut income from the Schedule 2 Worksheet and the income tax paid there (from that return, not the amount withheld). Two jurisdictions fit on the form.">
+        {[0, 1].filter((i) => i < d.otherStates.length + 1).map((i) => {
+          const o = d.otherStates[i] ?? { name: '', code: '', income: 0, tax: 0 }
+          const set1 = (p: Partial<typeof o>): void => {
+            const list = [...d.otherStates]
+            list[i] = { ...o, ...p }
+            put({ otherStates: list })
+          }
+          return (
+            <div key={i} className="grid">
+              <TextField label={`Jurisdiction ${i === 0 ? 'A' : 'B'}: name`} autoComplete="off" value={o.name} onChange={(s) => set1({ name: s })} />
+              <TextField label="Two-letter code" autoComplete="off" value={o.code} onChange={(s) => set1({ code: s.replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase() })} />
+              <MoneyField label="Non-Connecticut income taxed there" hint="Line 53" value={o.income} onChange={(n) => set1({ income: n })} />
+              <MoneyField label="Income tax paid there" hint="Line 57" value={o.tax} onChange={(n) => set1({ tax: n })} />
+            </div>
+          )
+        })}
+        {ct.sch2 && (
+          <div className="grid">
+            <MoneyField label="Modified Connecticut AGI" hint={`Line 51; leave as is unless the instructions call for a different amount (Connecticut AGI is ${usd(L['5'])})`} value={d.modifiedAgi ?? L['5']} onChange={(n) => put({ modifiedAgi: n === L['5'] ? null : n })} />
+          </div>
+        )}
+        {ct.sch2 && <p className="why">Credit (line 7): {usd(L['7'])}.</p>}
+      </Section>
+
       <Section title="Other credits and amounts">
         <div className="grid">
-          <MoneyField label="Credit for income taxes paid to other jurisdictions" hint="Schedule 2, line 59" value={d.otherStateCredit} onChange={(n) => put({ otherStateCredit: n })} />
           <MoneyField label="Schedule CT-IT credits" hint="Part 1, line 10" value={d.itCredits} onChange={(n) => put({ itCredits: n })} />
           <MoneyField label="Individual use tax" hint="Schedule 4: untaxed online purchases" value={d.useTax} onChange={(n) => put({ useTax: n })} />
           {L['22'] > 0 && <MoneyField label="Apply to 2026 estimated tax" value={d.creditForward} onChange={(n) => put({ creditForward: n })} />}

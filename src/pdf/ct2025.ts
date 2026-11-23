@@ -113,6 +113,22 @@ export function formCt1040(ret: TaxReturnInput, res: TaxReturnResult, ct1: CtRes
   for (const [k, base] of Object.entries(P3)) if (L[k] || k === '38' || k === '50') draw.push(ct(2, 543, base, money(L[k], true), { right: true }))
   if (L['37'] > 0) draw.push(ct(2, 150, P3['37'], upper(d.otherAddition.description).slice(0, 45), { size: 8 }))
   if (L['49'] > 0) draw.push(ct(2, 200, P3['49'], upper(d.otherSubtraction.description).slice(0, 35), { size: 8 }))
+  // ── Page 3: Schedule 2 (columns A and B) ──
+  const s2 = ct1.sch2
+  if (s2) {
+    draw.push(ct(2, 474, 544, money(s2.line51, true), { right: true }))
+    const juris = d.otherStates.filter((o) => (o.name.trim() || o.code.trim()) && o.tax > 0).slice(0, 2)
+    s2.cols.forEach((c, i) => {
+      const [nameX, codeX, right, dot] = i === 0 ? [318, 401, 408, 340] : [436, 516, 525, 458]
+      draw.push(ct(2, nameX, 587, upper(juris[i].name).slice(0, 14), { size: 7 }), ct(2, codeX, 587, upper(juris[i].code).slice(0, 2), { size: 9 }))
+      draw.push(ct(2, right, 613, money(c['53'], true), { right: true }))
+      const [whole, frac] = c['54'].toFixed(4).split('.')
+      draw.push(ct(2, dot - 1, 630, whole, { right: true }), ct(2, dot + 4, 630, frac))
+      draw.push(ct(2, right, 652, money(c['55'], true), { right: true }), ct(2, right, 669.5, money(c['56'], true), { right: true }))
+      draw.push(ct(2, right, 686.5, money(c['57'], true), { right: true }), ct(2, right, 703.5, money(c['58'], true), { right: true }))
+    })
+    draw.push(ct(2, 470, 722.5, money(s2.line59, true), { right: true }))
+  }
 
   // ── Page 4: Schedule 3 and use tax ──
   draw.push(...comb(ct, 3, 378, 13.4, 45, '###-##-####', digits(ret.taxpayer.ssn)))

@@ -2,7 +2,7 @@
  * The Missouri part of the State step: Form MO-1040 with MO-A, MO-PTS / MO-CRP, MO-CR and MO-WFTC.
  */
 import { ReactElement, useMemo, useState } from 'react'
-import type { MoInput, Owner, Person } from '../engine/model.ts'
+import type { MoInput, MoTcCredit, Owner, Person } from '../engine/model.ts'
 import { computeMissouri } from '../engine/mo2025.ts'
 import { buildMoPacket, MO_COUNTIES, MO_TRUST_FUNDS } from '../pdf/mo2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
@@ -144,9 +144,30 @@ export function MissouriStep({ ret, set, result, preparer }: StepProps & { prepa
           <MoneyField label="Income taxed by that state" hint="MO-CR line 3" value={d.otherState.income} onChange={(n) => put({ otherState: { ...d.otherState, income: n } })} />
           <MoneyField label="Tax owed to that state" hint="MO-CR line 10; not withholding" value={d.otherState.tax} onChange={(n) => put({ otherState: { ...d.otherState, tax: n } })} />
           {married && <Choice legend="Whose income was taxed there" value={d.otherState.owner} onChange={(o) => put({ otherState: { ...d.otherState, owner: o } })} options={owners.map((o) => ({ value: o, label: names[o] }))} />}
-          <MoneyField label="Miscellaneous tax credits (Form MO-TC)" hint="Line 42" value={d.miscCredits} onChange={(n) => put({ miscCredits: n })} />
           <MoneyField label="Lump-sum distribution tax or low-income housing recapture" hint="Line 34; 10% of federal Form 4972 tax" value={d.otherTaxes} onChange={(n) => put({ otherTaxes: n })} />
         </div>
+        <details open={d.moTc.length > 0}>
+          <summary>Miscellaneous tax credits (Form MO-TC){mo.moTc.line13 > 0 ? ` — ${usd(mo.moTc.line13)}` : ''}</summary>
+          <p className="why">For credits such as adoption (ATC), Champion for Children (CFC), food pantry (FPT), neighborhood assistance (NAC) and others listed on page 2 of Form MO-TC. They apply in the order entered and cannot be more than the tax they are claimed against, unless the credit is refundable.</p>
+          {d.moTc.map((c, i) => {
+            const set1 = (p: Partial<MoTcCredit>): void => put({ moTc: d.moTc.map((y, j) => (j === i ? { ...y, ...p } : y)) })
+            return (
+              <fieldset key={i} className="statement">
+                <legend>{c.name.trim() || c.code.trim().toUpperCase() || `Credit ${i + 1}`}</legend>
+                <div className="grid">
+                  <TextField label="Alpha code" hint="3 letters, from page 2 of MO-TC" autoComplete="off" value={c.code} onChange={(s) => set1({ code: s.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() })} />
+                  <TextField label="Credit name" autoComplete="off" value={c.name} onChange={(s) => set1({ name: s })} />
+                  <TextField label="Benefit number" hint="Last 6 digits on the certificate, if any" autoComplete="off" value={c.benefit} onChange={(s) => set1({ benefit: s })} />
+                  <MoneyField label="Amount" value={c.amount} onChange={(n) => set1({ amount: n })} />
+                  {mo.two && <Choice legend="Whose credit" value={c.owner} onChange={(o) => set1({ owner: o })} options={owners.map((o) => ({ value: o, label: names[o] }))} />}
+                  <Check label="Refundable credit" hint="Only if the credit itself is refundable" checked={c.refundable} onChange={(on) => set1({ refundable: on })} />
+                </div>
+                <div className="actions"><button type="button" className="button" onClick={() => put({ moTc: d.moTc.filter((_, j) => j !== i) })}>Remove this credit</button></div>
+              </fieldset>
+            )
+          })}
+          {d.moTc.length < 10 && <div className="actions"><button type="button" className="button" onClick={() => put({ moTc: [...d.moTc, { owner: 'taxpayer', benefit: '', code: '', name: '', amount: 0, refundable: false }] })}>Add an MO-TC credit</button></div>}
+        </details>
       </Section>
 
       <Section title="Property tax credit (MO-PTS)" intro="For people 65 or older, 100% disabled, or 60 or older receiving surviving spouse benefits, with net household income up to $27,200 (renters) or $30,000 (owners).">

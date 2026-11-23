@@ -26,6 +26,9 @@ const STANDARD: Record<TaxReturnInput['filingStatus'], number> = { single: 2300,
 export const msTax = (taxable: number): number => r(pos(taxable - MS_ZERO_BAND) * MS_RATE)
 
 export interface MsResult {
+  /** Form 80-160 (null without the credit) and Form 80-401 rows. */
+  f160: { cols: Record<string, number>[]; total4: number; a6: number; a7: number; b7: number; line10: number; line11: number; line12: number } | null
+  f401: { code: string; B: number; C: number; D: number; E: number; F: number; G: number }[]
   /** Lines with A / B columns are keyed '13A', '13B', … ; single-column lines by number. */
   lines: Record<string, number>
   itemized: Record<string, number> | null
@@ -147,8 +150,41 @@ export function computeMississippi(ret: TaxReturnInput, res: TaxReturnResult): M
   // ── Tax ──
   if (joint && (L['16A'] < 0 || L['16B'] < 0)) L['17'] = msTax(L['16A'] + L['16B'])
   else L['17'] = msTax(L['16A']) + (joint ? msTax(L['16B']) : 0)
-  L['18'] = Math.min(L['17'], r(pos(d.otherStateCredit)))
-  L['19'] = Math.min(L['17'] - L['18'], r(pos(d.otherCredits)))
+  // ── Form 80-160 (up to three states) ──
+  const states = d.otherStates.filter((o) => o.state.trim() && pos(o.tax) > 0).slice(0, 3)
+  let f160: { cols: Record<string, number>[]; total4: number; a6: number; a7: number; b7: number; line10: number; line11: number; line12: number } | null = null
+  if (states.length) {
+    const cols = states.map((o) => {
+      const c: Record<string, number> = { '1': r(pos(o.income)), '2': r(pos(o.deduction)), '3': r(pos(o.exemption)) }
+      c['4'] = pos(c['1'] - c['2'] - c['3'])
+      c['9'] = r(pos(o.tax))
+      return c
+    })
+    const total4 = cols.reduce((s, c) => s + c['4'], 0)
+    const a6 = Math.min(MS_ZERO_BAND, total4)
+    const a7 = pos(total4 - MS_ZERO_BAND)
+    const b7 = r(a7 * 0.044)
+    for (const c of cols) {
+      c['5'] = total4 > 0 ? Math.round(c['4'] / total4 * 10000) / 100 : 0
+      c['7'] = r(b7 * c['5'] / 100)
+      c['8'] = c['7']
+      c['10'] = Math.min(c['8'], c['9'])
+    }
+    const line10 = cols.reduce((s, c) => s + c['10'], 0)
+    f160 = { cols, total4, a6, a7, b7, line10, line11: L['17'], line12: Math.min(line10, L['17']) }
+  }
+  L['18'] = f160?.line12 ?? 0
+  // ── Form 80-401: credits used in order up to the tax left ──
+  let room = L['17'] - L['18']
+  const f401 = d.credits401.filter((c) => c.code.trim()).slice(0, 4).map((c) => {
+    const B = r(pos(c.earned)); const C = r(pos(c.passThrough)); const D = r(pos(c.carryover)); const F = r(pos(c.expired))
+    const E = Math.min(pos(B + C + D - F), room); room -= E
+    const code = c.code.trim().padStart(2, '0')
+    // Codes marked * on the form have no carryover.
+    const G = ['02', '03', '11', '12', '27', '41', '44', '50'].includes(code) ? 0 : pos(B + C + D - E - F)
+    return { code, B, C, D, E, F, G }
+  })
+  L['19'] = f401.reduce((s, c) => s + c.E, 0)
   L['20'] = pos(L['17'] - L['18'] - L['19'])
   L['21'] = r(pos(d.useTax))
   L['22'] = 0
@@ -180,8 +216,12 @@ export function computeMississippi(ret: TaxReturnInput, res: TaxReturnResult): M
   if (itemize || interest['1'] + interest['4'] + L['41A'] + L['48A'] + L['33'] !== 0) attach.push('Form 80-108 (itemized deductions, interest and dividends, rents, other income, check-offs)')
   if (L['39A'] + L['39B'] !== 0) attach.push('Federal Schedule C')
   if (L['40A'] !== 0) attach.push('Federal Schedule D')
-  if (L['18'] > 0) attach.push('Form 80-160 and the other state’s return — not filled in here')
-  if (L['19'] > 0) attach.push('Form 80-401 (credits) — not filled in here')
+  if (f160) attach.push('A copy of each other state’s return and proof of payment (Form 80-160; W-2 withholding is not proof)')
+  if (d.otherStates.filter((o) => o.state.trim() && pos(o.tax) > 0).length > 3) issues.push('Form 80-160 has room for three states; attach another for the rest.')
+  if (d.credits401.filter((c) => c.code.trim()).length > 4) issues.push('Form 80-401 has room for four credits; attach another for the rest.')
+  if (f401.length) attach.push('The certificate, approval letter or statement required for each Form 80-401 credit')
+  if (f401.some((c) => c.code === '25') && !d.adopteeSsns.trim()) issues.push('Form 80-401 code 25 (child adoption): enter the adoptee’s SSN.')
+  if (f401.some((c) => ['34', '35', '36', '39', '42', '43', '45'].includes(c.code)) && !d.charities.trim()) issues.push('Form 80-401 charitable credits: enter the name of the charitable organization.')
   if (ret.retirement.some((x) => owners.includes(x.owner) && x.taxableAmount > 0 && !early.includes(x))) issues.push('Retirement income (pensions, IRAs, 401(k)s after the required age) and Social Security are not taxed in Mississippi.')
   if (early.length) issues.push('Early distributions (code 1) are taxable in Mississippi and are reported on line 46.')
   if (joint && (L['40A'] || L['43A'] || L['44A'] || L['41A'])) issues.push('Interest, dividends, capital gains and rents are shown in the taxpayer column; move a spouse’s own share to column B if it applies.')
@@ -189,5 +229,5 @@ export function computeMississippi(ret: TaxReturnInput, res: TaxReturnResult): M
   if (ret.dependents.length > 4) issues.push('More than four dependents: list the rest on Form 80-491.')
   if (itemize) issues.push(`Mississippi itemized deductions (${ia['8'].toLocaleString('en-US')}) are more than the standard deduction and are used.`)
 
-  return { lines: L, itemized: itemize ? ia : null, interest, dependentsTotal, boxes, statements, issues, attach }
+  return { f160, f401, lines: L, itemized: itemize ? ia : null, interest, dependentsTotal, boxes, statements, issues, attach }
 }

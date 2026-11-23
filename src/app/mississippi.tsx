@@ -2,7 +2,7 @@
  * The Mississippi part of the State step: Form 80-105 with Forms 80-107 and 80-108 for full-year residents.
  */
 import { ReactElement, useMemo, useState } from 'react'
-import type { MsInput, Owner, Person } from '../engine/model.ts'
+import type { MsCredit401, MsInput, MsOtherState, Owner, Person } from '../engine/model.ts'
 import { computeMississippi } from '../engine/ms2025.ts'
 import { buildMsPacket, MS_FUNDS } from '../pdf/ms2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
@@ -82,10 +82,54 @@ export function MississippiStep({ ret, set, result, preparer }: StepProps & { pr
           <MoneyField label="MPACT contributions" hint="Line 56" value={d.mpact} onChange={(n) => put({ mpact: n })} />
           <MoneyField label="MACS college savings contributions" hint="Line 57" value={d.macs} onChange={(n) => put({ macs: n })} />
           <MoneyField label="Mississippi ABLE contributions" hint="Line 64" value={d.able} onChange={(n) => put({ able: n })} />
-          <MoneyField label="Credit for tax paid to another state" hint="Line 18, Form 80-160" value={d.otherStateCredit} onChange={(n) => put({ otherStateCredit: n })} />
-          <MoneyField label="Other credits" hint="Line 19, Form 80-401" value={d.otherCredits} onChange={(n) => put({ otherCredits: n })} />
           <MoneyField label="Consumer use tax" hint="Line 21" value={d.useTax} onChange={(n) => put({ useTax: n })} />
         </div>
+              <details open={d.otherStates.length > 0}>
+          <summary>Credit for tax paid to other states (Form 80-160){ms.f160 ? ` — ${usd(L['18'])}` : ''}</summary>
+          <p className="why">For income earned in another state and taxed there. Enter, from each state’s return, the income earned there, the deduction and exemption claimed there, and the tax due there (not the amount withheld). The credit is limited to Mississippi’s 4.4% rate on that taxable income above $10,000.</p>
+          {d.otherStates.map((o, i) => {
+            const set1 = (p: Partial<MsOtherState>): void => put({ otherStates: d.otherStates.map((y, j) => (j === i ? { ...y, ...p } : y)) })
+            return (
+              <fieldset key={i} className="statement">
+                <legend>{o.state.trim().toUpperCase() || `State ${i + 1}`}</legend>
+                <div className="grid">
+                  <TextField label="State (two letters)" autoComplete="off" value={o.state} onChange={(s) => set1({ state: s.replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase() })} />
+                  <MoneyField label="Income earned in that state" hint="Line 1" value={o.income} onChange={(n) => set1({ income: n })} />
+                  <MoneyField label="Deduction claimed there" hint="Line 2" value={o.deduction} onChange={(n) => set1({ deduction: n })} />
+                  <MoneyField label="Exemption claimed there" hint="Line 3" value={o.exemption} onChange={(n) => set1({ exemption: n })} />
+                  <MoneyField label="Income tax due to that state" hint="Line 9" value={o.tax} onChange={(n) => set1({ tax: n })} />
+                </div>
+                <div className="actions"><button type="button" className="button" onClick={() => put({ otherStates: d.otherStates.filter((_, j) => j !== i) })}>Remove this state</button></div>
+              </fieldset>
+            )
+          })}
+          {d.otherStates.length < 3 && <div className="actions"><button type="button" className="button" onClick={() => put({ otherStates: [...d.otherStates, { state: '', income: 0, deduction: 0, exemption: 0, tax: 0 }] })}>Add a state</button></div>}
+        </details>
+        <details open={d.credits401.length > 0}>
+          <summary>Other tax credits (Form 80-401){L['19'] > 0 ? ` — ${usd(L['19'])}` : ''}</summary>
+          <p className="why">Use the two-digit credit code printed on Form 80-401 (for example 25 child adoption, 34 qualifying charitable contribution, 44 dependent care). Credits are used in order up to your tax; codes marked * on the form cannot be carried over.</p>
+          {d.credits401.map((c, i) => {
+            const set1 = (p: Partial<MsCredit401>): void => put({ credits401: d.credits401.map((y, j) => (j === i ? { ...y, ...p } : y)) })
+            const row = c.code.trim() ? ms.f401[d.credits401.slice(0, i).filter((y) => y.code.trim()).length] : undefined
+            return (
+              <fieldset key={i} className="statement">
+                <legend>Credit{c.code.trim() ? ` code ${c.code.trim()}` : ''}</legend>
+                <div className="grid">
+                  <TextField label="Credit code" autoComplete="off" value={c.code} onChange={(s) => set1({ code: s.replace(/\D/g, '').slice(0, 2) })} />
+                  <MoneyField label="Earned this year" hint="Column B" value={c.earned} onChange={(n) => set1({ earned: n })} />
+                  <MoneyField label="Received from a pass-through entity" hint="Column C" value={c.passThrough} onChange={(n) => set1({ passThrough: n })} />
+                  <MoneyField label="Carryover from prior years" hint="Column D" value={c.carryover} onChange={(n) => set1({ carryover: n })} />
+                  <MoneyField label="Expired or allocated this year" hint="Column F" value={c.expired} onChange={(n) => set1({ expired: n })} />
+                </div>
+                {row && <p className="why">Used this year: {usd(row.E)}; carryover for next year: {usd(row.G)}.</p>}
+                <div className="actions"><button type="button" className="button" onClick={() => put({ credits401: d.credits401.filter((_, j) => j !== i) })}>Remove this credit</button></div>
+              </fieldset>
+            )
+          })}
+          <div className="actions"><button type="button" className="button" onClick={() => put({ credits401: [...d.credits401, { code: '', earned: 0, passThrough: 0, carryover: 0, expired: 0 }] })}>Add a credit</button></div>
+          {d.credits401.some((c) => c.code.trim() === '25') && <TextField label="Adoptee SSN(s)" hint="Code 25; separate two with a comma" autoComplete="off" value={d.adopteeSsns} onChange={(s) => put({ adopteeSsns: s })} />}
+          {d.credits401.some((c) => ['34', '35', '36', '39', '42', '43', '45'].includes(c.code.trim())) && <TextField label="Charitable organization(s)" hint="Codes 34–45; separate two with a semicolon" autoComplete="off" value={d.charities} onChange={(s) => put({ charities: s })} />}
+        </details>
       </Section>
 
       {L['31'] > 0 && (

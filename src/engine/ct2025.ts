@@ -121,6 +121,8 @@ export function ctPropertyCreditDecimal(fs: CtStatus, agi: number): number {
 }
 
 export interface CtResult {
+  /** Schedule 2 (null without the credit). */
+  sch2: { line51: number; line55: number; cols: Record<string, number>[]; line59: number } | null
   status: CtStatus
   lines: Record<string, number>
   tcs: Record<string, number>
@@ -182,10 +184,6 @@ export function computeConnecticut(ret: TaxReturnInput, res: TaxReturnResult): C
   L['5'] = L['3'] - L['4']
   const tcs = ctTax(fs, L['5'])
   L['6'] = tcs['10']
-  L['7'] = Math.min(r(pos(d.otherStateCredit)), L['6'])
-  L['8'] = pos(L['6'] - L['7'])
-  L['9'] = 0
-  L['10'] = L['8'] + L['9']
   // Schedule 3: property tax credit.
   const S: Record<string, number> = {}
   S['60'] = r(pos(d.residence.amount))
@@ -197,6 +195,27 @@ export function computeConnecticut(ret: TaxReturnInput, res: TaxReturnResult): C
   S['66'] = ctPropertyCreditDecimal(fs, L['5'])
   S['67'] = r(S['65'] * S['66'])
   S['68'] = S['65'] - S['67']
+  // ── Schedule 2: credit for income taxes paid to qualifying jurisdictions (columns A and B) ──
+  const juris = d.otherStates.filter((o) => (o.name.trim() || o.code.trim()) && pos(o.tax) > 0).slice(0, 2)
+  let sch2: { line51: number; line55: number; cols: Record<string, number>[]; line59: number } | null = null
+  if (juris.length) {
+    const line51 = d.modifiedAgi !== null ? r(d.modifiedAgi) : L['5']
+    const line55 = pos(L['6'] - Math.min(S['68'], L['6']))
+    const cols = juris.map((o) => {
+      const c: Record<string, number> = { '53': r(pos(o.income)) }
+      c['54'] = line51 > 0 ? Math.min(1, Math.floor(c['53'] / line51 * 10000) / 10000) : 0
+      c['55'] = line55
+      c['56'] = r(c['54'] * line55)
+      c['57'] = r(pos(o.tax))
+      c['58'] = Math.min(c['56'], c['57'])
+      return c
+    })
+    sch2 = { line51, line55, cols, line59: cols.reduce((s, c) => s + c['58'], 0) }
+  }
+  L['7'] = Math.min(sch2?.line59 ?? 0, L['6'])
+  L['8'] = pos(L['6'] - L['7'])
+  L['9'] = 0
+  L['10'] = L['8'] + L['9']
   L['11'] = L['10'] > 0 ? Math.min(S['68'], L['10']) : 0
   L['12'] = pos(L['10'] - L['11'])
   L['13'] = Math.min(r(pos(d.itCredits)), L['12'])
@@ -231,7 +250,8 @@ export function computeConnecticut(ret: TaxReturnInput, res: TaxReturnResult): C
 
   // ── Notes ──
   if (L['18'] > 0) attach.push('Keep your W-2s and 1099s (do not send them); the withholding schedule on page 2 lists them')
-  if (L['7'] > 0) attach.push('Schedule 2 (page 3) and a copy of the other jurisdiction’s return — Schedule 2 is not filled in here')
+  if (sch2) attach.push('A copy of the return filed with each qualifying jurisdiction (Schedule 2)')
+  if (d.otherStates.filter((o) => (o.name.trim() || o.code.trim()) && o.tax > 0).length > 2) issues.push('Schedule 2 has two columns; attach a schedule for the other jurisdictions.')
   if (L['13'] > 0) attach.push('Schedule CT-IT Credit')
   if (ret.dependents.length > 0) attach.push('Schedule CT-Dependent (dependent information) — not filled in here')
   if (withholding.length > 5) attach.push('Supplemental Schedule CT-1040WH for withholding statements after the fifth')
@@ -243,5 +263,5 @@ export function computeConnecticut(ret: TaxReturnInput, res: TaxReturnResult): C
   if (E['16'] > 0) issues.push('The CT EITC needs Schedule CT-EITC; investment income must be $11,950 or less.')
   if (L['26'] > 1000 && L['19'] === 0) issues.push('A balance due may mean interest on underpaid estimated tax (Form CT-2210).')
 
-  return { status: fs, lines: L, tcs, sch3: S, eitc: E, eitcChildren: eicChildren, withholding, issues, attach }
+  return { sch2, status: fs, lines: L, tcs, sch3: S, eitc: E, eitcChildren: eicChildren, withholding, issues, attach }
 }

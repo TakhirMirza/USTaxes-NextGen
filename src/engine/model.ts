@@ -1658,8 +1658,11 @@ export interface CtInput {
   residence: CtPropertyTax
   auto1: CtPropertyTax
   auto2: CtPropertyTax
-  /** Line 7 (Schedule 2), line 13 (Schedule CT-IT Credit) and line 15 (use tax). */
-  otherStateCredit: number
+  /** Schedule 2 (up to two qualifying jurisdictions): name, two-letter code, non-Connecticut income reported there (line 53) and income tax paid there (line 57). */
+  otherStates: { name: string; code: string; income: number; tax: number }[]
+  /** Line 51 when modified Connecticut AGI differs from Connecticut AGI (null: line 5 is used). */
+  modifiedAgi: number | null
+  /** Line 13 (Schedule CT-IT Credit) and line 15 (use tax). */
   itCredits: number
   useTax: number
   /** Line 23: overpayment applied to 2026 estimated tax. */
@@ -1669,7 +1672,7 @@ const emptyPropertyTax = (): CtPropertyTax => ({ town: '', description: '', date
 export const emptyCt = (): CtInput => ({
   w2: {}, other1099: { ein: '', income: 0, tax: 0 }, estimatedPayments: 0, extensionPayment: 0, townOfResidence: '', otherStateBondInterest: 0, usObligationInterest: 0,
   chetContributions: 0, ableContributions: 0, otherAddition: { description: '', amount: 0 }, otherSubtraction: { description: '', amount: 0 }, retirementKind: {},
-  residence: emptyPropertyTax(), auto1: emptyPropertyTax(), auto2: emptyPropertyTax(), otherStateCredit: 0, itCredits: 0, useTax: 0, creditForward: 0
+  residence: emptyPropertyTax(), auto1: emptyPropertyTax(), auto2: emptyPropertyTax(), otherStates: [], modifiedAgi: null, itCredits: 0, useTax: 0, creditForward: 0
 })
 
 export interface UtInput {
@@ -1932,17 +1935,23 @@ export interface MsInput {
   mpact: number
   macs: number
   able: number
-  /** Line 18: credit for tax paid to another state (80-160); line 19: other credits (80-401); line 21: use tax. */
-  otherStateCredit: number
-  otherCredits: number
+  /** Form 80-160: up to three other states (two-letter code, income earned there, its deduction and exemption, and the tax due there). */
+  otherStates: MsOtherState[]
+  /** Form 80-401 rows (up to four), with adoptee SSNs (code 25) and charitable organizations (codes 34–45). */
+  credits401: MsCredit401[]
+  adopteeSsns: string
+  charities: string
+  /** Line 21: use tax. */
   useTax: number
   /** Line 32: applied to 2026; 80-108 Part III check-offs by fund. */
   creditForward: number
   contributions: Record<string, number>
 }
+export interface MsOtherState { state: string; income: number; deduction: number; exemption: number; tax: number }
+export interface MsCredit401 { code: string; earned: number; passThrough: number; carryover: number; expired: number }
 export const emptyMs = (): MsInput => ({
   w2: {}, withholding1099: 0, estimatedPayments: 0, countyCode: '', usObligationInterest: 0, otherStateBondInterest: 0, guardPay: { taxpayer: 0, spouse: 0 },
-  mpact: 0, macs: 0, able: 0, otherStateCredit: 0, otherCredits: 0, useTax: 0, creditForward: 0, contributions: {}
+  mpact: 0, macs: 0, able: 0, otherStates: [], credits401: [], adopteeSsns: '', charities: '', useTax: 0, creditForward: 0, contributions: {}
 })
 
 export type WvRetirementKind = 'standard' | 'military' | 'railroad' | 'police' | 'wvPublic' | 'federal'
@@ -2452,6 +2461,8 @@ export const emptyNd = (): NdInput => ({
   cr: { state: '', sourceIncome: 0, residentIncome: 0, tax: 0 }, tc: {}, tcInfo: {}, estimatedPayments: 0, creditForward: 0, contributions: {}, consent1099g: false
 })
 
+/** A Form MO-TC credit: benefit number (last six digits of the certificate), alpha code, credit name and amount. */
+export interface MoTcCredit { owner: Owner; benefit: string; code: string; name: string; amount: number; refundable: boolean }
 export interface MoInput {
   /** Missouri W-2 and 1099-R details by id (line 37). */
   w2: Record<string, StateStatement>
@@ -2490,8 +2501,8 @@ export interface MoInput {
   otherTaxes: number
   estimatedPayments: number
   extensionPayment: number
-  /** Line 42: MO-TC total. */
-  miscCredits: number
+  /** Form MO-TC rows (line 42), applied in order against each person’s tax. */
+  moTc: MoTcCredit[]
   creditForward: number
   mostDeposit: number
   /** Line 51 trust funds by letter (a–l). */
@@ -2511,7 +2522,7 @@ export const emptyMo = (): MoInput => ({
   militaryRetirement: { taxpayer: 0, spouse: 0 }, railroad: { taxpayer: 0, spouse: 0 }, otherSubtractions: { taxpayer: 0, spouse: 0 }, tuition529: { taxpayer: 0, spouse: 0 },
   healthPremiums: { taxpayer: 0, spouse: 0 }, able: { taxpayer: 0, spouse: 0 }, publicPension: { taxpayer: 0, spouse: 0 }, earningsTax: 0,
   ltcInsurance: 0, healthShare: 0, activeDuty: 0, inactiveDuty: 0, farmland: 0, foster: 0, otherState: { state: '', owner: 'taxpayer', income: 0, tax: 0 },
-  otherTaxes: 0, estimatedPayments: 0, extensionPayment: 0, miscCredits: 0, creditForward: 0, mostDeposit: 0, trustFunds: {},
+  otherTaxes: 0, estimatedPayments: 0, extensionPayment: 0, moTc: [], creditForward: 0, mostDeposit: 0, trustFunds: {},
   pts: {
     claim: false, qualification: 'A', owner: false, propertyTax: 0, rent: 0, rentPercent: 100, otherIncome: 0, veteransBenefits: 0, publicAssistance: 0, nontaxableRrb: 0,
     rentalAddress: '', rentalApt: '', rentalCity: '', rentalZip: '', landlordName: '', landlordAddress: '', landlordCity: '', landlordState: '', landlordZip: '', landlordPhone: ''
@@ -3079,7 +3090,9 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     })(),
     ms: (() => {
       const e = emptyMs(); const x: Partial<MsInput> = r.ms ?? {}
-      return { ...e, ...x, w2: normalizeStatements(x.w2), guardPay: { ...e.guardPay, ...(x.guardPay ?? {}) }, contributions: { ...(x.contributions ?? {}) } }
+      return { ...e, ...x, w2: normalizeStatements(x.w2), guardPay: { ...e.guardPay, ...(x.guardPay ?? {}) }, contributions: { ...(x.contributions ?? {}) },
+        otherStates: Array.isArray(x.otherStates) ? x.otherStates.map((o: Partial<MsOtherState>) => ({ state: '', income: 0, deduction: 0, exemption: 0, tax: 0, ...o })) : [],
+        credits401: Array.isArray(x.credits401) ? x.credits401.map((c: Partial<MsCredit401>) => ({ code: '', earned: 0, passThrough: 0, carryover: 0, expired: 0, ...c })) : [] }
     })(),
     wv: (() => {
       const e = emptyWv(); const x: Partial<WvInput> = r.wv ?? {}
@@ -3104,7 +3117,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
         disabled: own('disabled'), ssDisability: own('ssDisability'), muniInterest: own('muniInterest'), otherAdditions: own('otherAdditions'), usInterest: own('usInterest'),
         stateRefund: own('stateRefund'), militaryRetirement: own('militaryRetirement'), railroad: own('railroad'), otherSubtractions: own('otherSubtractions'),
         tuition529: own('tuition529'), healthPremiums: own('healthPremiums'), able: own('able'), publicPension: own('publicPension'), otherState: own('otherState'),
-        trustFunds: { ...(x.trustFunds ?? {}) }, pts: own('pts'), birthDates: own('birthDates')
+        trustFunds: { ...(x.trustFunds ?? {}) }, pts: own('pts'), birthDates: own('birthDates'),
+        moTc: Array.isArray(x.moTc) ? x.moTc.map((c: Partial<MoTcCredit>) => ({ owner: 'taxpayer' as Owner, benefit: '', code: '', name: '', amount: 0, refundable: false, ...c })) : []
       } as MoInput
     })(),
     nd: (() => {
@@ -3198,7 +3212,9 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       const e = emptyCt(); const x: Partial<CtInput> = r.ct ?? {}
       return { ...e, ...x, w2: normalizeStatements(x.w2), other1099: { ...e.other1099, ...(x.other1099 ?? {}) }, otherAddition: { ...e.otherAddition, ...(x.otherAddition ?? {}) },
         otherSubtraction: { ...e.otherSubtraction, ...(x.otherSubtraction ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) },
-        residence: { ...e.residence, ...(x.residence ?? {}) }, auto1: { ...e.auto1, ...(x.auto1 ?? {}) }, auto2: { ...e.auto2, ...(x.auto2 ?? {}) } }
+        residence: { ...e.residence, ...(x.residence ?? {}) }, auto1: { ...e.auto1, ...(x.auto1 ?? {}) }, auto2: { ...e.auto2, ...(x.auto2 ?? {}) },
+        otherStates: Array.isArray(x.otherStates) ? x.otherStates.map((o: Partial<CtInput['otherStates'][number]>) => ({ name: '', code: '', income: 0, tax: 0, ...o })) : [],
+        modifiedAgi: typeof x.modifiedAgi === 'number' ? x.modifiedAgi : null }
     })(),
     ut: (() => {
       const e = emptyUt(); const x: Partial<UtInput> = r.ut ?? {}

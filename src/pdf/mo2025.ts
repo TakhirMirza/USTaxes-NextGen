@@ -265,6 +265,35 @@ export function formMo1040(ret: TaxReturnInput, res: TaxReturnResult, mo: MoResu
   return { id: 'mo-1040', file: 'mo-1040.pdf', title: 'Missouri Form MO-1040', values: v, pages }
 }
 
+/** Form MO-TC: column 1 yourself (or the return), column 2 your spouse on a combined return. */
+export function formMoTc(ret: TaxReturnInput, mo: MoResult): FormFill | null {
+  const t = mo.moTc
+  if (!t.rows.length) return null
+  const v: Record<string, FieldValue> = {}
+  const ssn3 = (s: string, a: string, b: string, c: string): void => { const d = digits(s); if (d.length === 9) { v[a] = d.slice(0, 3); v[b] = d.slice(3, 5); v[c] = d.slice(5) } }
+  v['Last First'] = upper(`${ret.taxpayer.lastName}, ${ret.taxpayer.firstName}`)
+  ssn3(ret.taxpayer.ssn, 'Social Security', 'undefined_3', 'undefined_4')
+  if (ret.filingStatus === 'mfj') {
+    v['Last First_2'] = upper(`${ret.spouse.lastName}, ${ret.spouse.firstName}`)
+    ssn3(ret.spouse.ssn, 'Social Security_2', 'undefined_5', 'undefined_6')
+  }
+  const col2 = (row: number): string => (row === 1 ? 'Column 2Row1' : row === 2 ? 'Column 200' : `Column 200_${row - 1}`)
+  t.rows.forEach((c, i) => {
+    const n = i + 1
+    v[`Benefit Number${n}`] = digits(c.benefit).slice(-6)
+    v[`Alpha Code 3 characters from back${n}`] = upper(c.code).slice(0, 3)
+    v[`Credit Name Each credit will apply in the order they appear below${n}`] = c.name.trim()
+    v[c.col === 1 ? String(n) : col2(n)] = String(c.amount)
+  })
+  v['11'] = String(t.line11[1]); v['12'] = String(t.line12[1])
+  if (mo.two) { v['Column 200_10'] = String(t.line11[2]); v['Column 200_11'] = String(t.line12[2]) }
+  v['13'] = String(t.line13)
+  return { id: 'motc', file: 'mo-tc.pdf', title: 'Missouri Form MO-TC', values: v }
+}
+
 export function buildMoPacket(ret: TaxReturnInput, res: TaxReturnResult, mo: MoResult, preparer?: PreparerInfo | null): FormPacket {
-  return { forms: [formMo1040(ret, res, mo, preparer)], notIncluded: mo.attach }
+  const forms = [formMo1040(ret, res, mo, preparer)]
+  const tc = formMoTc(ret, mo)
+  if (tc) forms.push(tc)
+  return { forms, notIncluded: mo.attach }
 }

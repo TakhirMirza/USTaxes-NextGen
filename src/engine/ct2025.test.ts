@@ -106,3 +106,21 @@ test('CT-1040 and CT-EITC: values are printed on the official forms', async () =
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 CT')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-CT.pdf`, bytes)
 })
+
+test('CT Schedule 2: credit for income taxes paid to qualifying jurisdictions', async () => {
+  const { ct: c, res, ret } = ct(base({ w2s: [w2(100000)] }), { otherStates: [{ name: 'New York', code: 'NY', income: 40000, tax: 1500 }] })
+  const s2 = c.sch2!
+  assert.equal(s2.line51, c.lines['5'])
+  assert.equal(s2.cols[0]['54'], 0.4)
+  assert.equal(s2.line55, c.lines['6'] - c.lines['11'])
+  assert.equal(s2.cols[0]['56'], Math.round(0.4 * s2.line55))
+  assert.equal(c.lines['7'], Math.min(s2.cols[0]['56'], 1500))
+  const packet = buildCtPacket(ret, res, c)
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, packet.forms, load, '2025 CT')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-CTS2.pdf`, bytes)
+})

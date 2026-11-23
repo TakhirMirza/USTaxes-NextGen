@@ -126,3 +126,27 @@ test('MO-PTS packet with a renter fills MO-PTS and MO-CRP', async () => {
   for (const f of packet.forms) await fillForm(lib, await readFile(new URL(f.file, formsDir)), { ...f }, problems)
   assert.deepEqual(problems, [])
 })
+
+test('MO-TC: credits per column, limited to each person’s tax', async () => {
+  const { mo, res, ret } = run(base({ filingStatus: 'mfj', w2s: [w2(70000), w2(30000, 'spouse')] }), {
+    moTc: [
+      { owner: 'taxpayer', benefit: 'ABC-2025-12345-123456', code: 'ATC', name: 'Adoption Tax Credit', amount: 500, refundable: false },
+      { owner: 'spouse', benefit: '', code: 'NAC', name: 'Neighborhood Assistance', amount: 99999, refundable: false }
+    ]
+  })
+  assert.equal(mo.moTc.line11[1], 500)
+  assert.equal(mo.moTc.line12[2], mo.S['35'])
+  assert.equal(mo.moTc.line13, Math.min(500, mo.Y['35']) + mo.S['35'])
+  assert.equal(mo.lines['42'], mo.moTc.line13)
+  const packet = buildMoPacket(ret, res, mo)
+  const tc = packet.forms.find((f) => f.id === 'motc')!
+  assert.equal(tc.values['Benefit Number1'], '123456')
+  assert.equal(tc.values['Column 200'], '99999')
+  const problems: FillProblem[] = []
+  await fillForm(lib, await readFile(new URL('../../public/forms/2025/mo-tc.pdf', import.meta.url)), { ...tc }, problems)
+  assert.deepEqual(problems, [])
+  if (process.env.WRITE_PDF) {
+    const { bytes } = await buildPdf(lib, [tc], (file: string) => readFile(new URL(`../../public/forms/2025/${file}`, import.meta.url)), '2025 MO-TC')
+    await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-MOTC.pdf`, bytes)
+  }
+})
