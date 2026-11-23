@@ -1,9 +1,9 @@
 /**
- * The Iowa part of the State step: Form IA 1040 with Schedule 1, IA 130 and IA 148 for full-year residents (flat 3.8%).
+ * The Iowa part of the State step: Form IA 1040 with Schedule 1, IA 130, IA 148 and IA 4136 for full-year residents (flat 3.8%).
  */
 import { ReactElement, useMemo, useState } from 'react'
 import { emptyIaCredit148 } from '../engine/model.ts'
-import type { IaCredit148, IaInput, IaOutOfState, IaRetirementKind, Owner, Person } from '../engine/model.ts'
+import type { IaCredit148, IaFuel, IaFuelRow, IaInput, IaOutOfState, IaRetirementKind, Owner, Person } from '../engine/model.ts'
 import { computeIowa } from '../engine/ia2025.ts'
 import { buildIaPacket } from '../pdf/ia2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
@@ -29,6 +29,10 @@ const KEY = new Set(['22', '32', '37'])
 const KINDS: [IaRetirementKind, string][] = [['standard', 'IRA, pension or annuity'], ['military', 'Military retirement'], ['railroad', 'Railroad retirement'], ['nonqualified', 'Nonqualified plan (not excluded)']]
 const firstName = (p: Person, fallback: string): string => p.firstName.trim().split(/\s+/)[0] || fallback
 
+const FUEL: [IaFuelRow, string][] = [
+  ['gasoline', 'Gasoline'], ['e10', 'Ethanol blend E-10 to E-14'], ['e15a', 'E-15 or higher, Jan 1 – Jun 30'], ['e15b', 'E-15 or higher, Jul 1 – Dec 31'],
+  ['diesel', 'Undyed diesel / biodiesel B-0 to B-19'], ['biodiesel', 'Undyed biodiesel B-20 or higher'], ['lpg', 'Special fuel (LPG)']
+]
 const OOS: [keyof IaOutOfState, string, string][] = [
   ['wages', 'Wages, salaries, tips', '1'], ['interest', 'Taxable interest', '2'], ['dividends', 'Ordinary dividends', '3'], ['alimony', 'Taxable alimony received', '4'],
   ['business', 'Business income or (loss)', '5'], ['capitalGain', 'Capital gain or (loss)', '6'], ['otherGains', 'Other gains or (losses)', '7'],
@@ -42,6 +46,7 @@ export function IowaStep({ ret, set, result, preparer }: StepProps & { preparer:
   const [pdf, setPdf] = useState<{ busy: boolean; note: string }>({ busy: false, note: '' })
   const put = (p: Partial<IaInput>): void => set((r) => ({ ...r, ia: { ...r.ia, ...p } }))
   const putOos = (p: Partial<IaOutOfState>): void => put({ oos: { ...d.oos, ...p } })
+  const putFuel = (p: Partial<IaFuel>): void => put({ fuel: { ...d.fuel, ...p } })
   const married = ret.filingStatus === 'mfj'
   const owners: Owner[] = married ? ['taxpayer', 'spouse'] : ['taxpayer']
   const names: Record<Owner, string> = { taxpayer: firstName(ret.taxpayer, 'You'), spouse: firstName(ret.spouse, 'Spouse') }
@@ -148,7 +153,6 @@ export function IowaStep({ ret, set, result, preparer }: StepProps & { preparer:
             <MoneyField key={`e-${x.id}`} label={`${x.name.trim() || 'Dependent'}: preschool and early childhood expenses`} hint="Line 24 ECDC; 25% of up to $1,000" value={d.earlyChildhood[x.id] ?? 0} onChange={(n) => put({ earlyChildhood: { ...d.earlyChildhood, [x.id]: n } })} />
           ))}
           <MoneyField label="Volunteer firefighter / EMS / reserve peace officer credit" hint="Line 10" value={d.volunteerCredit} onChange={(n) => put({ volunteerCredit: n })} />
-          <MoneyField label="Iowa fuel tax credit" hint="Line 23, from IA 4136" value={d.fuelTaxCredit} onChange={(n) => put({ fuelTaxCredit: n })} />
           <MoneyField label="Fish and wildlife contribution" hint="Line 21" value={d.fishWildlife} onChange={(n) => put({ fishWildlife: n })} />
           <MoneyField label="Child abuse prevention contribution" hint="Line 21" value={d.childAbuse} onChange={(n) => put({ childAbuse: n })} />
         </div>
@@ -189,6 +193,34 @@ export function IowaStep({ ret, set, result, preparer }: StepProps & { preparer:
             )
           })}
           <div className="actions"><button type="button" className="button" onClick={() => put({ credits148: [...d.credits148, emptyIaCredit148()] })}>Add an IA 148 credit</button></div>
+        </details>
+        <details open={ia.fuel.line9 > 0}>
+          <summary>Fuel tax credit (IA 4136){ia.fuel.line9 > 0 ? ` — ${usd(ia.fuel.line9)}` : ''}</summary>
+          <p className="why">For Iowa fuel tax paid on fuel used off the highway (farming, commercial or commercial fishing). Claimed gallons are invoice gallons minus highway gallons. Unless the use is sales-tax exempt (farming or processing), 6% sales tax on the fuel’s cost before Iowa fuel tax is subtracted.</p>
+          <div className="checks">
+            <label className="check"><input type="checkbox" checked={d.fuel.farming} onChange={(e) => putFuel({ farming: e.target.checked })} /> Farming</label>
+            <label className="check"><input type="checkbox" checked={d.fuel.commercial} onChange={(e) => putFuel({ commercial: e.target.checked })} /> Commercial</label>
+            <label className="check"><input type="checkbox" checked={d.fuel.fishing} onChange={(e) => putFuel({ fishing: e.target.checked })} /> Commercial fishing</label>
+            <label className="check"><input type="checkbox" checked={d.fuel.other} onChange={(e) => putFuel({ other: e.target.checked })} /> Other</label>
+            <label className="check"><input type="checkbox" checked={d.fuel.salesTaxExempt} onChange={(e) => putFuel({ salesTaxExempt: e.target.checked })} /> Sales-tax exempt use (farming or processing)</label>
+          </div>
+          <div className="grid">
+            {d.fuel.other && <TextField label="Other use" autoComplete="off" value={d.fuel.otherText} onChange={(s) => putFuel({ otherText: s })} />}
+            {FUEL.flatMap(([k, label]) => {
+              const x = d.fuel.rows[k] ?? { invoice: 0, highway: 0, price: 0 }
+              const setRow = (p: Partial<typeof x>): void => putFuel({ rows: { ...d.fuel.rows, [k]: { ...x, ...p } } })
+              return [
+                <NumberField key={`${k}-i`} label={`${label}: invoice gallons`} max={10000000} value={x.invoice} onChange={(n) => setRow({ invoice: n })} />,
+                ...(x.invoice > 0 ? [
+                  <NumberField key={`${k}-h`} label={`${label}: highway gallons`} max={10000000} value={x.highway} onChange={(n) => setRow({ highway: n })} />,
+                  ...(d.fuel.salesTaxExempt ? [] : [<NumberField key={`${k}-p`} label={`${label}: average cost per gallon`} hint="Dollars, e.g. 3.159" decimal max={100} value={x.price} onChange={(n) => setRow({ price: n })} />])
+                ] : [])
+              ]
+            })}
+            <MoneyField label="Pass-through fuel tax credit received" hint="Line 8" value={d.fuel.passThrough} onChange={(n) => putFuel({ passThrough: n })} />
+            {d.fuel.passThrough > 0 && <TextField label="Pass-through entity name" autoComplete="off" value={d.fuel.entityName} onChange={(s) => putFuel({ entityName: s })} />}
+            {d.fuel.passThrough > 0 && <TextField label="Pass-through entity FEIN" autoComplete="off" value={d.fuel.entityFein} onChange={(s) => putFuel({ entityFein: s.replace(/[^\d-]/g, '').slice(0, 10) })} />}
+          </div>
         </details>
         {ia.careCredit && <p className="why">Line 24 uses the {ia.careCredit === 'care' ? 'child and dependent care credit (a percentage of your federal credit)' : 'early childhood development credit'}, the larger of the two.</p>}
       </Section>

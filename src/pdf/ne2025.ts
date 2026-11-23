@@ -5,7 +5,9 @@
  */
 import type { TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
+import { careQualifyingPerson } from '../engine/compute.ts'
 import type { NeResult } from '../engine/ne2025.ts'
+import { neCarePercent, neFederalCareDecimal } from '../engine/ne2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
@@ -108,8 +110,84 @@ export function formNeScheduleI(ret: TaxReturnInput, ne: NeResult): FormFill {
   return { id: 'neschi', file: 'ne-1040n-schs.pdf', title: 'Nebraska Schedule I', values: v, pages: [0] }
 }
 
+const neName = (ret: TaxReturnInput): string => upper(ret.filingStatus === 'mfj' ? `${ret.taxpayer.firstName} & ${ret.spouse.firstName} ${ret.taxpayer.lastName}` : `${ret.taxpayer.firstName} ${ret.taxpayer.lastName}`)
+const ssnParts = (v: Record<string, FieldValue>, s: string, names: [string, string, string]): void => {
+  const d = digits(s)
+  if (d.length !== 9) return
+  v[names[0]] = d.slice(0, 3); v[names[1]] = d.slice(3, 5); v[names[2]] = d.slice(5)
+}
+
+/** Schedule II (page 2 of the schedules file), full-year residents. */
+export function formNeScheduleII(ret: TaxReturnInput, ne: NeResult): FormFill | null {
+  const c = ne.sch2
+  if (!c) return null
+  const L = ne.lines
+  const v: Record<string, FieldValue> = { 'Name on Form 1040N_schII': neName(ret), 'Name of state_schII': upper(ret.ne.otherState.state) }
+  ssnParts(v, ret.taxpayer.ssn, ['Text1_schII', 'Text2_schII', 'Text3_schII'])
+  v['1_2_schII'] = String(c['1'])
+  v['2_2_schII'] = String(c['2'])
+  v.Text4_schII = String(c['2'])
+  v.Text5_schII = String(ne.lines['5'])
+  v.Text6_schII = String(L['12'])
+  v.Text7_schII = String(L['13'])
+  v.Text8_schII = String(c['2'])
+  v.Text9_schII = String(c['den'])
+  const [whole, frac] = c['3'].toFixed(4).split('.')
+  v['3_2a_schII'] = whole
+  v['3_2b_schII'] = frac
+  v['4_2_schII'] = String(c['4'])
+  v['5_2_schII'] = String(c['5'])
+  v['6_2_schII'] = String(c['6'])
+  return { id: 'neschii', file: 'ne-1040n-schs.pdf', title: 'Nebraska Schedule II', values: v, pages: [1] }
+}
+
+/** Form 2441N, built from the federal Form 2441 (Part III line n is federal line n − 2). */
+export function formNe2441n(ret: TaxReturnInput, res: TaxReturnResult, ne: NeResult): FormFill | null {
+  const care = ne.care
+  if (!care) return null
+  const f = res.form2441
+  const agi = ne.lines['5']
+  const v: Record<string, FieldValue> = { 'Name on Form 1040N': neName(ret) }
+  ssnParts(v, ret.taxpayer.ssn, ['Social', 'Security', 'Number'])
+  ret.dependentCare.providers.slice(0, 3).forEach((p, i) => {
+    const n = i + 1
+    v[`A Care Providers Name 1Row${n}`] = upper(p.name)
+    v[`B Address Number Street Apt No City State and ZIP CodeRow${2 * n - 1}`] = upper(p.address)
+    v[`C Identifying Number SSN or EINRow${n}`] = p.tin.trim()
+    v[`D Amount Paid See Federal Form 2441 instructionsRow${n}`] = String(Math.round(p.amountPaid))
+  })
+  const persons = ret.dependents.filter(careQualifyingPerson).slice(0, 3)
+  const total = f.partIII ? f.partIII.line30 : Math.round(ret.dependentCare.expenses)
+  const per = persons.length ? Math.floor(total / persons.length) : 0
+  persons.forEach((x, i) => {
+    const n = i + 1
+    const parts = x.name.trim().split(/\s+/)
+    v[`FirstRow${n}`] = upper(parts.slice(0, -1).join(' ') || parts[0] || '')
+    v[`LastRow${n}`] = upper(parts.length > 1 ? parts[parts.length - 1] : '')
+    ssnParts(v, x.ssn, [`Social ${n + 1}`, `Security ${n + 1}`, `Number ${n + 1}`])
+    v[`C Qualified Expenses You Incurred and Paid in 2025 for the Person Listed in Column ARow${n}`] = String(i === 0 ? total - per * (persons.length - 1) : per)
+  })
+  v['3'] = String(f.line3); v['4'] = String(f.line4); v['5'] = String(f.line5); v['6'] = String(f.expensesUsed); v['7'] = String(agi)
+  v['Qualified expense 8'] = neFederalCareDecimal(agi).toFixed(2).replace(/^0\./, '')
+  v['Qualified expense 9'] = neCarePercent(agi) >= 1 ? '1.00' : neCarePercent(agi).toFixed(2).replace(/^0\./, '')
+  v['10'] = String(care['10']); v['11'] = String(care['11'])
+  const p = f.partIII
+  if (p) {
+    v['Name as Shown on Form 1040N'] = neName(ret)
+    ssnParts(v, ret.taxpayer.ssn, ['Social 5', 'Security 5', 'Number 5'])
+    const P3: [string, number][] = [
+      ['14', p.line12], ['15', 0], ['16', 0], ['17', p.line12], ['18', p.line16], ['19', p.line17], ['20', p.line18], ['21', p.line19], ['22', p.line20],
+      ['23', p.line21], ['24', 0], ['25', p.line12], ['Deductible benefits', 0], ['Excluded benefits', p.line25], ['28', p.line26], ['29', p.line27],
+      ['30', p.line28], ['31', p.line29], ['32', p.line30], ['33', p.line31]
+    ]
+    for (const [k, n] of P3) v[k] = String(Math.round(n))
+  }
+  return { id: 'ne2441n', file: 'ne-2441n.pdf', title: 'Nebraska Form 2441N', values: v, pages: p ? [0, 1] : [0] }
+}
+
 export function buildNePacket(ret: TaxReturnInput, res: TaxReturnResult, ne: NeResult, preparer?: PreparerInfo | null): FormPacket {
   const forms = [formNe1040n(ret, res, ne, preparer)]
   if (ne.lines['12'] + ne.lines['13'] > 0) forms.push(formNeScheduleI(ret, ne))
+  for (const x of [formNeScheduleII(ret, ne), formNe2441n(ret, res, ne)]) if (x) forms.push(x)
   return { forms, notIncluded: [...ne.attach.filter((x) => x !== 'Nebraska Schedule I'), 'Page 1: answer the foreign adversarial company question (Yes / No)'] }
 }

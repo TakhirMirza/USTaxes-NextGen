@@ -3,7 +3,7 @@
  * IA 1040 with Schedule 1, six pages) from a computed return. Schedule 1 (page 5) is kept only when it has entries.
  * Whole dollars with “00” cents.
  */
-import type { TaxReturnInput } from '../engine/model.ts'
+import type { IaFuelRow, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { IaResult } from '../engine/ia2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
@@ -221,9 +221,41 @@ export function formIa148(ret: TaxReturnInput, ia: IaResult): FormFill | null {
   return { id: 'ia148', file: 'ia-148.pdf', title: 'Iowa IA 148', values: v }
 }
 
+const FUEL_FIELDS: Record<IaFuelRow, [invoice: string, hwy: string, claimed: string, paid: string, sales: string, credit: string]> = {
+  gasoline: ['Gasoline Invoice B', 'Gasoline Hwy B', 'Gasoline Claimed B', 'Gasoline Fuel tax paid B', 'Gasoline sales tax B', 'Gasoline Fuel tax credit B'],
+  e10: ['Ethanol Blended E10-E14 Invoice B', 'Ethanol Blended E10-E14 Hwy B', 'Ethanol Blended E10-E14 Claimed B', 'Ethanol Blended E10-E14 Fuel tax paid B', 'Ethanol Blended E10-E14 sales tax B', 'Ethanol Blended E10-E14 Fuel tax credit B'],
+  e15a: ['Ethanol Blended E15 & higher Invoice 3a', 'Ethanol Blended E15 & higher Hwy 3a', 'Ethanol Blended E15 & higher Claimed 3a', 'Ethanol Blended E15 & higher Fuel tax paid 3a', 'Ethanol Blended E15 & higher sales tax 3a', 'Ethanol Blended E15 & higher Fuel tax credit 3a'],
+  e15b: ['Ethanol Blended E15 & higher Invoice 3b', 'Ethanol Blended E15 & higher Hwy 3b', 'Ethanol Blended E15 & higher Claimed 3b', 'Ethanol Blended E15 & higher Fuel tax paid 3b', 'Ethanol Blended E15 & higher sales tax 3b', 'Ethanol Blended E15 & higher Fuel tax credit 3b'],
+  diesel: ['Undyed Diesel invoice', 'Undyed Diesel hwy', 'Undyed Diesel claimed', 'Undyed Diesel Fuel tax paid', 'Undyed Diesel sales tax', 'Undyed Diesel Fuel tax credit'],
+  biodiesel: ['Undyed Biodiesel Invoice', 'Undyed Biodiesel hwy', 'Undyed Biodiesel claimed', 'Undyed Biodiesel fuel tax paid', 'Undyed Biodiesel sales tax', 'Undyed Biodiesel fuel tax credit'],
+  lpg: ['Special Fuel invoice', 'Special Fuel hwy', 'Special claimed', 'Special Fuel tax paid', 'Special sales tax', 'Special Fuel tax credit']
+}
+
+/** IA 4136, both pages. */
+export function formIa4136(ret: TaxReturnInput, ia: IaResult): FormFill | null {
+  const F = ia.fuel
+  if (!(F.line9 > 0)) return null
+  const fu = ret.ia.fuel
+  const v: Record<string, FieldValue> = { LegalName: fullName(ret), FEIN: digits(ret.taxpayer.ssn), 'Tax Period Ending Date': '12/31/2025' }
+  if (fu.entityName.trim()) { v['PassThrough Entity if applicable'] = upper(fu.entityName); v['PassThrough FEIN'] = digits(fu.entityFein) }
+  if (fu.farming) v['IA4136 cb1'] = true
+  if (fu.commercial) v['IA4136 cb2'] = true
+  if (fu.fishing) v['IA4136 cb3'] = true
+  if (fu.other) { v['IA4136 cb4'] = true; v.specify = upper(fu.otherText) }
+  const c2 = (n: number): string => n.toFixed(2)
+  for (const [k, x] of Object.entries(F.rows) as [IaFuelRow, NonNullable<IaResult['fuel']['rows'][IaFuelRow]>][]) {
+    const [inv, hwy, cl, paid, sales, credit] = FUEL_FIELDS[k]
+    v[inv] = String(x.invoice); v[hwy] = String(x.highway); v[cl] = String(x.claimed); v[paid] = c2(x.paid); v[sales] = c2(x.sales); v[credit] = c2(x.credit)
+  }
+  v['Add Fuel Tax Credit columns from lines 1 through 6'] = String(F.line7)
+  if (F.line8) v['Pass-through Fuel Tax Credit received'] = String(F.line8)
+  v['Total Fuel Tax Credit'] = String(F.line9)
+  return { id: 'ia4136', file: 'ia-4136.pdf', title: 'Iowa IA 4136', values: v }
+}
+
 export function buildIaPacket(ret: TaxReturnInput, res: TaxReturnResult, ia: IaResult, preparer?: PreparerInfo | null): FormPacket {
   const notIncluded = [...ia.attach]
   if (ret.filingStatus === 'mfs') notIncluded.push('Step 2: your spouse’s Iowa taxable income')
-  const forms = [formIa1040(ret, res, ia, preparer), formIa130(ret, ia), formIa148(ret, ia)]
+  const forms = [formIa1040(ret, res, ia, preparer), formIa130(ret, ia), formIa148(ret, ia), formIa4136(ret, ia)]
   return { forms: forms.filter((x): x is FormFill => x !== null), notIncluded }
 }

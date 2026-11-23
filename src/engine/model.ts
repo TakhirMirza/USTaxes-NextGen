@@ -1732,9 +1732,10 @@ export interface IaInput {
   /** Line 9: K-12 tuition and textbooks by dependent id; line 24 ECDC: early childhood expenses by dependent id (age 3–5). */
   tuition: Record<string, number>
   earlyChildhood: Record<string, number>
-  /** Line 10 volunteer credit; line 23 fuel tax credit (IA 4136). */
+  /** Line 10 volunteer credit. */
   volunteerCredit: number
-  fuelTaxCredit: number
+  /** IA 4136 fuel tax credit (line 23). */
+  fuel: IaFuel
   /** IA 130 (one state or jurisdiction): Iowa income it also taxed by type (lines 1–12) and the tax paid by you (20) and by a pass-through entity or fund (21). */
   oos: IaOutOfState
   /** IA 148 rows: nonrefundable (Part I, line 17) and refundable (Part II, line 26) credits. */
@@ -1746,6 +1747,18 @@ export interface IaInput {
   creditForward: number
   license: Record<Owner, string>
 }
+export type IaFuelRow = 'gasoline' | 'e10' | 'e15a' | 'e15b' | 'diesel' | 'biodiesel' | 'lpg'
+export interface IaFuel {
+  /** Fuel used for: farming, commercial, commercial fishing, other (with what). */
+  farming: boolean; commercial: boolean; fishing: boolean; other: boolean; otherText: string
+  /** True when the fuel was used in a sales-tax-exempt activity such as farming or processing (no sales tax is subtracted). */
+  salesTaxExempt: boolean
+  /** Invoice and highway gallons and the average cost per gallon, by row. */
+  rows: Partial<Record<IaFuelRow, { invoice: number; highway: number; price: number }>>
+  /** Line 8: pass-through fuel tax credit, with the entity. */
+  passThrough: number; entityName: string; entityFein: string
+}
+export const emptyIaFuel = (): IaFuel => ({ farming: false, commercial: false, fishing: false, other: false, otherText: '', salesTaxExempt: false, rows: {}, passThrough: 0, entityName: '', entityFein: '' })
 export interface IaOutOfState {
   state: string; wages: number; interest: number; dividends: number; alimony: number; business: number; capitalGain: number; otherGains: number
   rents: number; farm: number; unemployment: number; gambling: number; other: number; taxPaid: number; passThroughTax: number
@@ -1765,7 +1778,7 @@ export const emptyIa = (): IaInput => ({
   w2: {}, withholdingOther: 0, estimatedPayments: 0, birthDate: { taxpayer: '', spouse: '' }, countyNo: '', schoolDistrictNo: '', surtaxRate: 0,
   usObligationInterest: 0, otherStateBondInterest: 0, retirementKind: {}, disabled: { taxpayer: false, spouse: false }, activeDutyPay: 0,
   iowa529: 0, healthInsurance: 0, capitalGainsDeduction: 0, otherAddition: { code: '', amount: 0 }, otherSubtraction: { code: '', amount: 0 }, otherAdjustment: { code: '', amount: 0 },
-  tuition: {}, earlyChildhood: {}, volunteerCredit: 0, fuelTaxCredit: 0, oos: emptyIaOos(), credits148: [],
+  tuition: {}, earlyChildhood: {}, volunteerCredit: 0, fuel: emptyIaFuel(), oos: emptyIaOos(), credits148: [],
   fishWildlife: 0, childAbuse: 0, creditForward: 0, license: { taxpayer: '', spouse: '' }
 })
 
@@ -1891,8 +1904,8 @@ export interface NeInput {
   /** Schedule I line 20: Nebraska Educational Savings Plan contributions; line 22: Enable plan contributions. */
   collegeSavings: number
   enable: number
-  /** Line 19: credit for tax paid to another state (Schedule II). */
-  otherStateCredit: number
+  /** Schedule II (one state): AGI derived from that state (line 2) and the tax due and paid there (line 5). */
+  otherState: { state: string; agi: number; tax: number }
   /** Line 58: use tax; line 61: applied to 2026; line 62: Wildlife Conservation Fund. */
   useTax: number
   creditForward: number
@@ -1900,7 +1913,7 @@ export interface NeInput {
 }
 export const emptyNe = (): NeInput => ({
   w2: {}, withholdingOther: 0, estimatedPayments: 0, schoolDistrictCode: '', otherStateBondInterest: 0, stateRefundInFagi: 0, usObligationInterest: 0,
-  retirementKind: {}, collegeSavings: 0, enable: 0, otherStateCredit: 0, useTax: 0, creditForward: 0, wildlife: 0
+  retirementKind: {}, collegeSavings: 0, enable: 0, otherState: { state: '', agi: 0, tax: 0 }, useTax: 0, creditForward: 0, wildlife: 0
 })
 
 export interface MsInput {
@@ -3046,7 +3059,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
         ...e, ...x, w2: normalizeStatements(x.w2), birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, disabled: { ...e.disabled, ...(x.disabled ?? {}) },
         otherAddition: { ...e.otherAddition, ...(x.otherAddition ?? {}) }, otherSubtraction: { ...e.otherSubtraction, ...(x.otherSubtraction ?? {}) }, otherAdjustment: { ...e.otherAdjustment, ...(x.otherAdjustment ?? {}) },
         tuition: { ...(x.tuition ?? {}) }, earlyChildhood: { ...(x.earlyChildhood ?? {}) }, license: { ...e.license, ...(x.license ?? {}) },
-        oos: { ...e.oos, ...(x.oos ?? {}) }, credits148: Array.isArray(x.credits148) ? x.credits148.map((c: Partial<IaCredit148>) => ({ ...emptyIaCredit148(), ...c })) : []
+        oos: { ...e.oos, ...(x.oos ?? {}) }, fuel: { ...e.fuel, ...(x.fuel ?? {}), rows: { ...(x.fuel?.rows ?? {}) } }, credits148: Array.isArray(x.credits148) ? x.credits148.map((c: Partial<IaCredit148>) => ({ ...emptyIaCredit148(), ...c })) : []
       }
     })(),
     ks: (() => {
@@ -3062,7 +3075,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     })(),
     ne: (() => {
       const e = emptyNe(); const x: Partial<NeInput> = r.ne ?? {}
-      return { ...e, ...x, w2: normalizeStatements(x.w2), retirementKind: { ...(x.retirementKind ?? {}) } }
+      return { ...e, ...x, w2: normalizeStatements(x.w2), retirementKind: { ...(x.retirementKind ?? {}) }, otherState: { ...e.otherState, ...(x.otherState ?? {}) } }
     })(),
     ms: (() => {
       const e = emptyMs(); const x: Partial<MsInput> = r.ms ?? {}

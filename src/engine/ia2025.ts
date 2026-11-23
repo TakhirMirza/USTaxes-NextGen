@@ -11,7 +11,7 @@
  * childhood development credit (25% of $1,000 per child aged 3–5); the Iowa EITC (15% of the federal credit).
  * Whole dollars.
  */
-import type { IaCredit148, Owner, TaxReturnInput } from './model.ts'
+import type { IaCredit148, IaFuelRow, Owner, TaxReturnInput } from './model.ts'
 import type { TaxReturnResult } from './compute.ts'
 
 const r = (n: number): number => Math.round(n)
@@ -45,6 +45,8 @@ export interface IaResult {
   oos: Record<string, number> | null
   part1: (IaCredit148 & { C: number; D: number; E: number; F: number; G: number; H: number })[]
   part2: (IaCredit148 & { K: number })[]
+  /** IA 4136 rows and lines 7–9. */
+  fuel: { rows: Partial<Record<IaFuelRow, { invoice: number; highway: number; claimed: number; paid: number; sales: number; credit: number }>>; line7: number; line8: number; line9: number }
   issues: string[]
   attach: string[]
 }
@@ -191,7 +193,22 @@ export function computeIowa(ret: TaxReturnInput, res: TaxReturnResult): IaResult
   }
 
   // ── Step 6: refundable credits and payments ──
-  L['23'] = r(pos(d.fuelTaxCredit))
+  // ── IA 4136 ──
+  const fu = d.fuel
+  const FUEL_RATE: Record<IaFuelRow, number> = { gasoline: 0.3, e10: 0.3, e15a: 0.255, e15b: 0.265, diesel: 0.325, biodiesel: 0.295, lpg: 0.3 }
+  const cents = (n: number): number => Math.round(n * 100) / 100
+  const fuelRows: Partial<Record<IaFuelRow, { invoice: number; highway: number; claimed: number; paid: number; sales: number; credit: number }>> = {}
+  for (const k of Object.keys(FUEL_RATE) as IaFuelRow[]) {
+    const x = fu.rows[k]
+    if (!x || !(x.invoice > 0)) continue
+    const invoice = Math.round(pos(x.invoice)); const highway = Math.min(invoice, Math.round(pos(x.highway))); const claimed = invoice - highway
+    const paid = cents(claimed * FUEL_RATE[k])
+    const sales = fu.salesTaxExempt ? 0 : cents(pos(x.price - FUEL_RATE[k]) * claimed * 0.06)
+    fuelRows[k] = { invoice, highway, claimed, paid, sales, credit: cents(pos(paid - sales)) }
+  }
+  const fuel7 = r(Object.values(fuelRows).reduce((s, x) => s + (x?.credit ?? 0), 0))
+  const fuel8 = r(pos(fu.passThrough))
+  L['23'] = fuel7 + fuel8
   const careOk = L['4'] < 90000
   const cdcc = careOk && fs !== 'mfs' ? r(pos(res.form2441.credit) * iaCarePercent(L['4'])) : 0
   const ecdc = careOk ? r(ret.dependents.filter((x) => x.age >= 3 && x.age <= 5).reduce((s, x) => s + Math.min(1000, pos(d.earlyChildhood[x.id] ?? 0)) * 0.25, 0)) : 0
@@ -227,7 +244,8 @@ export function computeIowa(ret: TaxReturnInput, res: TaxReturnResult): IaResult
   const reduced = ['46', '47', '58', '59', '62', '97']
   if (d.credits148.some((c) => reduced.includes(c.code.trim().replace(/^0+/, '')))) issues.push('Tax credit codes 46, 47, 58, 59, 62 and 97 are subject to the IA 148 Part V claim reduction; complete Part V by hand and enter the allowable claim as the current year amount.')
   if (part1.some((c) => c.H > 0)) issues.push('Some IA 148 nonrefundable credit is more than your tax; the rest (column H) may carry forward if the credit allows it.')
-  if (L['23'] > 0) attach.push('IA 4136 (fuel tax credit) — not filled in here')
+  if (L['23'] > 0 && !(fu.farming || fu.commercial || fu.fishing || fu.other)) issues.push('IA 4136: check what the fuel was used for (farming, commercial, commercial fishing or other).')
+  if (Object.values(fuelRows).some((x) => x && x.sales === 0) && !fu.salesTaxExempt && Object.entries(fu.rows).some(([, x]) => x && x.invoice > 0 && !(x.price > 0))) issues.push('IA 4136: enter the average cost per gallon for each fuel so the 6% sales tax can be subtracted, or mark the use as sales-tax exempt (farming or processing).')
   if (addCode || subCode || d.otherAdjustment.amount > 0) attach.push('An explanation for each Schedule 1 line 11 / line 19 entry')
   if (lowIncomeExempt) issues.push(`Net income ${netIncome.toLocaleString('en-US')} is not more than $${threshold.toLocaleString('en-US')}: the low-income exemption applies and you owe no Iowa tax${L['30'] > 0 ? '; payments and refundable credits are refunded' : ''}.`)
   if (alternateTax) issues.push('The alternate tax (4.3% of net income above the exemption amount) is lower than 3.8% and is used on line 5.')
@@ -238,5 +256,5 @@ export function computeIowa(ret: TaxReturnInput, res: TaxReturnResult): IaResult
   if (L['34'] > 0 && L['34'] > L['22'] * 0.1 && L['29'] === 0) issues.push('A balance due may mean an underpayment penalty (IA 2210).')
   if (ret.dependents.length > 4) issues.push('More than four dependents: attach a page listing the rest.')
 
-  return { lines: L, step3, schedule1: { A, B, lines: S }, netIncome, threshold, lowIncomeExempt, alternateTax, taxReduction, careCredit, oos, part1, part2, issues, attach }
+  return { lines: L, step3, schedule1: { A, B, lines: S }, netIncome, threshold, lowIncomeExempt, alternateTax, taxReduction, careCredit, oos, part1, part2, fuel: { rows: fuelRows, line7: fuel7, line8: fuel8, line9: fuel7 + fuel8 }, issues, attach }
 }

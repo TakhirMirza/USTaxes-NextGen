@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import * as lib from 'pdf-lib'
 import { computeReturn } from './compute.ts'
-import { empty1099R, emptyDependent, emptyReturn, emptySocialSecurity, emptyW2 } from './model.ts'
+import { empty1099R, emptyDependent, emptyProvider, emptyReturn, emptySocialSecurity, emptyW2 } from './model.ts'
 import type { NeInput, TaxReturnInput } from './model.ts'
 import { computeNebraska, neCarePercent, neFederalCareDecimal, neRefundableCare, neTax } from './ne2025.ts'
 import { buildNePacket } from '../pdf/ne2025.ts'
@@ -102,4 +102,32 @@ test('1040N and Schedule I: every value lands on one field and the PDF builds', 
   assert.deepEqual(problems, [])
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 NE')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-NE.pdf`, bytes)
+})
+
+test('NE Schedule II and Form 2441N', async () => {
+  const { ne: x, res, ret } = ne(base({
+    filingStatus: 'hoh', w2s: [w2(24500)], dependents: [kid(4)],
+    dependentCare: { expenses: 3500, employerBenefits: 0, providers: [{ ...emptyProvider(), name: 'Omaha Kids', address: '1 Main St, Omaha, NE 68102', tin: '47-7654321', amountPaid: 3500 }] }
+  }), { otherState: { state: 'Iowa', agi: 5000, tax: 200 } })
+  const c = x.sch2!
+  assert.equal(c['1'], x.lines['17'])
+  assert.equal(c['den'], 24500)
+  assert.equal(c['3'], Math.round(5000 / 24500 * 10000) / 10000)
+  assert.equal(c['6'], Math.min(c['1'], c['4'], 200))
+  assert.equal(x.lines['19'], c['6'])
+  // AGI $24,500: federal decimal .30, state decimal .70; expenses limited to $3,000.
+  assert.equal(x.care!['10'], 900)
+  assert.equal(x.lines['42'], 630)
+  const packet = buildNePacket(ret, res, x)
+  assert.ok(packet.forms.some((f) => f.id === 'neschii'))
+  const care = packet.forms.find((f) => f.id === 'ne2441n')!
+  assert.equal(care.values['Qualified expense 8'], '30')
+  assert.equal(care.values['11'], '630')
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, packet.forms, load, '2025 NE')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-NES.pdf`, bytes)
 })

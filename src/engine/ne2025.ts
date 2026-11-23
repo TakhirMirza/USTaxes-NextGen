@@ -49,12 +49,15 @@ export function neCarePercent(agi: number): number {
 
 /** Form 2441N refundable credit: qualifying expenses (line 6) × federal decimal × state decimal. */
 export function neRefundableCare(expenses: number, agi: number): number {
-  return r(pos(expenses) * neFederalCareDecimal(agi) * neCarePercent(agi))
+  return r(r(pos(expenses) * neFederalCareDecimal(agi)) * neCarePercent(agi))
 }
 
 export interface NeResult {
   lines: Record<string, number>
   scheduleI: Record<string, number>
+  /** Schedule II lines (den = line 3 denominator; null without the credit) and Form 2441N lines 10–11 (null without the refundable credit). */
+  sch2: Record<string, number> | null
+  care: Record<string, number> | null
   boxes: { youOver65: boolean; youBlind: boolean; spouseOver65: boolean; spouseBlind: boolean }
   exemptions: { a: number; b: number; c: number }
   federalTaxUsed: boolean
@@ -125,7 +128,20 @@ export function computeNebraska(ret: TaxReturnInput, res: TaxReturnResult): NeRe
 
   // ── Nonrefundable credits ──
   L['18'] = 171 * L['4']
-  L['19'] = r(pos(d.otherStateCredit))
+  // ── Schedule II (full-year residents, one state) ──
+  let sch2: Record<string, number> | null = null
+  if (pos(d.otherState.tax) > 0 && pos(d.otherState.agi) > 0) {
+    const c: Record<string, number> = {}
+    c['1'] = L['17']
+    c['2'] = r(pos(d.otherState.agi))
+    c['den'] = r(f['11a']) + L['12'] - L['13']
+    c['3'] = c['den'] > 0 ? Math.min(1, Math.round(c['2'] / c['den'] * 10000) / 10000) : 1
+    c['4'] = r(c['1'] * c['3'])
+    c['5'] = r(pos(d.otherState.tax))
+    c['6'] = Math.min(c['1'], c['4'], c['5'])
+    sch2 = c
+  }
+  L['19'] = sch2?.['6'] ?? 0
   L['23'] = agi > 29000 ? r(pos(res.schedule3.dependentCare) * 0.25) : 0
   L['34'] = L['18'] + L['19'] + L['23']
   L['35'] = pos(L['17'] - L['34'])
@@ -141,6 +157,7 @@ export function computeNebraska(ret: TaxReturnInput, res: TaxReturnResult): NeRe
   L['37'] = r(pos(d.withholdingOther))
   L['40'] = r(pos(d.estimatedPayments))
   L['42'] = agi <= 29000 && fs !== 'mfs' ? neRefundableCare(res.form2441.expensesUsed, agi) : 0
+  const care: Record<string, number> | null = L['42'] > 0 ? { '10': r(pos(res.form2441.expensesUsed) * neFederalCareDecimal(agi)), '11': L['42'] } : null
   L['98'] = r(pos(f['27a']))
   const qualifyingChildren = Math.min(3, ret.dependents.filter((x) => x.childRelationship && (x.age < 19 || (x.student && x.age < 24) || x.disabled) && x.monthsLivedWithYou > 6).length)
   L['44'] = r(L['98'] * 0.1)
@@ -157,9 +174,9 @@ export function computeNebraska(ret: TaxReturnInput, res: TaxReturnResult): NeRe
   // ── Notes ──
   attach.push('A copy of your federal return and schedules; your W-2s')
   if (L['12'] + L['13'] > 0) attach.push('Nebraska Schedule I')
-  if (L['19'] > 0) attach.push('Nebraska Schedule II and the other state’s return — Schedule II is not filled in here')
+  if (sch2) attach.push(`A complete copy of the return you filed with ${d.otherState.state.trim() || 'the other state'} (Schedule II)`)
+  if (sch2 && !d.otherState.state.trim()) issues.push('Schedule II: enter the name of the other state.')
   if (L['23'] > 0) attach.push('Federal Form 2441')
-  if (L['42'] > 0) attach.push('Form 2441N (Nebraska child and dependent care) — not filled in here')
   if (S['32'] > 0 || S['38'] > 0) attach.push('Documentation for the military / CSRS retirement exclusion')
   if (S['18'] > 0) attach.push('Your RRB forms (railroad retirement)')
   if (federalTaxUsed) issues.push('Your Nebraska tax is limited to your federal tax (line 35, federal tax box checked).')
@@ -168,5 +185,5 @@ export function computeNebraska(ret: TaxReturnInput, res: TaxReturnResult): NeRe
   if (ret.dependents.length > 3) issues.push('More than three dependents: attach a list.')
   if (L['59'] > 500 && L['40'] === 0) issues.push('A balance due may mean an underpayment penalty (Form 2210N).')
 
-  return { lines: L, scheduleI: S, boxes, exemptions, federalTaxUsed, qualifyingChildren, issues, attach }
+  return { lines: L, scheduleI: S, sch2, care, boxes, exemptions, federalTaxUsed, qualifyingChildren, issues, attach }
 }

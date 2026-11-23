@@ -134,3 +134,26 @@ test('IA 130 out-of-state credit and IA 148 credits', async () => {
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 IA')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-IAS.pdf`, bytes)
 })
+
+test('IA 4136 fuel tax credit', async () => {
+  const r0 = emptyReturn()
+  const farm = ia(base({ w2s: [w2(60000)] }), { fuel: { ...r0.ia.fuel, farming: true, salesTaxExempt: true, rows: { diesel: { invoice: 1000, highway: 100, price: 0 } }, passThrough: 40, entityName: 'Corn Co LLC', entityFein: '421234568' } })
+  assert.deepEqual(farm.ia.fuel.rows.diesel, { invoice: 1000, highway: 100, claimed: 900, paid: 292.5, sales: 0, credit: 292.5 })
+  assert.equal(farm.ia.fuel.line7, 293)
+  assert.equal(farm.ia.lines['23'], 333)
+  const biz = ia(base({ w2s: [w2(60000)] }), { fuel: { ...r0.ia.fuel, commercial: true, rows: { gasoline: { invoice: 1000, highway: 0, price: 3.3 } } } })
+  assert.equal(biz.ia.fuel.rows.gasoline!.sales, 180)
+  assert.equal(biz.ia.lines['23'], 120)
+  const packet = buildIaPacket(farm.ret, farm.res, farm.ia)
+  const f = packet.forms.find((x) => x.id === 'ia4136')!
+  assert.equal(f.values['Undyed Diesel Fuel tax credit'], '292.50')
+  assert.equal(f.values['Total Fuel Tax Credit'], '333')
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const problems: FillProblem[] = []
+  await fillForm(lib, await readFile(new URL(f.file, formsDir)), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  if (process.env.WRITE_PDF) {
+    const { bytes } = await buildPdf(lib, [f], (file: string) => readFile(new URL(file, formsDir)), '2025 IA 4136')
+    await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-IA4136.pdf`, bytes)
+  }
+})

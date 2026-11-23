@@ -27,6 +27,7 @@ export function NebraskaStep({ ret, set, result, preparer }: StepProps & { prepa
   const ne = useMemo(() => computeNebraska(ret, result), [ret, result])
   const [pdf, setPdf] = useState<{ busy: boolean; note: string }>({ busy: false, note: '' })
   const put = (p: Partial<NeInput>): void => set((r) => ({ ...r, ne: { ...r.ne, ...p } }))
+  const putOs = (p: Partial<NeInput['otherState']>): void => put({ otherState: { ...d.otherState, ...p } })
   const married = ret.filingStatus === 'mfj'
   const owners: Owner[] = married ? ['taxpayer', 'spouse'] : ['taxpayer']
   const names: Record<Owner, string> = { taxpayer: firstName(ret.taxpayer, 'You'), spouse: firstName(ret.spouse, 'Spouse') }
@@ -96,9 +97,13 @@ export function NebraskaStep({ ret, set, result, preparer }: StepProps & { prepa
           <MoneyField label="State income tax refund in federal AGI" hint="Line 14" value={d.stateRefundInFagi} onChange={(n) => put({ stateRefundInFagi: n })} />
           <MoneyField label="Nebraska 529 (NEST, Bloomwell, State Farm) contributions" hint="Line 20; up to $10,000" value={d.collegeSavings} onChange={(n) => put({ collegeSavings: n })} />
           <MoneyField label="Nebraska Enable plan contributions" hint="Line 22" value={d.enable} onChange={(n) => put({ enable: n })} />
-          <MoneyField label="Credit for tax paid to another state" hint="Line 19, from Schedule II" value={d.otherStateCredit} onChange={(n) => put({ otherStateCredit: n })} />
           <MoneyField label="Use tax" hint="Line 58; 5.5% plus local rate on untaxed purchases" value={d.useTax} onChange={(n) => put({ useTax: n })} />
+          <TextField label="Other state where you paid income tax" hint="Schedule II; one state" autoComplete="off" value={d.otherState.state} onChange={(s) => putOs({ state: s })} />
+          <MoneyField label="AGI derived from that state" hint="Schedule II line 2; not its taxable income (see the DOR conversion chart)" value={d.otherState.agi} onChange={(n) => putOs({ agi: n })} />
+          <MoneyField label="Tax due and paid to that state" hint="Line 5; from its return, not the amount withheld" value={d.otherState.tax} onChange={(n) => putOs({ tax: n })} />
         </div>
+        {ne.sch2 && <p className="why">Credit for tax paid to {d.otherState.state.trim() || 'the other state'} (line 19): {usd(ne.sch2['6'])} — the least of your Nebraska tax, {(ne.sch2['3'] * 100).toFixed(2)}% of it ({usd(ne.sch2['4'])}) and the tax paid there.</p>}
+        {ne.care && <p className="why">Refundable child care credit (Form 2441N, line 42): {usd(ne.care['11'])}.</p>}
       </Section>
 
       {ne.issues.length > 0 && (
