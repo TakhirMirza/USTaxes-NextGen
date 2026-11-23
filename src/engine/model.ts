@@ -2336,6 +2336,9 @@ export interface DeInput {
   /** PIT-CRS amounts by line. */
   crs: Record<string, number>
   estimatedPayments: number
+  /** Form PIT-UND, Part 1 and the short method: 2024 tax balance (PIT-RES line 33 minus 34; null if not entered), 2024 AGI over $150,000 ($75,000 MFS),
+   *  farmer or fisherman, estimated payments in four equal amounts on time (or none), and days before April 30, 2026 the underpayment was paid. */
+  und: { priorTax: number | null; priorAgiHigh: boolean; farmer: boolean; equalOnTime: boolean; earlyDays: number }
   /** Schedule V: S corporation payments. */
   sCorp: { fein: string; name: string; owner: Owner; amount: number }[]
   /** Line 39: REW-EST real estate payments. */
@@ -2353,7 +2356,8 @@ export const emptyDe = (): DeInput => ({
   militaryPension: { taxpayer: false, spouse: false }, railroadRetirement: { taxpayer: 0, spouse: 0 }, higherEducation: { taxpayer: 0, spouse: 0 },
   tuition529: { taxpayer: 0, spouse: 0 }, able: { taxpayer: 0, spouse: 0 }, disabled: { taxpayer: false, spouse: false }, salesTax: false,
   foreignTaxes: 0, charityMiles: 0, unionDues: { taxpayer: 0, spouse: 0 }, landAdjustment: 0, otherState: { state: '', owner: 'taxpayer', income: 0, tax: 0 },
-  firefighter: { taxpayer: '', spouse: '' }, crs: {}, estimatedPayments: 0, sCorp: [], realEstatePayments: 0, dependentBirthDates: {}, contributions: {}, creditForward: 0, dmvId: ''
+  firefighter: { taxpayer: '', spouse: '' }, crs: {}, estimatedPayments: 0, sCorp: [], realEstatePayments: 0, dependentBirthDates: {}, contributions: {}, creditForward: 0, dmvId: '',
+  und: { priorTax: null, priorAgiHigh: false, farmer: false, equalOnTime: true, earlyDays: 0 }
 })
 
 export interface VtInput {
@@ -2532,6 +2536,8 @@ export interface MoInput {
     rentalAddress: string; rentalApt: string; rentalCity: string; rentalZip: string; landlordName: string; landlordAddress: string; landlordCity: string; landlordState: string; landlordZip: string; landlordPhone: string
   }
   birthDates: Record<Owner, string>
+  /** Form MO-2210 short method: tax on the 2024 return (null if not entered; 0 if no 2024 Missouri return), qualified farmer, payments made equally through the year, days before April 15, 2026 the underpayment was paid. */
+  mo2210: { priorTax: number | null; farmer: boolean; equalOnTime: boolean; earlyDays: number }
 }
 
 export const emptyMo = (): MoInput => ({
@@ -2545,7 +2551,8 @@ export const emptyMo = (): MoInput => ({
     claim: false, qualification: 'A', owner: false, propertyTax: 0, rent: 0, rentPercent: 100, otherIncome: 0, veteransBenefits: 0, publicAssistance: 0, nontaxableRrb: 0,
     rentalAddress: '', rentalApt: '', rentalCity: '', rentalZip: '', landlordName: '', landlordAddress: '', landlordCity: '', landlordState: '', landlordZip: '', landlordPhone: ''
   },
-  birthDates: { taxpayer: '', spouse: '' }
+  birthDates: { taxpayer: '', spouse: '' },
+  mo2210: { priorTax: null, farmer: false, equalOnTime: true, earlyDays: 0 }
 })
 
 export interface MiInput {
@@ -3137,6 +3144,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
         stateRefund: own('stateRefund'), militaryRetirement: own('militaryRetirement'), railroad: own('railroad'), otherSubtractions: own('otherSubtractions'),
         tuition529: own('tuition529'), healthPremiums: own('healthPremiums'), able: own('able'), publicPension: own('publicPension'), otherState: own('otherState'),
         trustFunds: { ...(x.trustFunds ?? {}) }, pts: own('pts'), birthDates: own('birthDates'),
+        mo2210: { ...e.mo2210, ...(x.mo2210 ?? {}), priorTax: typeof x.mo2210?.priorTax === 'number' ? x.mo2210.priorTax : null },
         moTc: Array.isArray(x.moTc) ? x.moTc.map((c: Partial<MoTcCredit>) => ({ owner: 'taxpayer' as Owner, benefit: '', code: '', name: '', amount: 0, refundable: false, ...c })) : []
       } as MoInput
     })(),
@@ -3158,6 +3166,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       const own = <T,>(k: 'militaryPension' | 'railroadRetirement' | 'higherEducation' | 'tuition529' | 'able' | 'disabled' | 'unionDues' | 'firefighter') => ({ ...e[k], ...((x[k] ?? {}) as object) }) as T
       return {
         ...e, ...x, w2: normalizeStatements(x.w2), r1099: normalizeStatements(x.r1099), spouseAgi: typeof x.spouseAgi === 'number' ? x.spouseAgi : null,
+        und: { ...e.und, ...(x.und ?? {}), priorTax: typeof x.und?.priorTax === 'number' ? x.und.priorTax : null },
         militaryPension: own('militaryPension'), railroadRetirement: own('railroadRetirement'), higherEducation: own('higherEducation'), tuition529: own('tuition529'),
         able: own('able'), disabled: own('disabled'), unionDues: own('unionDues'), firefighter: own('firefighter'), otherState: { ...e.otherState, ...(x.otherState ?? {}) },
         crs: { ...(x.crs ?? {}) }, sCorp: Array.isArray(x.sCorp) ? x.sCorp.map((o) => ({ fein: o.fein ?? '', name: o.name ?? '', owner: o.owner === 'spouse' ? 'spouse' as const : 'taxpayer' as const, amount: Number(o.amount) || 0 })) : [],

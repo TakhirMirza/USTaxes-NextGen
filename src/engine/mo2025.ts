@@ -53,6 +53,8 @@ export type MoStatus = 'single' | 'dependent' | 'combined' | 'separate' | 'hoh' 
 type Col = Record<string, number>
 
 export interface MoResult {
+  /** MO-2210 Parts I–II (null without the 2024 tax). */
+  m2210: Record<string, number> | null
   /** Form MO-TC. */
   moTc: { rows: (MoTcCredit & { col: 1 | 2 })[]; line11: Record<1 | 2, number>; line12: Record<1 | 2, number>; line13: number }
   status: MoStatus
@@ -330,6 +332,34 @@ export function computeMissouri(ret: TaxReturnInput, res: TaxReturnResult): MoRe
   L['45'] = L['37'] + L['38'] + L['41'] + L['42'] + L['43'] + L['44']
   L['49'] = pos(L['45'] - L['36'])
   L['54'] = pos(L['36'] - L['45'])
+  // ── MO-2210 Part I and Part II (short method) ──
+  const u = d.mo2210
+  let m2210: Record<string, number> | null = null
+  let m2210Note = ''
+  if (u.priorTax !== null) {
+    const P: Record<string, number> = {}
+    P['1'] = pos(L['36'] - L['42'] - L['43'] - L['44'])
+    P['2'] = r(P['1'] * (u.farmer ? 2 / 3 : 0.9))
+    P['3'] = L['37']
+    P['4'] = P['1'] - P['3']
+    if (P['4'] < 500) m2210Note = 'Your 2025 tax less withholding is under $500, so there is no underpayment penalty.'
+    else {
+      P['5'] = r(pos(u.priorTax))
+      P['6'] = u.priorTax > 0 ? Math.min(P['2'], P['5']) : P['2']
+      if (P['3'] >= P['6']) m2210Note = 'Your withholding covers the required annual payment, so there is no underpayment penalty.'
+      else {
+        P['7'] = P['3']; P['8'] = L['38']; P['9'] = P['7'] + P['8']; P['10'] = P['6'] - P['9']
+        if (P['10'] > 0) {
+          P['11'] = r(P['10'] * 0.05043)
+          P['12'] = r(P['10'] * Math.max(0, Math.floor(u.earlyDays)) * 0.0001918)
+          P['13'] = pos(P['11'] - P['12'])
+        }
+        if (!u.equalOnTime) m2210Note = 'Your withholding and estimated payments were not made equally through the year, so the MO-2210 short method cannot be used; complete Part III (regular method) by hand.'
+      }
+    }
+    m2210 = P
+  }
+  const penalty = m2210 && u.equalOnTime ? (m2210['13'] ?? 0) : 0
   const funds = sum('abcdefghijkl'.split('').map((k) => r(pos(d.trustFunds[k] ?? 0))))
   if (L['49'] > 0) {
     L['50'] = Math.min(r(pos(d.creditForward)), L['49'])
@@ -339,7 +369,7 @@ export function computeMissouri(ret: TaxReturnInput, res: TaxReturnResult): MoRe
     L['56'] = 0
   } else {
     L['50'] = 0; L['51'] = 0; L['52'] = 0; L['53'] = 0
-    L['55'] = 0
+    L['55'] = penalty
     L['56'] = L['54'] + L['55']
   }
 
@@ -357,6 +387,9 @@ export function computeMissouri(ret: TaxReturnInput, res: TaxReturnResult): MoRe
   if (two) issues.push(`Combined return: federal AGI split ${'$'}${Y['1'].toLocaleString('en-US')} (you) / ${'$'}${S['1'].toLocaleString('en-US')} (spouse). Shared income (interest, dividends, gains) is split evenly; change the spouse’s share if it isn’t.`)
   if (gain > 0) issues.push('MO-A line 18: all of your net capital gain is subtracted (new for 2025).')
   if (!d.county) issues.push('Choose your county of residence.')
-  if (L['54'] > 0 && L['36'] - L['37'] > 100) issues.push('If you underpaid estimated tax you may owe a penalty (Form MO-2210, not prepared here).')
-  return { moTc: { rows: tcRows, line11: tc11, line12: tc12, line13: tc13 }, status, two, Y, S: two ? S : {}, lines: L, a: A, part2, part3: { A: A3, B: B3, C: C3, D: D3 }, cr, crCol, pts, crp, wftc, itemize, issues, attach }
+  if (m2210Note) issues.push(m2210Note)
+  if (penalty > 0) attach.push('Form MO-2210 (underpayment of estimated tax)')
+  if (penalty > 0 && L['49'] > 0) issues.push(`MO-2210 penalty of $${penalty}: with an overpayment, the Department of Revenue takes it out of your refund (it is not entered on line 55).`)
+  if (u.priorTax === null && L['54'] > 0 && L['36'] - L['37'] >= 500) issues.push('You may owe an underpayment of estimated tax penalty: enter your 2024 Missouri tax in the MO-2210 section to figure it.')
+  return { m2210, moTc: { rows: tcRows, line11: tc11, line12: tc12, line13: tc13 }, status, two, Y, S: two ? S : {}, lines: L, a: A, part2, part3: { A: A3, B: B3, C: C3, D: D3 }, cr, crCol, pts, crp, wftc, itemize, issues, attach }
 }

@@ -215,6 +215,21 @@ export function MissouriStep({ ret, set, result, preparer }: StepProps & { prepa
         </div>
       </Section>
 
+      <Section title="Underpayment of estimated tax (Form MO-2210)" intro="If your withholding and estimated payments fell short, Missouri charges a penalty. The short method applies when withholding and estimated payments were made equally through the year.">
+        <Check label="Figure the underpayment penalty" checked={d.mo2210.priorTax !== null} onChange={(on) => put({ mo2210: { ...d.mo2210, priorTax: on ? 0 : null } })} />
+        {d.mo2210.priorTax !== null && (
+          <>
+            <div className="grid">
+              <MoneyField label="Tax shown on your 2024 Missouri return" hint="Line 5; 0 if you did not file one" value={d.mo2210.priorTax} onChange={(n) => put({ mo2210: { ...d.mo2210, priorTax: n } })} />
+              <MoneyField label="Days before April 15, 2026 the shortfall was paid" hint="Line 12; 0 if paid with the return" value={d.mo2210.earlyDays} onChange={(n) => put({ mo2210: { ...d.mo2210, earlyDays: n } })} />
+            </div>
+            <Check label="Withholding and estimated payments were made equally through the year" hint="Needed for the short method" checked={d.mo2210.equalOnTime} onChange={(on) => put({ mo2210: { ...d.mo2210, equalOnTime: on } })} />
+            <Check label="I am a qualified farmer" hint="66⅔% instead of 90% on line 2" checked={d.mo2210.farmer} onChange={(on) => put({ mo2210: { ...d.mo2210, farmer: on } })} />
+            {mo.m2210 && <p className="why">{mo.m2210['13'] ? `Required annual payment ${usd(mo.m2210['6'])}; penalty (line 55): ${usd(mo.m2210['13'])}.` : 'No underpayment penalty (see Things to look at).'}</p>}
+          </>
+        )}
+      </Section>
+
       {mo.issues.length > 0 && (
         <Section title="Things to look at">
           <ul className="issues">{mo.issues.map((t) => <li key={t} className="issue is-warning"><span className="issue-kind">Check</span><span>{t}</span></li>)}</ul>

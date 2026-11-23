@@ -141,6 +141,7 @@ export function formMo1040(ret: TaxReturnInput, res: TaxReturnResult, mo: MoResu
     }
   } else {
     money('line54', L['54'], true)
+    money('line55', L['55'])
     money('line56', L['56'], true)
   }
   if (c.phone.trim()) v.dayphone = phone(c.phone)
@@ -291,9 +292,26 @@ export function formMoTc(ret: TaxReturnInput, mo: MoResult): FormFill | null {
   return { id: 'motc', file: 'mo-tc.pdf', title: 'Missouri Form MO-TC', values: v }
 }
 
+/** Form MO-2210 page 1: Part I and the short method (Part II). */
+export function formMo2210(ret: TaxReturnInput, mo: MoResult): FormFill | null {
+  const P = mo.m2210
+  if (!P || !((P['13'] ?? 0) > 0) || !ret.mo.mo2210.equalOnTime) return null
+  const v: Record<string, FieldValue> = {}
+  const ssn3 = (s: string, a: string, b: string, c: string): void => { const d = digits(s); if (d.length === 9) { v[a] = d.slice(0, 3); v[b] = d.slice(3, 5); v[c] = d.slice(5) } }
+  ssn3(ret.taxpayer.ssn, 'Social Security Number', 'undefined', 'undefined_2')
+  v.Name = upper(`${ret.taxpayer.firstName} ${ret.taxpayer.lastName}`)
+  if (ret.filingStatus === 'mfj') { ssn3(ret.spouse.ssn, 'Spouses Social Security Number', 'undefined_3', 'undefined_4'); v['Spouses Name'] = upper(`${ret.spouse.firstName} ${ret.spouse.lastName}`) }
+  const c = ret.contact
+  v['Address City State and ZIP Code'] = upper([c.street, c.apt, c.city, c.state, c.zip].filter((x) => x && x.trim()).join(', '))
+  for (let i = 1; i <= 13; i++) if (P[String(i)] !== undefined) v[`Ln${i}`] = String(Math.round(P[String(i)]))
+  return { id: 'mo2210', file: 'mo-2210.pdf', title: 'Missouri Form MO-2210', values: v, pages: [0] }
+}
+
 export function buildMoPacket(ret: TaxReturnInput, res: TaxReturnResult, mo: MoResult, preparer?: PreparerInfo | null): FormPacket {
   const forms = [formMo1040(ret, res, mo, preparer)]
   const tc = formMoTc(ret, mo)
   if (tc) forms.push(tc)
+  const und = formMo2210(ret, mo)
+  if (und) forms.push(und)
   return { forms, notIncluded: mo.attach }
 }

@@ -56,6 +56,8 @@ export type DeStatus = 1 | 2 | 3 | 4 | 5
 
 type Col = Record<string, number>
 export interface DeResult {
+  /** PIT-UND Parts 1–2 (null without the 2024 tax balance). */
+  und: Record<string, number> | null
   status: DeStatus
   /** Column A (spouse, status 4 only) and column B. */
   A: Col
@@ -312,7 +314,32 @@ function computeStatus(ret: TaxReturnInput, res: TaxReturnResult, status: DeStat
   // ── Page 3 ──
   const L: Record<string, number> = {}
   L['43'] = sum('ABCDEFGHIJKLMNPQRSTU'.split('').map((k) => r(pos(d.contributions[k] ?? 0))))
-  L['45'] = 0
+  // ── PIT-UND Part 1 and Part 2 (short method) ──
+  const u = d.und
+  let und: Record<string, number> | null = null
+  let undNote = ''
+  if (u.priorTax !== null && !u.farmer) {
+    const P: Record<string, number> = {}
+    P['A'] = r(0.9 * pos(sum(cols.map((c) => C[c]['33'] - C[c]['34']))))
+    P['B'] = r(pos(u.priorTax) * (u.priorAgiHigh ? 1.1 : 1))
+    P['C'] = Math.min(P['A'], P['B'])
+    P['D'] = sum(cols.map((c) => C[c]['35']))
+    P['E'] = P['C'] - P['D']
+    if (u.priorTax <= 0) undNote = 'You had no Delaware tax liability for 2024, so no underpayment penalty applies.'
+    else if (P['E'] <= 800) undNote = 'Your required annual payment less withholding is $800 or less, so no underpayment penalty applies.'
+    else {
+      P['F'] = sum(cols.map((c) => C[c]['36'] + C[c]['37'] + C[c]['38'] + C[c]['39']))
+      P['G'] = P['D']; P['H'] = P['F'] + P['G']; P['I'] = P['C'] - P['H']
+      if (P['I'] > 0) {
+        P['J'] = r(P['I'] * 0.12)
+        P['K'] = r(P['I'] * 0.0005 * Math.max(0, Math.floor(u.earlyDays)))
+        P['L'] = pos(P['J'] - P['K'])
+      }
+      if (!u.equalOnTime) undNote = 'Your estimated payments were unequal or late, so the PIT-UND short method cannot be used; use the annualized method (Parts 3–5) by hand.'
+    }
+    und = P
+  }
+  L['45'] = und && u.equalOnTime && (und['L'] ?? 0) > 0 ? und['L'] : 0
   const over = sum(cols.map((c) => C[c]['42'])) - sum(cols.map((c) => C[c]['41']))
   const left = over - L['43'] - L['45']
   L['44'] = left > 0 ? Math.min(r(pos(d.creditForward)), left) : 0
@@ -336,8 +363,10 @@ function computeStatus(ret: TaxReturnInput, res: TaxReturnResult, status: DeStat
   if (ret.retirement.some((x) => isEarly(x.code))) issues.push('Distributions with code 1 (early) do not count toward the pension exclusion.')
   if (d.otherState.tax > 0 && !d.otherState.state.trim()) issues.push('Enter the two-letter code of the state you paid tax to (Schedule I).')
   if (deps > 0 && two) issues.push(`The $110 personal credits for your dependents are in column ${depCol}, where the tax can absorb them.`)
-  if (L['46'] > 800) issues.push('The balance due is over $800: you may owe an estimated tax penalty (Form PIT-UND is not prepared here).')
-  return { status, A: two ? A : {}, B, lines: L, alternative: null, itemize, rsa: S, rsaA, eitc, crs: K, owners, exemptions, issues, attach }
+  if (L['45'] > 0) attach.push('Form PIT-UND (check the “Form PIT-UND attached” box)')
+  if (undNote) issues.push(undNote)
+  if (u.priorTax === null && !u.farmer && L['46'] > 800) issues.push('The balance due is over $800: you may owe an estimated tax penalty. Enter your 2024 Delaware tax balance in the PIT-UND section to figure it.')
+  return { und, status, A: two ? A : {}, B, lines: L, alternative: null, itemize, rsa: S, rsaA, eitc, crs: K, owners, exemptions, issues, attach }
 }
 
 const byOwnerTotal = (rec: Record<Owner, number>): number => pos(rec.taxpayer ?? 0) + pos(rec.spouse ?? 0)

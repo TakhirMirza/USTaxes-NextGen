@@ -159,6 +159,8 @@ export function formPitRes(ret: TaxReturnInput, res: TaxReturnResult, de: DeResu
   both('42')
   money('ln43ColB', L['43'])
   money('ln44ColB', L['44'])
+  money('ln45ColB', L['45'])
+  if (L['45'] > 0) v.pitund = true
   money('ln46ColB', L['46'], L['47'] === 0)
   money('ln47ColB', L['47'], L['46'] === 0)
   if (L['47'] > 0) {
@@ -328,7 +330,19 @@ export function formPitCrs(ret: TaxReturnInput, de: DeResult): FormFill | null {
   return { id: 'de-crs', file: 'de-pitcrs.pdf', title: 'Delaware Form PIT-CRS', values: v }
 }
 
+/** Form PIT-UND page 1: Part 1 and the short method (Part 2). */
+export function formPitUnd(ret: TaxReturnInput, de: DeResult): FormFill | null {
+  const P = de.und
+  if (!P || !(de.lines['45'] > 0)) return null
+  const v: Record<string, FieldValue> = {}
+  const t = ret.taxpayer
+  v.tpName = (ret.filingStatus === 'mfj' ? `${t.firstName} & ${ret.spouse.firstName} ${t.lastName}` : `${t.firstName} ${t.lastName}`).trim().toUpperCase()
+  v.tpID = t.ssn.replace(/\D/g, '')
+  for (const k of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']) if (P[k] !== undefined) v[`ln${k}`] = String(Math.round(P[k]))
+  return { id: 'de-und', file: 'de-pitund.pdf', title: 'Delaware Form PIT-UND', values: v }
+}
+
 export function buildDePacket(ret: TaxReturnInput, res: TaxReturnResult, de: DeResult, preparer?: PreparerInfo | null): FormPacket {
-  const forms = [formPitRes(ret, res, de, preparer), formPitRss(ret, de), formPitRsa(ret, de), formPitCrs(ret, de)].filter((x): x is FormFill => x !== null)
+  const forms = [formPitRes(ret, res, de, preparer), formPitRss(ret, de), formPitRsa(ret, de), formPitCrs(ret, de), formPitUnd(ret, de)].filter((x): x is FormFill => x !== null)
   return { forms, notIncluded: de.attach }
 }

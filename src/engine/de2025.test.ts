@@ -136,3 +136,29 @@ test('PIT-RES packet: every value lands on one field and the PDF builds', async 
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 DE')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-DE.pdf`, bytes)
 })
+
+test('DE PIT-UND short method penalty', async () => {
+  const r0 = emptyReturn()
+  const { de, res, ret } = run(base({ w2s: [w2(120000)] }), { und: { ...r0.de.und, priorTax: 5000 } })
+  const P = de.und!
+  const liability = de.B['33'] - de.B['34']
+  assert.equal(P['A'], Math.round(0.9 * liability))
+  assert.equal(P['C'], Math.min(P['A'], 5000))
+  assert.equal(P['I'], P['C'])
+  assert.equal(P['L'], Math.round(P['C'] * 0.12))
+  assert.equal(de.lines['45'], P['L'])
+  const early = run(base({ w2s: [w2(120000)] }), { und: { ...r0.de.und, priorTax: 5000, earlyDays: 30 } }).de
+  assert.equal(early.und!['K'], Math.round(early.und!['I'] * 0.0005 * 30))
+  const none = run(base({ w2s: [w2(120000)] }), { und: { ...r0.de.und, priorTax: 0 } }).de
+  assert.equal(none.lines['45'], 0)
+  const packet = buildDePacket(ret, res, de)
+  const und = packet.forms.find((f) => f.id === 'de-und')!
+  assert.equal(packet.forms[0].values.pitund, true)
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, [und], load, '2025 DE PIT-UND')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-DEUND.pdf`, bytes)
+})

@@ -183,6 +183,22 @@ export function DelawareStep({ ret, set, result, preparer }: StepProps & { prepa
         </div>
       </Section>
 
+      <Section title="Underpayment of estimated tax (Form PIT-UND)" intro="If your withholding and estimated payments fell short, Delaware charges a penalty. The short method on Form PIT-UND applies when you made no estimated payments or paid four equal amounts on time.">
+        <Check label="Figure the underpayment penalty" checked={d.und.priorTax !== null} onChange={(on) => put({ und: { ...d.und, priorTax: on ? 0 : null } })} />
+        {d.und.priorTax !== null && (
+          <>
+            <div className="grid">
+              <MoneyField label="2024 Delaware tax balance" hint="2024 PIT-RES line 33 minus line 34 (0 if none)" value={d.und.priorTax} onChange={(n) => put({ und: { ...d.und, priorTax: n } })} />
+              <NumberField label="Days before April 30, 2026 the shortfall was paid" hint="Line K; 0 if paid with the return" max={120} value={d.und.earlyDays} onChange={(n) => put({ und: { ...d.und, earlyDays: n } })} />
+            </div>
+            <Check label="My 2024 Delaware AGI was over $150,000 ($75,000 if married filing separately)" hint="Line B uses 110% of the 2024 balance" checked={d.und.priorAgiHigh} onChange={(on) => put({ und: { ...d.und, priorAgiHigh: on } })} />
+            <Check label="I made no estimated payments, or four equal payments on time" hint="Needed for the short method" checked={d.und.equalOnTime} onChange={(on) => put({ und: { ...d.und, equalOnTime: on } })} />
+            <Check label="I am a farmer or fisherman (2/3 of gross income)" hint="No penalty if the tax was paid in time" checked={d.und.farmer} onChange={(on) => put({ und: { ...d.und, farmer: on } })} />
+            {de.und && <p className="why">{de.lines['45'] > 0 ? `Required annual payment ${usd(de.und['C'])}; penalty (line 45): ${usd(de.lines['45'])}.` : 'No underpayment penalty (see Things to look at).'}</p>}
+          </>
+        )}
+      </Section>
+
       {de.issues.length > 0 && (
         <Section title="Things to look at">
           <ul className="issues">{de.issues.map((t) => <li key={t} className="issue is-warning"><span className="issue-kind">Check</span><span>{t}</span></li>)}</ul>

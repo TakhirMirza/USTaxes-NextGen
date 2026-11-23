@@ -150,3 +150,23 @@ test('MO-TC: credits per column, limited to each person’s tax', async () => {
     await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-MOTC.pdf`, bytes)
   }
 })
+
+test('MO-2210 short method penalty', async () => {
+  const r0 = emptyReturn()
+  const { mo, res, ret } = run(base({ w2s: [w2(70000)] }), { mo2210: { ...r0.mo.mo2210, priorTax: 2000 } })
+  const P = mo.m2210!
+  assert.equal(P['1'], mo.lines['36'] - mo.lines['42'] - mo.lines['43'] - mo.lines['44'])
+  assert.equal(P['6'], Math.min(Math.round(P['1'] * 0.9), 2000))
+  assert.equal(P['11'], Math.round(P['10'] * 0.05043))
+  assert.equal(mo.lines['55'], P['13'])
+  assert.equal(mo.lines['56'], mo.lines['54'] + mo.lines['55'])
+  const packet = buildMoPacket(ret, res, mo)
+  const f = packet.forms.find((x) => x.id === 'mo2210')!
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const g of packet.forms) await fillForm(lib, await load(g.file), { ...g }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, [f], load, '2025 MO-2210')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-MO2210.pdf`, bytes)
+})
