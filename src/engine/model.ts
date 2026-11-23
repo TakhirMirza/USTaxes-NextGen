@@ -2419,6 +2419,8 @@ export interface VtInput {
     publicAssistance: number; otherBenefits: number; workersComp: number; alimony: number; childSupportAndGifts: number; passThroughIncome: number; otherIncome: number
     childSupportPaid: number; alimonyPaid: number; otherPeopleIncome: number
   }
+  /** Worksheet IN-152: 2024 Vermont tax minus credits (null if not entered), the 2024 carryforward and estimated payments made by each due date (null: line 26b spread evenly, on time), and the date the full balance was paid (MM/DD/YYYY; blank = April 15, 2026). */
+  in152: { priorTax: number | null; quarterly: [number, number, number, number] | null; paidDate: string }
 }
 
 export const emptyVt = (): VtInput => ({
@@ -2434,7 +2436,8 @@ export const emptyVt = (): VtInput => ({
   homestead: {
     file: false, claimCredit: false, span: '', location: '', town: '', businessUse: 0, rentalUse: 0, otherBuildings: false, housesiteValue: 0, educationTax: 0, municipalTax: 0, ownership: 100,
     publicAssistance: 0, otherBenefits: 0, workersComp: 0, alimony: 0, childSupportAndGifts: 0, passThroughIncome: 0, otherIncome: 0, childSupportPaid: 0, alimonyPaid: 0, otherPeopleIncome: 0
-  }
+  },
+  in152: { priorTax: null, quarterly: null, paidDate: '' }
 })
 
 export interface NdInput {
@@ -3156,6 +3159,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       const e = emptyVt(); const x: Partial<VtInput> = r.vt ?? {}
       return {
         ...e, ...x, w2: normalizeStatements(x.w2), r1099: normalizeStatements(x.r1099), coverage: { ...e.coverage, ...(x.coverage ?? {}) }, birthDates: { ...e.birthDates, ...(x.birthDates ?? {}) },
+        in152: { ...e.in152, ...(x.in152 ?? {}), priorTax: typeof x.in152?.priorTax === 'number' ? x.in152.priorTax : null, quarterly: Array.isArray(x.in152?.quarterly) && x.in152!.quarterly.length === 4 ? x.in152!.quarterly : null },
         useTax: { ...e.useTax, ...(x.useTax ?? {}) }, contributions: { ...(x.contributions ?? {}) }, homestead: { ...e.homestead, ...(x.homestead ?? {}) },
         cg: { ...e.cg, ...(x.cg ?? {}) }, otherState: { ...e.otherState, ...(x.otherState ?? {}) }, renter: { ...e.renter, ...(x.renter ?? {}) },
         in119: { ...e.in119, ...(x.in119 ?? {}), credits: { ...(x.in119?.credits ?? {}) } }

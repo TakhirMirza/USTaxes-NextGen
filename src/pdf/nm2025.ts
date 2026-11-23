@@ -168,9 +168,25 @@ export function formNmPit1(ret: TaxReturnInput, res: TaxReturnResult, nm: NmResu
   return { id: 'nmpit1', file: 'nm-pit1.pdf', title: 'New Mexico PIT-1', values: {}, draw, pages }
 }
 
+/** PIT-CR Supplemental (credits 6–30; a flat page, drawn). */
+export function formNmPitCrSupplemental(ret: TaxReturnInput, nm: NmResult): FormFill | null {
+  void nm
+  const cr = ret.nm.crCredits.filter((x) => x.code.trim() && (x.applied > 0 || x.refund > 0)).slice(5, 30)
+  if (!cr.length) return null
+  const draw: Draw[] = [t(0, 40, 666, upper(`${ret.taxpayer.firstName} ${ret.taxpayer.lastName}`)), t(0, 449, 661, digits(ret.taxpayer.ssn), 10)]
+  cr.forEach((x, i) => {
+    const y = 565 - 11.96 * i
+    draw.push(t(0, 60, y, upper(x.code).slice(0, 3), 8), t(0, 124, y, upper(x.approval).slice(0, 30), 8))
+    if (x.applied > 0) draw.push({ ...money(0, 424, y, x.applied), size: 8 })
+    if (x.refund > 0) draw.push({ ...money(0, 572, y, x.refund), size: 8 })
+  })
+  draw.push(money(0, 392, 207, cr.reduce((s, x) => s + Math.max(0, x.applied), 0)), money(0, 572, 179, cr.reduce((s, x) => s + Math.max(0, x.refund), 0)))
+  return { id: 'nm-pitcrs', file: 'nm-pitcrs.pdf', title: 'New Mexico PIT-CR Supplemental', values: {}, draw }
+}
+
 export function buildNmPacket(ret: TaxReturnInput, res: TaxReturnResult, nm: NmResult, preparer?: PreparerInfo | null): FormPacket {
   const drawn = ['Schedule PIT-ADJ', 'Schedule PIT-RC', 'Schedule PIT-S (dependents 6 and up)', 'Schedule PIT-D']
   const notIncluded = nm.attach.filter((x) => !drawn.includes(x))
   notIncluded.push('Driver’s license or state ID number, state and expiration date under each signature (or NONE / DECLINED)')
-  return { forms: [formNmPit1(ret, res, nm, preparer)], notIncluded }
+  return { forms: [formNmPit1(ret, res, nm, preparer), formNmPitCrSupplemental(ret, nm)].filter((x): x is FormFill => x !== null), notIncluded }
 }

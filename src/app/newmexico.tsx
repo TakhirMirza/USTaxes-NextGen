@@ -180,7 +180,7 @@ export function NewMexicoStep({ ret, set, result, preparer }: StepProps & { prep
           <MoneyField label="Other state’s taxable income" value={d.otherState.taxableIncome} onChange={(n) => put({ otherState: { ...d.otherState, taxableIncome: n } })} />
           <MoneyField label="Income taxed by both states" value={d.otherState.doubleTaxed} onChange={(n) => put({ otherState: { ...d.otherState, doubleTaxed: n } })} />
         </div>
-        <p className="why">Business-related credits (PIT-CR): enter the credit type code from PIT-CR, its approval number, and the amounts.</p>
+        <p className="why">Business-related credits (PIT-CR): enter the credit type code from PIT-CR, its approval number, and the amounts. Credits 6 to 30 go on the PIT-CR Supplemental.</p>
         {d.crCredits.map((c, i) => {
           const upd = (p: Partial<NmInput['crCredits'][number]>): void => put({ crCredits: d.crCredits.map((x, j) => (j === i ? { ...x, ...p } : x)) })
           return (
@@ -193,7 +193,7 @@ export function NewMexicoStep({ ret, set, result, preparer }: StepProps & { prep
           )
         })}
         <div className="actions">
-          {d.crCredits.length < 5 && <button type="button" className="button is-quiet" onClick={() => put({ crCredits: [...d.crCredits, { code: '', approval: '', applied: 0, refund: 0 }] })}>Add a PIT-CR credit</button>}
+          {d.crCredits.length < 30 && <button type="button" className="button is-quiet" onClick={() => put({ crCredits: [...d.crCredits, { code: '', approval: '', applied: 0, refund: 0 }] })}>Add a PIT-CR credit</button>}
           {d.crCredits.length > 0 && <button type="button" className="button is-quiet" onClick={() => put({ crCredits: d.crCredits.slice(0, -1) })}>Remove the last credit</button>}
         </div>
       </Section>

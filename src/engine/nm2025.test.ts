@@ -145,3 +145,22 @@ test('PIT-S lists dependents six and up', async () => {
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 NM')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-NMS.pdf`, bytes)
 })
+
+test('PIT-CR Supplemental lists credits six and up', async () => {
+  const crs = Array.from({ length: 8 }, (_, i) => ({ code: i % 2 ? 'A01' : 'F01', approval: `AP-${i + 1}`, applied: 10 * (i + 1), refund: i % 2 ? 0 : 5 }))
+  const { nm: r, res, ret } = nm(base({ w2s: [w2(80000)] }), { crCredits: crs })
+  assert.equal(r.lines['26'], 20)
+  assert.ok(!r.attach.some((x) => x.includes('Supplemental')))
+  const packet = buildNmPacket(ret, res, r)
+  const sup = packet.forms.find((f) => f.id === 'nm-pitcrs')
+  assert.ok(sup)
+  assert.ok(sup.draw!.some((d) => d.text === 'AP-6') && sup.draw!.some((d) => d.text === 'AP-8') && !sup.draw!.some((d) => d.text === 'AP-5'))
+  assert.ok(sup.draw!.some((d) => d.text === '210.00')) // 60 + 70 + 80
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, packet.forms, load, '2025 NM')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-NMCR.pdf`, bytes)
+})

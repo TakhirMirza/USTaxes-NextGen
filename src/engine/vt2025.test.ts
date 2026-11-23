@@ -137,3 +137,41 @@ test('IN-111 packet: every value lands on one field and the PDF builds', async (
 })
 
 function pos(n: number): number { return Math.max(0, n) }
+
+test('VT Worksheet IN-152: underpayment interest and penalty by quarter', async () => {
+  const ret = base({ w2s: [w2(100000)] })
+  const none = run(ret)
+  assert.equal(none.vt.in152, null)
+  assert.ok(none.vt.issues.some((x) => x.includes('IN-152 section')))
+  const { vt, res, ret: r } = run(ret, { in152: { priorTax: 3000, quarterly: [1000, 0, 0, 0], paidDate: '' } })
+  const w = vt.in152!
+  assert.equal(w.l1, Math.round((vt.lines['20'] - vt.lines['26c']) * 0.9))
+  assert.ok(w.l1 > 3000)
+  assert.equal(w.l3, 3000)
+  const q = w.quarters
+  assert.deepEqual(q.map((x) => x.l4), [750, 750, 750, 750])
+  assert.deepEqual(q.map((x) => x.l5c), [750, 250, 0, 0]) // the 250 excess moves to June
+  assert.deepEqual(q.map((x) => x.l6), [0, 500, 750, 750])
+  assert.deepEqual(q.map((x) => x.l8a), [0, 200, 108, 0])
+  assert.deepEqual(q.map((x) => x.l8b), [0, 104, 104, 90])
+  assert.deepEqual(q.map((x) => x.l12), [0, 10, 7, 3])
+  const interest = 500 * 200 / 365 * 0.085 + 500 * 104 / 365 * 0.0775 + 750 * 108 / 365 * 0.085 + 750 * 104 / 365 * 0.0775 + 750 * 90 / 365 * 0.0775
+  assert.equal(w.l11, Math.round(interest))
+  assert.equal(w.l14, Math.round(500 * 0.1 + 750 * 0.07 + 750 * 0.03))
+  assert.equal(w.l15, w.l11 + w.l14)
+  assert.equal(vt.lines['31'], w.l15)
+  assert.equal(vt.lines['32'], vt.lines['30'] + w.l15)
+  // Paid in full on February 10, 2026: days and months stop there.
+  const early = run(ret, { in152: { priorTax: 3000, quarterly: [1000, 0, 0, 0], paidDate: '02/10/2026' } }).vt.in152!
+  assert.deepEqual(early.quarters.map((x) => x.l8b), [0, 40, 40, 26])
+  assert.deepEqual(early.quarters.map((x) => x.l12), [0, 8, 5, 1])
+  const packet = buildVtPacket(r, res, vt)
+  assert.ok(packet.forms.some((f) => f.id === 'vt-in152'))
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, packet.forms, load, '2025 VT')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-VT152.pdf`, bytes)
+})

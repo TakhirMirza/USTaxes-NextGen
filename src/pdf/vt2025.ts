@@ -1,6 +1,6 @@
 /**
  * Fills the official Vermont forms (public/forms/2025/): Form IN-111, Schedules IN-112 and IN-113, and the 2026
- * Form HS-122 with the 2025 Schedule HI-144, Schedules IN-117, IN-119 and IN-153 and Form RCC-146 (the Department of Taxes’ fill-in PDFs, Rev. 10/25, with the Clear /
+ * Form HS-122 with the 2025 Schedule HI-144, Schedules IN-117, IN-119 and IN-153, Form RCC-146 and Worksheet IN-152 (the Department of Taxes’ fill-in PDFs, Rev. 10/25, with the Clear /
  * Print buttons removed). Whole dollars: the cents are preprinted.
  */
 import type { TaxReturnInput } from '../engine/model.ts'
@@ -103,6 +103,7 @@ export function formIn111(ret: TaxReturnInput, vt: VtResult, preparer?: Preparer
   money('Line28b', L['28b'])
   money('Line29', L['29'], L['27'] > 0)
   money('Line30', L['30'])
+  money('Line31', L['31'])
   money('Line32', L['32'], L['30'] > 0)
   if (d.birthDates.taxpayer.trim()) v['Sig-TP-DOB'] = mmddyyyy(d.birthDates.taxpayer)
   if (c.phone.trim()) v['Sig-TP-Phone'] = phone(c.phone)
@@ -395,8 +396,42 @@ export function formRcc146(ret: TaxReturnInput, vt: VtResult): FormFill | null {
   return { id: 'vt-rcc146', file: 'vt-rcc146.pdf', title: 'Vermont Form RCC-146 (renter credit claim)', values: v }
 }
 
+/** Worksheet IN-152 (a flat PDF, Rev. 10/25): the values are drawn at the positions of its boxes (bottom-up points). */
+export function formIn152(ret: TaxReturnInput, vt: VtResult): FormFill | null {
+  const w = vt.in152
+  if (!w || w.l15 === 0) return null
+  type Draw = NonNullable<FormFill['draw']>[number]
+  const draw: Draw[] = []
+  const t = (x: number, y: number, text: string, right = true, size = 9): void => { if (text) draw.push({ page: 0, x, y, text, right, size }) }
+  const n = (x: number): string => String(Math.round(x))
+  const c2 = (x: number): string => x.toFixed(2)
+  const [tf, tmi] = nameParts(ret.taxpayer.firstName)
+  t(40, 662, upper(ret.taxpayer.lastName), false); t(216, 662, upper(tf), false); t(368, 662, upper(tmi), false); t(393, 662, digits(ret.taxpayer.ssn), false)
+  if (ret.filingStatus === 'mfj') {
+    const [sf, smi] = nameParts(ret.spouse.firstName)
+    t(40, 638, upper(ret.spouse.lastName), false); t(216, 638, upper(sf), false); t(368, 638, upper(smi), false); t(393, 638, digits(ret.spouse.ssn), false)
+  }
+  t(552, 599, n(w.l1)); t(552, 575, n(w.l2)); t(552, 551, n(w.l3))
+  const col = [331, 388, 445, 503]
+  // Row centers in points from the top of the page (measured from the rendered boxes).
+  const row: Record<string, number> = { '4': 291, '5a': 315, '5b': 338, '5c': 362, '6': 386, '7': 409, '8a': 446, '8b': 476, '9a': 506, '9b': 530, '10': 553, '12': 625, '13': 649 }
+  const y = (k: string): number => 792 - row[k] - 7
+  const [yy, mm, dd] = w.paidDate.split('-')
+  w.quarters.forEach((q, i) => {
+    const x = col[i]
+    t(x, y('4'), n(q.l4)); t(x, y('5a'), n(q.l5a)); t(x, y('5b'), n(q.l5b)); t(x, y('5c'), n(q.l5c)); t(x, y('6'), n(q.l6))
+    if (q.l6 > 0) {
+      t(x, y('7'), `${mm}/${dd}/${yy}`, true, 8)
+      t(x, y('8a'), String(q.l8a)); t(x, y('8b'), String(q.l8b)); t(x, y('9a'), c2(q.l9a)); t(x, y('9b'), c2(q.l9b)); t(x, y('10'), c2(q.l10))
+      t(x, y('12'), String(q.l12)); t(x, y('13'), c2(q.l13))
+    }
+  })
+  t(568, 792 - 585, n(w.l11)); t(568, 792 - 678, n(w.l14)); t(568, 792 - 715, n(w.l15))
+  return { id: 'vt-in152', file: 'vt-in152.pdf', title: 'Vermont Worksheet IN-152', values: {}, draw }
+}
+
 export function buildVtPacket(ret: TaxReturnInput, res: TaxReturnResult, vt: VtResult, preparer?: PreparerInfo | null): FormPacket {
   void res
-  const forms = [formIn111(ret, vt, preparer), formIn112(ret, vt), formIn113(ret, vt), formIn117(ret, vt), formIn119(ret, vt), formIn153(ret, vt), formHs122(ret, vt), formRcc146(ret, vt)].filter((x): x is FormFill => x !== null)
+  const forms = [formIn111(ret, vt, preparer), formIn112(ret, vt), formIn113(ret, vt), formIn117(ret, vt), formIn119(ret, vt), formIn153(ret, vt), formHs122(ret, vt), formRcc146(ret, vt), formIn152(ret, vt)].filter((x): x is FormFill => x !== null)
   return { forms, notIncluded: vt.attach }
 }

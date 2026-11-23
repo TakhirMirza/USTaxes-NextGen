@@ -93,6 +93,21 @@ export function VermontStep({ ret, set, result, preparer }: StepProps & { prepar
         </div>
       </Section>
 
+      {(L['30'] > 0 || d.in152.priorTax !== null) && (
+        <Section title="Underpaid estimated tax (Worksheet IN-152)" intro="If less than 90% of this year’s tax (or 100% of last year’s) was paid by each quarterly due date, Vermont adds interest and a 1% a month penalty on line 31. The worksheet is kept with your records.">
+          <div className="grid">
+            <Check label="Figure the interest and penalty" hint="Needs your 2024 Vermont tax" checked={d.in152.priorTax !== null} onChange={(v) => put({ in152: { ...d.in152, priorTax: v ? 0 : null } })} />
+            {d.in152.priorTax !== null && <MoneyField label="2024 Vermont tax minus credits" hint="2024 IN-111 line 20 minus line 26c; line 2" value={d.in152.priorTax} onChange={(n) => put({ in152: { ...d.in152, priorTax: n } })} />}
+            {d.in152.priorTax !== null && <TextField label="Date the balance was paid in full" hint="MM/DD/YYYY; blank means April 15, 2026 (line 7)" autoComplete="off" value={d.in152.paidDate} onChange={(s) => put({ in152: { ...d.in152, paidDate: s } })} />}
+            {d.in152.priorTax !== null && <Check label="Estimated payments were not spread evenly over the four due dates" hint="Line 5b" checked={d.in152.quarterly !== null} onChange={(v) => put({ in152: { ...d.in152, quarterly: v ? [0, 0, 0, 0] : null } })} />}
+            {d.in152.priorTax !== null && d.in152.quarterly && ['By April 15, 2025 (with the 2024 carryforward)', 'By June 15, 2025', 'By Sept. 15, 2025', 'By Jan. 15, 2026'].map((label, i) => (
+              <MoneyField key={label} label={label} value={d.in152.quarterly![i]} onChange={(n) => { const q = [...d.in152.quarterly!] as [number, number, number, number]; q[i] = n; put({ in152: { ...d.in152, quarterly: q } }) }} />
+            ))}
+          </div>
+          {vt.in152 && <p className="why">Interest {usd(vt.in152.l11)} + penalty {usd(vt.in152.l14)} = {usd(vt.in152.l15)} on line 31.</p>}
+        </Section>
+      )}
+
       <Section title="Additions and subtractions (IN-112)" intro="Other states’ municipal bond interest, the medical deduction and the child, care and earned income credits are worked out from your return.">
         <div className="grid">
           <MoneyField label="Vermont municipal bond interest included in tax-exempt interest" hint="Line 2" value={d.vtObligationInterest} onChange={(n) => put({ vtObligationInterest: n })} />

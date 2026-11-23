@@ -62,7 +62,15 @@ export function vtChildCreditPerChild(agi: number): number {
 /** Phase-out factor rounded to two places, at most 1. */
 const factor = (top: number, agi: number, width: number): number => Math.min(1, Math.round(pos(top - agi) / width * 100) / 100)
 
+export interface VtIn152 {
+  l1: number; l2: number; l3: number
+  quarters: { l4: number; l5a: number; l5b: number; l5c: number; l6: number; l8a: number; l8b: number; l9a: number; l9b: number; l10: number; l12: number; l13: number }[]
+  l11: number; l14: number; l15: number; paidDate: string
+}
+
 export interface VtResult {
+  /** Worksheet IN-152 (null without the 2024 tax). */
+  in152: VtIn152 | null
   lines: Record<string, number>
   /** IN-112 Part I and Part II. */
   p1: Record<string, number>
@@ -305,7 +313,47 @@ export function computeVermont(ret: TaxReturnInput, res: TaxReturnResult): VtRes
   L['28b'] = Math.min(r(pos(d.propertyTaxCredit)), L['27'] - L['28a'])
   L['29'] = L['27'] - L['28a'] - L['28b']
   L['30'] = pos(L['25'] - L['26f'])
-  L['31'] = 0
+  // ── Worksheet IN-152 ──
+  const u = d.in152
+  let in152: VtIn152 | null = null
+  let in152Note = ''
+  if (u.priorTax !== null) {
+    const l1 = r(pos(L['20'] - L['26c']) * 0.9)
+    const l2 = r(pos(u.priorTax))
+    const l3 = Math.min(l1, l2)
+    const l4 = r(l3 * 0.25)
+    const wh = L['26a'] + L['26d'] + L['26e']
+    const l5a = r(wh * 0.25)
+    const est: number[] = u.quarterly ? u.quarterly.map((x) => r(pos(x))) : [0, 1, 2, 3].map((i) => (i < 3 ? Math.floor(L['26b'] / 4) : L['26b'] - 3 * Math.floor(L['26b'] / 4)))
+    const due = ['2025-04-15', '2025-06-15', '2025-09-15', '2026-01-15']
+    const m = u.paidDate.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+    const paidIso = m ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : '2026-04-15'
+    const paid = paidIso < '2026-04-15' ? paidIso : '2026-04-15'
+    const day = (s: string): number => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)) / 86400000
+    const q: VtIn152['quarters'] = []
+    let carry = 0
+    for (let i = 0; i < 4; i++) {
+      const avail = l5a + est[i] + carry
+      const l5c = Math.min(avail, l4)
+      carry = avail - l5c
+      const l6 = pos(l4 - l5c)
+      const end2025 = paid < '2026-01-01' ? paid : '2026-01-01'
+      const l8a = i === 3 ? 0 : Math.max(0, day(end2025) - day(due[i]))
+      const l8b = paid > '2026-01-01' ? Math.max(0, day(paid) - day(i === 3 ? '2026-01-15' : '2026-01-01')) : 0
+      const l9a = l6 * l8a / 365 * 0.085
+      const l9b = l6 * l8b / 365 * 0.0775
+      const dd = new Date(due[i] + 'T00:00:00Z'); const pd = new Date(paid + 'T00:00:00Z')
+      let months = (pd.getUTCFullYear() - dd.getUTCFullYear()) * 12 + (pd.getUTCMonth() - dd.getUTCMonth())
+      if (pd.getUTCDate() > dd.getUTCDate()) months += 1
+      const l12 = l6 > 0 ? Math.max(0, months) : 0
+      q.push({ l4, l5a, l5b: est[i], l5c, l6, l8a: l6 > 0 ? l8a : 0, l8b: l6 > 0 ? l8b : 0, l9a, l9b, l10: l9a + l9b, l12, l13: l6 * l12 * 0.01 })
+    }
+    const l11 = r(q.reduce((s, x) => s + x.l10, 0))
+    const l14 = r(q.reduce((s, x) => s + x.l13, 0))
+    in152 = { l1, l2, l3, quarters: q, l11, l14, l15: l11 + l14, paidDate: paid }
+    if (in152.l15 === 0) in152Note = 'Worksheet IN-152: your payments covered each quarter, so no underpayment interest or penalty is due.'
+  }
+  L['31'] = in152 && L['30'] > 0 ? in152.l15 : 0
   L['32'] = L['30'] + L['31']
 
   // ── Schedule HI-144 ──
@@ -383,8 +431,11 @@ export function computeVermont(ret: TaxReturnInput, res: TaxReturnResult): VtRes
   if (retirementChoice) issues.push(`Retirement income exemption: ${retirementChoice === 'ss' ? 'taxable Social Security' : 'the public pension'} is exempted${share < 1 ? ` at ${Math.round(share * 100)}% (AGI between ${'$'}${full.toLocaleString('en-US')} and ${'$'}${top.toLocaleString('en-US')})` : ''}; only one can be chosen.`)
   if (agi > 150000 && L['8'] > tableTax) issues.push('Vermont’s minimum tax applies: 3% of AGI (less U.S. interest) is more than the tax from the rate schedule.')
   if (A['1'] > 0) issues.push('Line 9 includes 24% of the federal additional tax on early retirement or HSA distributions (Schedule IN-119).')
-  if (L['32'] > 500) issues.push('Tax due after withholding is $500 or more: you may owe interest and penalty for underpaid estimates (Worksheet IN-152, not prepared here).')
+  if (in152Note) issues.push(in152Note)
+  if (in152 && in152.l15 > 0 && L['30'] === 0) issues.push(`Worksheet IN-152 shows ${'$'}${in152.l15} of underpayment interest and penalty; with a refund, the Department of Taxes takes it out of the refund.`)
+  if (in152 && in152.l15 > 0) attach.push('Keep Worksheet IN-152 with your records (it is not filed with the return)')
+  if (u.priorTax === null && L['30'] >= 500) issues.push('Tax due after withholding is $500 or more: you may owe interest and penalty for underpaid estimates. Enter your 2024 Vermont tax in the IN-152 section to figure it.')
   if (d.useTax.mode === 'none') issues.push('Line 22: you certify that no use tax is due on internet, mail-order or out-of-state purchases.')
   if (h.file && !h.span.replace(/\D/g, '').match(/^\d{11}$/)) issues.push('HS-122 needs the 11-digit SPAN from your property tax bill.')
-  return { lines: L, p1: P1, p2: P2, in153: G, in117, in119: { p1: A, p2: B }, rcc, ctcChildren: young.map((x) => x.id), retirementChoice, in113, adjustment, hi144, issues, attach }
+  return { in152, lines: L, p1: P1, p2: P2, in153: G, in117, in119: { p1: A, p2: B }, rcc, ctcChildren: young.map((x) => x.id), retirementChoice, in113, adjustment, hi144, issues, attach }
 }
