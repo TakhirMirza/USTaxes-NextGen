@@ -169,3 +169,53 @@ test('MA Schedule D, X and Y', () => {
   assert.equal(v.scheduleY['15'], 550)
   assert.equal(v.scheduleY['3'], 1200)
 })
+
+test('MA Schedule HC lines 8–12 and the Health Care Penalty Worksheet', () => {
+  const run = (wages: number, health: Partial<MaInput['health']['taxpayer']>, hc: Partial<MaInput['hcPenalty']['taxpayer']> = {}, region: 1 | 2 | 3 = 2) => {
+    const r = base('MA', { w2s: [w2(wages)] })
+    const ret = { ...r, ma: { ...r.ma, hcRegion: region, health: { ...r.ma.health, taxpayer: { ...r.ma.health.taxpayer, ...health } }, hcPenalty: { ...r.ma.hcPenalty, taxpayer: { ...r.ma.hcPenalty.taxpayer, ...hc } } } }
+    return computeMassachusetts(ret, computeReturn(ret))
+  }
+  const gap = { coverage: 'part' as const, months: [true, true, true, true, true, true, false, false, false, false, true, true] }
+  // $60,000 is under 500% FPL: deemed eligible for subsidized insurance; one 4-month gap → 1 month × $113 (column D).
+  const a = run(60000, gap)
+  const x = a.health.hc.taxpayer!
+  assert.deepEqual([x.l9, x.l10, x.l11, x.l12], [false, false, true, null])
+  assert.deepEqual(x.worksheet, { l1: 60000, l2: 'D', l3: 113, l4: 1, l5: 4, l6: 3, l7: 1, l8: 113 })
+  assert.equal(a.lines['35a'], 113)
+  assert.equal(a.lines['35'], 113)
+  // Uninsured all year at $90,000: private premium (region 2, age 40, $367) is affordable (8% / 12 = $600) → 12 × $187.
+  const b = run(90000, { coverage: 'none' })
+  assert.deepEqual([b.health.hc.taxpayer!.l11, b.health.hc.taxpayer!.l12], [false, true])
+  assert.equal(b.lines['35'], 12 * 187)
+  // An employer plan at $200 a month is affordable at $60,000 (7.6% / 12 = $380): line 10 Yes.
+  assert.equal(run(60000, gap, { employerOffered: true, employerPremium: 200 }).health.hc.taxpayer!.l10, true)
+  // A certificate of exemption, or the religious exemption without medical care, means no penalty; an appeal leaves line 35 empty.
+  assert.equal(run(60000, gap, { certificate: 'ABC123' }).lines['35'], 0)
+  assert.equal(run(60000, gap, { religious: true }).lines['35'], 0)
+  assert.equal(run(60000, gap, { appeal: true }).lines['35'], 0)
+  // Region 3 premiums at $90,000 single are still affordable ($592 ≤ $600).
+  assert.equal(run(90000, { coverage: 'none' }, {}, 3).health.hc.taxpayer!.l12, true)
+})
+
+test('NJ Worksheet L: shared responsibility payment, Parts II and III', () => {
+  const half = Array.from({ length: 12 }, (_, i) => i >= 6)
+  const a = nj({ w2s: [w2(60000)] }, { missingCoverage: true, hcc: { taxpayer: { months: half, exemption: '', moreExemptions: false } } })
+  const W = a.hcc!.worksheet!
+  assert.equal(W['1'], a.lines['27'])
+  assert.equal(W['7'], Math.round((a.lines['27'] - 10000) * 0.025 * 100) / 100)
+  assert.equal(W['1d'], 347.52)
+  assert.equal(W['B9'], 50)
+  assert.equal(W['srp'], Math.min(Math.max(347.52, Math.round(W['7'] * 50) / 100), 4908))
+  assert.equal(a.lines['53c'], Math.round(W['srp']))
+  assert.equal(a.lines['54'], a.lines['50'] + a.lines['51'] + a.lines['52'] + a.lines['53c'])
+  // Nobody covered at all: Part II, greater of $695 per adult (up to $2,085) and 2.5% of income over $10,000.
+  const none = nj({ w2s: [w2(60000)] }, { missingCoverage: true, hcc: { taxpayer: { months: Array(12).fill(false), exemption: '', moreExemptions: false } } })
+  assert.equal(none.hcc!.worksheet!['II4'], 695)
+  assert.equal(none.lines['53c'], Math.round(Math.max(695, none.hcc!.worksheet!['7'])))
+  // Everyone covered: Part I Yes, nothing due; at or below $10,000 no schedule at all.
+  const ok = nj({ w2s: [w2(60000)] })
+  assert.equal(ok.hcc!.allYear, true)
+  assert.equal(ok.lines['53c'], 0)
+  assert.equal(nj({ w2s: [w2(9000)] }).hcc, null)
+})

@@ -89,7 +89,9 @@ export function formNj1040(ret: TaxReturnInput, res: TaxReturnResult, nj: NjResu
   for (const k of NJ_DONATION_LINES) money(values, k, L[k])
   if (L['65'] > 0) values[NJ_BOXES.count65] = String(L['65count'])
   if (d.housing !== 'none' && L['40a'] > 0) values.Group182 = d.housing === 'own' ? 'Choice1' : d.housing === 'rent' ? 'Choice2' : 'Choice3'
-  if (d.missingCoverage) values['Check Box146aabb'] = true
+  if (d.currentlyUninsured) values['Check Box146aabb'] = true
+  if (d.currentlyUninsured && d.getCoveredHelp) values['Check Box146aabbffdd'] = true
+  if (nj.hcc) { values['Check Box147'] = true; money(values, '53c', L['53c']) }
   // Lines 70–74: the "Other" oval with the amount.
   const groups: Record<string, string> = { '70': 'Group168', '71': 'Group1681', '72': 'Group168170', '73': 'Group1681701', '74': 'Group16817012' }
   for (const k of NJ_DONATION_LINES) if (L[k] > 0) values[groups[k]] = '#2'
@@ -99,11 +101,45 @@ export function formNj1040(ret: TaxReturnInput, res: TaxReturnResult, nj: NjResu
   return { id: 'nj1040', file: 'nj1040.pdf', title: 'New Jersey Form NJ-1040', values }
 }
 
+const HCC_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'July', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec']
+/** Schedule NJ-HCC Part II rows: the month boxes, name, SSN, "more than one exemption" box and the 11 exemption number boxes (row 5 lacks its eighth box). */
+const HCC_ROWS: { months: string[]; name: string; ssn: string; more: string; ex: (string | null)[] }[] = [
+  { months: HCC_MONTHS.map((m) => (m === 'July' ? 'July2' : `${m}1`)), name: 'Name1', ssn: 'SS1', more: 'CB1', ex: Array.from({ length: 11 }, (_, i) => `E${i + 1}`) },
+  { months: HCC_MONTHS.map((m) => (m === 'July' ? 'July22' : m === 'Mar' ? 'Mar12aa' : `${m}12`)), name: 'Name12', ssn: 'SS12', more: 'CB12aa', ex: Array.from({ length: 11 }, (_, i) => `E${i + 1}2`) },
+  { months: HCC_MONTHS.map((m) => (m === 'July' ? 'July223' : `${m}123`)), name: 'Name123', ssn: 'SS123', more: 'CB12', ex: Array.from({ length: 11 }, (_, i) => `E${i + 1}23`) },
+  { months: HCC_MONTHS.map((m) => (m === 'July' ? 'July224' : m === 'Mar' ? 'Mar12' : `${m}124`)), name: 'Name1234', ssn: 'SS1234', more: 'CB124', ex: Array.from({ length: 11 }, (_, i) => `E${i + 1}234`) },
+  { months: HCC_MONTHS.map((m) => (m === 'July' ? 'July2245' : m === 'Mar' ? 'Mar125' : `${m}1245`)), name: 'Name12345', ssn: 'SS12345', more: 'CB1245', ex: Array.from({ length: 11 }, (_, i) => (i === 7 ? null : `E${i + 1}2345`)) }
+]
+
+/** Schedule NJ-HCC (2025): Part I, and Part II when anyone lacked coverage. */
+export function formNjHcc(ret: TaxReturnInput, nj: NjResult): FormFill | null {
+  const h = nj.hcc
+  if (!h) return null
+  const tp = ret.taxpayer
+  const values: Record<string, FieldValue> = {
+    'Names as shown on Form NJ1040': upper(ret.filingStatus === 'mfj' ? `${tp.firstName} ${tp.lastName} & ${ret.spouse.firstName} ${ret.spouse.lastName}` : `${tp.firstName} ${tp.lastName}`),
+    'Social Security Number': digits(tp.ssn),
+    Group1: h.allYear ? '#0' : '#1'
+  }
+  const draw: NonNullable<FormFill['draw']> = []
+  if (!h.allYear) h.members.slice(0, 5).forEach((m, i) => {
+    const row = HCC_ROWS[i]
+    values[row.name] = upper(m.name)
+    values[row.ssn] = digits(m.ssn)
+    row.months.forEach((f, j) => { values[f] = m.months[j] })
+    const ex = m.exemption.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 11)
+    ex.split('').forEach((ch, j) => { const f = row.ex[j]; if (f) values[f] = ch; else draw.push({ page: 0, x: 233, y: 44, text: ch, size: 10 }) })
+    if (m.moreExemptions) values[row.more] = true
+  })
+  return { id: 'njhcc', file: 'nj-hcc.pdf', title: 'New Jersey Schedule NJ-HCC', values, ...(draw.length ? { draw } : {}) }
+}
+
 export function buildNjPacket(ret: TaxReturnInput, res: TaxReturnResult, nj: NjResult, preparer?: PreparerInfo | null): FormPacket {
-  const forms: FormFill[] = [formNj1040(ret, res, nj, preparer)]
+  const forms: FormFill[] = [formNj1040(ret, res, nj, preparer), formNjHcc(ret, nj)].filter((x): x is FormFill => x !== null)
   const notIncluded = [...nj.attach]
   if (ret.dependents.length > 4) notIncluded.push('A statement listing the dependents beyond the first four')
   if (ret.nj.collegeDependents > 0) notIncluded.push('Line 12: the names of the dependents attending college are not filled in; check the instructions')
   notIncluded.push('Driver’s license number (voluntary) and signatures on page 4')
+  if (nj.hcc?.worksheet) notIncluded.push('Keep Worksheet L (shared responsibility payment) with your records; it is not filed')
   return { forms, notIncluded }
 }

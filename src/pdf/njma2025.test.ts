@@ -63,3 +63,42 @@ test('the NJ and MA PDFs build', async () => {
     if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-${state}.pdf`, bytes)
   }
 })
+
+test('MA Schedule HC penalty: lines 10–12 ovals, appeal box and Form 1 line 35', async () => {
+  const h = household('MA')
+  const gap = { ...h.ma.health.taxpayer, coverage: 'none' as const }
+  const ret: TaxReturnInput = { ...h, dependents: [], ma: { ...h.ma, dependentBirthDates: {}, health: { ...h.ma.health, taxpayer: gap } } }
+  const res = computeReturn(ret)
+  const ma = computeMassachusetts(ret, res)
+  const packet = buildMaPacket(ret, res, ma)
+  const hc = packet.forms.find((f) => f.id === 'maschhc')!
+  assert.ok(ma.health.hc.taxpayer?.worksheet)
+  assert.ok(ma.lines['35'] > 0)
+  assert.ok(hc.pages!.includes(3))
+  assert.equal(packet.forms[0].values['line 35. Total health care penalty. Add lines 35a and 35b'], String(ma.lines['35']))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-MAHC.pdf`, (await buildPdf(lib, packet.forms, load, '2025 MA')).bytes)
+})
+
+test('NJ Schedule NJ-HCC Part II and line 53c', async () => {
+  const h = household('NJ')
+  const kid = h.dependents[0]
+  const ret: TaxReturnInput = { ...h, nj: { ...h.nj, missingCoverage: true, currentlyUninsured: true, hcc: { taxpayer: { months: Array.from({ length: 12 }, (_, i) => i < 8), exemption: '', moreExemptions: false }, [kid.id]: { months: Array(12).fill(true), exemption: 'NJ123456789', moreExemptions: true } } } }
+  const res = computeReturn(ret)
+  const nj = computeNewJersey(ret, res)
+  const packet = buildNjPacket(ret, res, nj)
+  const hcc = packet.forms.find((f) => f.id === 'njhcc')
+  assert.ok(nj.hcc)
+  assert.ok(hcc)
+  if (nj.hcc!.worksheet) {
+    assert.equal(hcc!.values.Group1, '#1')
+    assert.equal(hcc!.values['Sept1'], false)
+    assert.equal(packet.forms[0].values['Check Box147'], true)
+  }
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-NJHCC.pdf`, (await buildPdf(lib, packet.forms, load, '2025 NJ')).bytes)
+})

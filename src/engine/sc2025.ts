@@ -30,7 +30,15 @@ export function scTax(taxable: number): number {
   return r(rateTax(lo + width / 2))
 }
 
+export interface ScTc {
+  worksheets: { state: string; l1: number; l2: number; l3: number; l4: number; l5: number; l6: number; l7: number }[]
+  lines: Record<string, number>
+  other: { description: string; code: string; amount: number }[]
+}
+
 export interface ScResult {
+  /** SC1040TC (null when only the line 13 total was entered). */
+  tc: ScTc | null
   lines: Record<string, number>
   dependents: { count: number; under6: number; age65: number }
   statements: { owner: Owner; employer: string; ein: string; stateId: string; wages: number; tax: number }[]
@@ -107,7 +115,31 @@ export function computeSouthCarolina(ret: TaxReturnInput, res: TaxReturnResult):
     const lower = Math.min(50000, earned('taxpayer'), earned('spouse'))
     L['12'] = Math.min(350, r(lower * 0.007), pos(L['10'] - L['11']))
   } else L['12'] = 0
-  L['13'] = Math.min(r(pos(d.nonrefundableCredits)), pos(L['10'] - L['11'] - L['12']))
+  // ── SC1040TC ──
+  const tcIn = d.tc
+  const states = tcIn.otherStates.filter((o) => o.state.trim() && (o.income > 0 || o.tax > 0)).slice(0, 2)
+  const others = tcIn.other.filter((o) => o.amount > 0).slice(0, 10)
+  const tcUsed = states.length > 0 || others.length > 0 || ['2', '3', '4', '5'].some((k) => (tcIn.lines[k] ?? 0) > 0)
+  let tc: ScTc | null = null
+  if (tcUsed) {
+    // Worksheet line 1: federal total income plus lines b and d, minus lines f–j, m–q, s, t and w.
+    const minus = ['f', 'g', 'i', 'm', 'o', 'p-1', 'p-2', 'p-4', 'p-5', 'q-1', 'q-2', 's', 't', 'w'].reduce((s, k) => s + (L[k] ?? 0), 0)
+    const gross = pos(r(f['9']) + (L['d'] ?? 0) - minus)
+    const ws = states.map((o) => {
+      const l2 = Math.min(gross, r(pos(o.income)))
+      const l3 = gross > 0 ? Math.min(100, Math.round(l2 / gross * 10000) / 100) : 0
+      const l5 = r(L['10'] * l3 / 100)
+      const l6 = r(pos(o.tax))
+      return { state: o.state.trim(), l1: gross, l2, l3, l4: L['10'], l5, l6, l7: Math.min(l5, l6) }
+    })
+    const T: Record<string, number> = { '1': ws.reduce((s, w) => s + w.l7, 0) }
+    for (const k of ['2', '3', '4', '5']) T[k] = r(pos(tcIn.lines[k] ?? 0))
+    T['16'] = T['1'] + T['2'] + T['3'] + T['4'] + T['5'] + others.reduce((s, o) => s + r(o.amount), 0)
+    T['17'] = L['10']
+    T['18'] = Math.min(T['16'], T['17'])
+    tc = { worksheets: ws, lines: T, other: others.map((o) => ({ description: o.description, code: o.code.replace(/\D/g, '').slice(0, 3), amount: r(o.amount) })) }
+  }
+  L['13'] = Math.min(tc ? tc.lines['18'] : r(pos(d.nonrefundableCredits)), pos(L['10'] - L['11'] - L['12']))
   L['14'] = L['11'] + L['12'] + L['13']
   L['15'] = pos(L['10'] - L['14'])
 
@@ -147,5 +179,5 @@ export function computeSouthCarolina(ret: TaxReturnInput, res: TaxReturnResult):
   if (ret.retirement.some((x) => x.code === '1')) issues.push('Retirement income with an early withdrawal penalty does not qualify for the retirement deduction: check lines p-1 and p-2.')
   if (L['34'] > 500 && L['17'] === 0) issues.push('A balance due may mean an underpayment penalty (SC2210).')
 
-  return { lines: L, dependents: { count: depCount, under6, age65: owners.filter(is65).length }, statements, issues, attach }
+  return { tc, lines: L, dependents: { count: depCount, under6, age65: owners.filter(is65).length }, statements, issues, attach }
 }

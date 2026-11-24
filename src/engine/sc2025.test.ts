@@ -93,3 +93,32 @@ test('SC1040: the values are printed on the official form', async () => {
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 SC')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-SC.pdf`, bytes)
 })
+
+test('SC1040TC: worksheets for taxes paid to other states, listed credits and the line 13 limit', async () => {
+  const w = w2(80000)
+  const tc = { otherStates: [{ state: 'nc', income: 20000, tax: 600 }, { state: 'GA', income: 4000, tax: 50 }], lines: { '4': 100 }, other: [{ description: 'Industry partnership', code: '45', amount: 75 }] }
+  const { sc: r, res, ret } = sc(base({ w2s: [w] }), { tc })
+  const T = r.tc!
+  const [nc, ga] = T.worksheets
+  assert.equal(nc.l1, 80000)
+  assert.equal(nc.l3, 25)
+  assert.equal(nc.l4, r.lines['10'])
+  assert.equal(nc.l5, Math.round(r.lines['10'] * 0.25))
+  assert.equal(nc.l7, Math.min(nc.l5, 600))
+  assert.equal(ga.l3, 5)
+  assert.equal(ga.l7, 50)
+  assert.equal(T.lines['1'], nc.l7 + 50)
+  assert.equal(T.lines['16'], T.lines['1'] + 100 + 75)
+  assert.equal(T.other[0].code, '45')
+  assert.equal(r.lines['13'], Math.min(T.lines['18'], r.lines['10'] - r.lines['11'] - r.lines['12']))
+  const packet = buildScPacket(ret, res, r)
+  const f = packet.forms.find((x) => x.id === 'sc1040tc')!
+  assert.deepEqual(f.pages, [0, 1])
+  assert.ok(!packet.notIncluded.some((x) => x.includes('list your credits')))
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const x of packet.forms) await fillForm(lib, await load(x.file), { ...x }, problems)
+  assert.deepEqual(problems, [])
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-SCTC.pdf`, (await buildPdf(lib, packet.forms, load, '2025 SC')).bytes)
+})

@@ -84,13 +84,42 @@ export function formSc1040(ret: TaxReturnInput, res: TaxReturnResult, sc: ScResu
   return { id: 'sc1040', file: 'sc1040.pdf', title: 'South Carolina SC1040', values: {}, draw }
 }
 
+/** SC1040TC (Rev. 3/21/25): a flat form, drawn. Page 1 is the credit list; page 2 holds two worksheets for taxes paid to another state. */
+export function formSc1040tc(ret: TaxReturnInput, sc: ScResult): FormFill | null {
+  const tc = sc.tc
+  if (!tc) return null
+  const draw: Draw[] = []
+  const tp = ret.taxpayer
+  draw.push(at(0, 40, 147, upper(`${tp.firstName} ${tp.lastName}`)), at(0, 466, 147, ssnText(tp.ssn), { size: 10 }))
+  const row = (n: number): number => 252 + 24 * (n - 1) + 7
+  const amt = (n: number, v: number, keep = false): void => { const t = money(v, keep); if (t) draw.push(at(0, 552, row(n), t, { right: true })) }
+  for (const k of [1, 2, 3, 4, 5]) amt(k, tc.lines[String(k)])
+  tc.other.forEach((o, i) => {
+    const n = 6 + i
+    draw.push(at(0, 56, row(n), upper(o.description).slice(0, 45), { size: 9 }))
+    if (o.code) draw.push(at(0, 366, row(n), o.code, { size: 10 }))
+    amt(n, o.amount)
+  })
+  amt(16, tc.lines['16'], true); amt(17, tc.lines['17'], true); amt(18, tc.lines['18'], true)
+  const pages = [0]
+  tc.worksheets.forEach((w, i) => {
+    pages.push(1)
+    const top0 = i === 0 ? 0 : 287
+    draw.push(at(1, 322, 150 + top0, upper(w.state)))
+    const lines: [number, string][] = [[240, money(w.l1, true)], [265, money(w.l2, true)], [290, w.l3.toFixed(2)], [315, money(w.l4, true)], [340, money(w.l5, true)], [366, money(w.l6, true)], [391, money(w.l7, true)]]
+    for (const [top, t] of lines) draw.push(at(1, 550, top + top0 + 8, t, { right: true }))
+  })
+  return { id: 'sc1040tc', file: 'sc-1040tc.pdf', title: 'South Carolina SC1040TC', values: {}, draw, pages: [...new Set(pages)] }
+}
+
 export function buildScPacket(ret: TaxReturnInput, res: TaxReturnResult, sc: ScResult, preparer?: PreparerInfo | null): FormPacket {
   void preparer
-  const forms: FormFill[] = [formSc1040(ret, res, sc)]
+  const forms: FormFill[] = [formSc1040(ret, res, sc), formSc1040tc(ret, sc)].filter((x): x is FormFill => x !== null)
   const notIncluded = [...sc.attach]
   if (sc.dependents.count > 0) notIncluded.push('Page 1: each dependent’s full date of birth (only the year is printed)')
   if (sc.dependents.count > 4) notIncluded.push('Page 1: dependents after the fourth on an attached list')
   if (sc.lines['e'] > 0) notIncluded.push('Line e: attach an explanation of other additions')
-  if (sc.lines['13'] > 0) notIncluded.push('SC1040TC is not filled in here: complete it for the credits on line 13')
+  if (sc.lines['13'] > 0 && !sc.tc) notIncluded.push('SC1040TC: list your credits in the South Carolina section to fill it in (only the line 13 total is entered)')
+  if (sc.tc && ret.sc.tc.otherStates.filter((o) => o.state.trim() && (o.income > 0 || o.tax > 0)).length > 0) notIncluded.push('With SC1040TC, a copy of each return filed with the other state and a complete copy of your federal return')
   return { forms, notIncluded }
 }

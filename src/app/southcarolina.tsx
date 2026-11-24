@@ -7,6 +7,8 @@ import { computeSouthCarolina } from '../engine/sc2025.ts'
 import { buildScPacket } from '../pdf/sc2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { MoneyField, NumberField, Section, TextField, usd } from './fields'
+import { RowList } from './creditrows'
+import { OtherStatesList } from './otherstates'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -36,6 +38,7 @@ export function SouthCarolinaStep({ ret, set, result, preparer }: StepProps & { 
   const names: Record<Owner, string> = { taxpayer: firstName(ret.taxpayer, 'You'), spouse: firstName(ret.spouse, 'Spouse') }
   const packet = buildScPacket(ret, result, sc, preparer)
   const L = sc.lines
+  const putTc = (p: Partial<ScInput['tc']>): void => put({ tc: { ...d.tc, ...p }, nonrefundableCredits: 0 })
   const owes = L['34'] > 0
   const w2s = ret.w2s.filter((w) => owners.includes(w.owner))
   const makePdf = (): void => {
@@ -95,9 +98,31 @@ export function SouthCarolinaStep({ ret, set, result, preparer }: StepProps & { 
         </div>
       </Section>
 
+      <Section title="Tax credits (SC1040TC)" intro="Line 13 of the SC1040. Attach each credit’s schedule; for the credit for taxes paid to another state, attach that state’s return.">
+        <h3>Credit for taxes paid to another state (up to two worksheets)</h3>
+        <OtherStatesList rows={d.tc.otherStates} max={2} empty={() => ({ state: '', income: 0, tax: 0 })} onChange={(rows) => putTc({ otherStates: rows })}
+          fields={[['income', 'Part of your South Carolina gross income taxed by that state', 'Worksheet line 2'], ['tax', 'Net tax due that state on that income', 'Worksheet line 6; the tax on its return, not the amount withheld']]} />
+        <div className="grid">
+          <MoneyField label="Solar energy, small hydropower or geothermal credit (038)" hint="Line 2" value={d.tc.lines['2'] ?? 0} onChange={(n) => putTc({ lines: { ...d.tc.lines, '2': n } })} />
+          <MoneyField label="Excess insurance premium credit (044)" hint="Line 3" value={d.tc.lines['3'] ?? 0} onChange={(n) => putTc({ lines: { ...d.tc.lines, '3': n } })} />
+          <MoneyField label="New jobs credit (004)" hint="Line 4" value={d.tc.lines['4'] ?? 0} onChange={(n) => putTc({ lines: { ...d.tc.lines, '4': n } })} />
+          <MoneyField label="Qualified conservation contribution credit (019)" hint="Line 5" value={d.tc.lines['5'] ?? 0} onChange={(n) => putTc({ lines: { ...d.tc.lines, '5': n } })} />
+        </div>
+        <h3>Other credits (lines 6–15)</h3>
+        <RowList rows={d.tc.other} max={10} noun="credit" empty={() => ({ description: '', code: '', amount: 0 })} onChange={(rows) => putTc({ other: rows })}
+          fields={[['description', 'Credit description', 'text'], ['code', 'Credit code', 'text', 'Three digits, from the SC1040TC code list', (x) => x.replace(/\D/g, '').slice(0, 3)], ['amount', 'Amount', 'money']]} />
+        {sc.tc && (
+          <table className="lines"><tbody>
+            {sc.tc.worksheets.map((w) => <tr key={w.state}><th scope="row">{w.state.toUpperCase()}: lesser of {usd(w.l4)} × {w.l3.toFixed(2)}% = {usd(w.l5)} and {usd(w.l6)}</th><td>{usd(w.l7)}</td></tr>)}
+            <tr><th scope="row"><span className="line-no">16</span>Total nonrefundable credits</th><td>{usd(sc.tc.lines['16'])}</td></tr>
+            <tr className="is-key"><th scope="row"><span className="line-no">18</span>Credits on SC1040 line 13</th><td>{usd(L['13'])}</td></tr>
+          </tbody></table>
+        )}
+      </Section>
+
       <Section title="Credits and refund">
         <div className="grid">
-          <MoneyField label="Other nonrefundable credits (SC1040TC)" value={d.nonrefundableCredits} onChange={(n) => put({ nonrefundableCredits: n })} />
+          {d.nonrefundableCredits > 0 && !sc.tc && <MoneyField label="Other nonrefundable credits (SC1040TC total)" hint="Or list them in the SC1040TC section" value={d.nonrefundableCredits} onChange={(n) => put({ nonrefundableCredits: n })} />}
           <MoneyField label="Tuition tax credit (I-319)" value={d.tuitionCredit} onChange={(n) => put({ tuitionCredit: n })} />
           <MoneyField label="Other refundable credits (line 22)" value={d.refundableCredits} onChange={(n) => put({ refundableCredits: n })} />
           <MoneyField label="Use tax on out-of-state purchases" value={d.useTax} onChange={(n) => put({ useTax: n })} />

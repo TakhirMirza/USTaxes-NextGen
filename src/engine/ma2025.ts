@@ -37,6 +37,36 @@ export function maFpl150(size: number): number {
   return 22590 + 8070 * Math.max(0, size - 1)
 }
 
+/** Schedule HC Table 3 (affordability) by category: rows [up to AGI, percent]; 1 single/MFS no dependents, 2 MFJ no dependents or HOH/MFS one dependent, 3 MFJ with dependents or HOH/MFS two or more. */
+const MA_AFFORD: Record<1 | 2 | 3, [number, number][]> = {
+  1: [[22590, 0], [30120, 2.9], [37650, 4.2], [45180, 5.0], [52710, 7.45], [60240, 7.6], [Infinity, 8.0]],
+  2: [[30660, 0], [40880, 4.3], [51100, 6.2], [61320, 7.4], [71540, 7.45], [81760, 7.6], [Infinity, 8.0]],
+  3: [[38730, 0], [51640, 3.45], [64550, 4.95], [77460, 5.85], [90370, 7.45], [103280, 7.6], [Infinity, 8.0]]
+}
+export function maAffordablePercent(cat: 1 | 2 | 3, agi: number): number {
+  return MA_AFFORD[cat].find(([to]) => agi <= to)![1]
+}
+/** Table 4 monthly premiums by region and age band (0–30, 31–34, 35–39, 40–44, 45–49, 50–54, 55+): [individual, married couple, family]. */
+const MA_PREMIUMS: Record<1 | 2 | 3, [number, number, number][]> = {
+  1: [[350, 699, 905], [374, 748, 956], [384, 767, 976], [411, 821, 1029], [469, 938, 1146], [545, 1089, 1298], [561, 1121, 1330]],
+  2: [[320, 639, 825], [334, 668, 854], [343, 685, 871], [367, 733, 920], [419, 838, 1024], [487, 973, 1159], [501, 1002, 1188]],
+  3: [[445, 890, 1151], [539, 1078, 1378], [553, 1106, 1406], [592, 1183, 1484], [676, 1351, 1652], [785, 1570, 1870], [808, 1616, 1917]]
+}
+export function maPremium(region: 1 | 2 | 3, age: number, col: 0 | 1 | 2): number {
+  const band = age <= 30 ? 0 : age <= 34 ? 1 : age <= 39 ? 2 : age <= 44 ? 3 : age <= 49 ? 4 : age <= 54 ? 5 : 6
+  return MA_PREMIUMS[region][band][col]
+}
+/** Table 2: 500% of the federal poverty level. */
+export const maFpl500 = (size: number): number => 75300 + 26900 * Math.max(0, size - 1)
+/** Table 5 column (A–F) for the family size and AGI (above 150% FPL), and Table 6 monthly penalties. */
+export function maPenaltyColumn(size: number, agi: number): 'A' | 'B' | 'C' | 'D' | 'E' | 'F' {
+  const n = Math.max(0, size - 1)
+  const tops = [30120 + 10760 * n, 37650 + 13450 * n, 45180 + 16140 * n, 60240 + 21520 * n, 75300 + 26900 * n]
+  const i = tops.findIndex((t) => agi <= t)
+  return (['A', 'B', 'C', 'D', 'E'] as const)[i] ?? 'F'
+}
+export const MA_MONTHLY_PENALTY = { A: 25, B: 49, C: 73, D: 113, E: 132, F: 187 }
+
 /** No Tax Status thresholds (not available married filing separately). */
 export function maNoTaxThreshold(fs: TaxReturnInput['filingStatus'], dependents: number): number | null {
   if (fs === 'single') return 8000
@@ -53,6 +83,14 @@ export function maLicLimit(fs: TaxReturnInput['filingStatus'], dependents: numbe
   return null
 }
 
+export interface MaHcResult {
+  l8a: boolean; l8b: boolean | null; l9: boolean | null; l10: boolean | null; l11: boolean | null; l12: boolean | null
+  /** Health Care Penalty Worksheet lines 1–8 (null when no penalty applies). */
+  worksheet: { l1: number; l2: string; l3: number; l4: number; l5: number; l6: number; l7: number; l8: number } | null
+  /** Amount on Form 1 line 35a/35b (0 when appealing). */
+  penalty: number
+}
+
 export interface MaResult {
   lines: Record<string, number>
   scheduleB: { lines: Record<string, number>; interest: number; dividends: number; lossApplied: number; fivePercent: number; shortTerm: number }
@@ -62,7 +100,7 @@ export interface MaResult {
   excessExemptions: number
   noTaxStatus: boolean
   /** Schedule HC: family size, 150% of the federal poverty level and whether a penalty may apply. */
-  health: { familySize: number; fpl150: number; atOrBelowFpl: boolean; askLine6: boolean; penaltyPossible: Record<Owner, boolean> }
+  health: { familySize: number; fpl150: number; atOrBelowFpl: boolean; askLine6: boolean; penaltyPossible: Record<Owner, boolean>; hc: Record<Owner, MaHcResult | null> }
   agi: number
   statements: { owner: Owner; employer: string; wages: number; tax: number }[]
   issues: string[]
@@ -246,7 +284,53 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
   for (const k of MA_DONATION_LETTERS) L[`33${k}`] = r(pos(d.donations[k] ?? 0))
   L['33'] = MA_DONATION_LETTERS.reduce((s, k) => s + L[`33${k}`], 0)
   L['34'] = r(pos(d.useTax))
-  L['35'] = 0
+  // ── Schedule HC lines 8–12 and the Health Care Penalty Worksheet ──
+  const hcFamily = owners.length + deps
+  const hcAgi = r(f['11a'])
+  const hcBelowFpl = hcAgi <= maFpl150(hcFamily)
+  const hcRun = (m: boolean[]): { gaps: number; months: number } => {
+    let gaps = 0; let months = 0; let run = 0
+    for (const x of [...m, true]) { if (!x) run++; else { if (run >= 4) { gaps++; months += run } run = 0 } }
+    return { gaps, months }
+  }
+  const hcGov = (o: Owner): boolean => d.health[o].plans.medicare || d.health[o].plans.military || d.health[o].plans.other
+  const hcDeps = deps
+  const hcCat: 1 | 2 | 3 = fs === 'mfj' ? (hcDeps > 0 ? 3 : 2) : fs === 'single' ? 1 : hcDeps >= 2 ? 3 : hcDeps === 1 ? 2 : 1
+  const hcCol: 0 | 1 | 2 = hcDeps > 0 || fs === 'hoh' ? 2 : fs === 'mfj' ? 1 : 0
+  const hcAfford = hcAgi * maAffordablePercent(hcCat, hcAgi) / 100 / 12
+  const hcOlder = Math.max(...owners.map((o) => (o === 'taxpayer' ? ret.taxpayer.age : ret.spouse.age)))
+  const hcPenalty: Record<Owner, MaHcResult | null> = { taxpayer: null, spouse: null }
+  for (const o of owners) {
+    const h = d.health[o]
+    if (h.coverage === 'full' || (h.coverage === 'part' && hcGov(o)) || hcBelowFpl) continue
+    const run = h.coverage === 'none' ? { gaps: 0, months: 12 } : hcRun(h.months)
+    if (h.coverage !== 'none' && run.gaps === 0) continue
+    const p = d.hcPenalty[o]
+    const x: MaHcResult = { l8a: p.religious, l8b: p.religious ? p.receivedCare : null, l9: null, l10: null, l11: null, l12: null, worksheet: null, penalty: 0 }
+    if (p.religious && !p.receivedCare) { hcPenalty[o] = x; continue }
+    x.l9 = p.certificate.trim() !== ''
+    if (x.l9) { hcPenalty[o] = x; continue }
+    // Line 10: employer-sponsored insurance.
+    x.l10 = p.employerOffered && maAffordablePercent(hcCat, hcAgi) > 0 && (p.employerPremium === 0 || p.employerPremium <= hcAfford)
+    if (p.employerOffered && p.employerPremium === 0) x.l10 = true
+    if (!x.l10) {
+      // Line 11: government-subsidized insurance (income at or below 500% FPL).
+      x.l11 = hcAgi <= maFpl500(hcFamily) && !p.govIneligible
+      // Line 12: affordable private insurance.
+      if (!x.l11) x.l12 = maPremium(d.hcRegion, hcOlder, hcCol) <= hcAfford
+    }
+    if (x.l10 || x.l11 || x.l12) {
+      const col = maPenaltyColumn(hcFamily, hcAgi)
+      const monthly = MA_MONTHLY_PENALTY[col]
+      const l7 = pos(run.months - 3 * run.gaps)
+      x.worksheet = { l1: hcAgi, l2: col, l3: monthly, l4: run.gaps, l5: run.months, l6: 3 * run.gaps, l7, l8: monthly * l7 }
+      x.penalty = p.appeal ? 0 : monthly * l7
+    }
+    hcPenalty[o] = x
+  }
+  L['35a'] = hcPenalty.taxpayer?.penalty ?? 0
+  L['35b'] = hcPenalty.spouse?.penalty ?? 0
+  L['35'] = L['35a'] + L['35b']
   L['37'] = L['32'] + L['33'] + L['34'] + L['35']
 
   // ── Payments and refundable credits ──
@@ -288,7 +372,13 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
   const askLine6 = owners.some(needsLine6)
 
   // ── Notes ──
-  if (penaltyPossible.taxpayer || penaltyPossible.spouse) issues.push('Health care penalty: without coverage for 4 or more months in a row and income above 150% of the poverty level, a penalty may apply. Complete Schedule HC lines 8–12 and the Health Care Penalty Worksheet, then enter the amount on Form 1, line 35.')
+  for (const o of owners) {
+    const x = hcPenalty[o]
+    if (!x?.worksheet) continue
+    const who = o === 'taxpayer' ? 'You' : 'Your spouse'
+    if (d.hcPenalty[o].appeal) issues.push(`${who}: health care penalty of ${x.worksheet.l8.toLocaleString('en-US')} figured but not entered because you are appealing; DOR will contact you.`)
+    else issues.push(`${who}: health care penalty ${x.penalty.toLocaleString('en-US')} (${x.worksheet.l7} months × ${x.worksheet.l3}, Table 6 column ${x.worksheet.l2}) on Form 1 line 35${o === 'taxpayer' ? 'a' : 'b'}.`)
+  }
   if (askLine6 && atOrBelowFpl) issues.push(`Schedule HC line 6: your federal AGI is at or below 150% of the poverty level (${fpl150.toLocaleString('en-US')} for a family of ${familySize}), so no health care penalty applies.`)
   if (owners.some((o) => d.health[o].plans.private && !d.health[o].subscriber.trim())) issues.push('Schedule HC line 4f/4g: enter your insurer and subscriber number from Form MA 1099-HC.')
   if (owners.some((o) => !d.birthDate[o])) issues.push('Schedule HC line 1 asks for date of birth.')
@@ -314,7 +404,7 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
     scheduleD: { lines: D, longTerm: longGain },
     scheduleX: X,
     scheduleY: Y, excessExemptions: excessTotal, noTaxStatus,
-    health: { familySize, fpl150, atOrBelowFpl, askLine6, penaltyPossible },
+    health: { familySize, fpl150, atOrBelowFpl, askLine6, penaltyPossible, hc: hcPenalty },
     agi, statements, issues, attach
   }
 }

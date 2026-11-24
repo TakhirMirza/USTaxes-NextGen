@@ -70,7 +70,12 @@ export function njChildCreditPer(taxable: number): number {
   return 0
 }
 
+export interface NjHccMember { key: string; name: string; ssn: string; under18: boolean; months: boolean[]; exemption: string; moreExemptions: boolean }
+/** Schedule NJ-HCC: everyone covered all year (Part I Yes), or Part II rows with Worksheet L (srp is the payment). Null at or below the filing threshold. */
+export interface NjHcc { allYear: boolean; members: NjHccMember[]; worksheet: Record<string, number> | null }
+
 export interface NjResult {
+  hcc: NjHcc | null
   lines: Record<string, number>
   exemptions: Record<string, { count: number; amount: number }>
   propertyTax: { eligible: boolean; method: 'deduction' | 'credit' | 'none'; deduction: number; benefit: number }
@@ -187,7 +192,43 @@ export function computeNewJersey(ret: TaxReturnInput, res: TaxReturnResult): NjR
   L['50'] = pos(L['45'] - L['49'])
   L['51'] = r(pos(d.useTax))
   L['52'] = 0
-  L['53c'] = 0
+  // ── Line 53c: Schedule NJ-HCC and Worksheet L ──
+  const hccThreshold = fs === 'single' || fs === 'mfs' ? 10000 : 20000
+  const members: NjHccMember[] = [
+    { key: 'taxpayer', name: `${ret.taxpayer.firstName} ${ret.taxpayer.lastName}`.trim(), ssn: ret.taxpayer.ssn, under18: ret.taxpayer.age > 0 && ret.taxpayer.age < 18 },
+    ...(joint ? [{ key: 'spouse', name: `${ret.spouse.firstName} ${ret.spouse.lastName}`.trim(), ssn: ret.spouse.ssn, under18: false }] : []),
+    ...ret.dependents.map((x) => ({ key: x.id, name: x.name, ssn: x.ssn, under18: x.age < 18 }))
+  ].map((m) => ({ ...m, months: d.hcc[m.key]?.months ?? Array(12).fill(true), exemption: d.hcc[m.key]?.exemption ?? '', moreExemptions: d.hcc[m.key]?.moreExemptions ?? false }))
+  let hcc: NjHcc | null = null
+  if (L['29'] > hccThreshold) {
+    const gapsExist = d.missingCoverage && members.some((m) => m.months.some((x) => !x))
+    if (!gapsExist) hcc = { allYear: true, members, worksheet: null }
+    else {
+      const W: Record<string, number> = {}
+      W['1'] = L['27']; W['2'] = L['16b']; W['3'] = r(pos(d.dependentIncome)); W['4'] = W['1'] + W['2'] + W['3']
+      W['5'] = hccThreshold; W['6'] = pos(W['4'] - W['5']); W['7'] = Math.round(W['6'] * 0.025 * 100) / 100
+      const cap = [0, 4908, 9816, 14724, 19632, 24540][Math.min(5, members.length)]
+      const anyCovered = members.some((m) => m.months.some(Boolean))
+      const adults = members.filter((m) => !m.under18)
+      const kids = members.filter((m) => m.under18)
+      if (!anyCovered) {
+        W['II1'] = adults.length * 695; W['II2'] = kids.length * 347.5; W['II3'] = W['II1'] + W['II2']
+        W['II4'] = Math.min(W['II3'], 2085); W['II5'] = W['7']; W['II6'] = Math.max(W['II4'], W['II5']); W['II7'] = cap
+        W['srp'] = Math.min(W['II6'], W['II7'])
+      } else {
+        const unc = (g: NjHccMember[]): number => g.reduce((s, m) => s + m.months.filter((x) => !x).length, 0)
+        W['1a'] = adults.length * 12; W['1c'] = unc(adults); W['1b'] = W['1a'] - W['1c']; W['1d'] = Math.round(W['1c'] * 57.92 * 100) / 100
+        W['2a'] = kids.length * 12; W['2c'] = unc(kids); W['2b'] = W['2a'] - W['2c']; W['2d'] = Math.round(W['2c'] * 28.96 * 100) / 100
+        W['A3'] = W['1d'] + W['2d']; W['A4'] = Math.min(W['A3'], 2085)
+        W['B5'] = W['7']; W['B6'] = members.length * 12; W['B8'] = W['1c'] + W['2c']; W['B7'] = W['B6'] - W['B8']
+        W['B9'] = Math.round(W['B8'] / W['B6'] * 10000) / 100
+        W['B10'] = Math.round(W['B5'] * W['B9']) / 100
+        W['C11'] = Math.max(W['A4'], W['B10']); W['C12'] = cap; W['srp'] = Math.min(W['C11'], W['C12'])
+      }
+      hcc = { allYear: false, members, worksheet: W }
+    }
+  }
+  L['53c'] = hcc?.worksheet ? r(hcc.worksheet['srp']) : 0
   L['54'] = L['50'] + L['51'] + L['52'] + L['53c']
 
   // ── Withholding, payments and refundable credits (55–66) ──
@@ -220,7 +261,7 @@ export function computeNewJersey(ret: TaxReturnInput, res: TaxReturnResult): NjR
   if (L['55'] > 0) attach.push('W-2s and 1099s showing NJ tax withheld')
   if (L['44'] > 0) attach.push('Schedule NJ-COJ and a copy of the other jurisdiction’s return')
   if (L['64'] > 0) attach.push('Copy of federal Form 2441')
-  if (d.missingCoverage) attach.push('Schedule NJ-HCC (health coverage) and the NJ-EZ Enroll form')
+  if (d.currentlyUninsured) attach.push('The NJ-EZ Enroll form (line 53a)')
   if (ex['7'].count > 0) issues.push('Senior 65+ exemption: enclose proof of age (birth certificate or driver’s license) the first time you claim it.')
   if (ex['9'].count > 0) issues.push('Veteran exemption: provide your discharge documentation (DD-214) the first time you claim it.')
   if (L['20a'] > 0 && d.pensionTaxable === null) issues.push('Line 20a uses the federal taxable amount. New Jersey taxes contributory pensions differently (Worksheets A–C): if you contributed after-tax money that NJ already taxed, enter your NJ figures.')
@@ -233,10 +274,12 @@ export function computeNewJersey(ret: TaxReturnInput, res: TaxReturnResult): NjR
   if (L['44'] > 0 && method === 'deduction') issues.push('You claim a credit for taxes paid to other jurisdictions: NJ requires Schedule NJ-COJ and Worksheet I to decide the property tax deduction; check the result.')
   if (res.scheduleD.net < 0) issues.push('Capital losses cannot reduce other New Jersey income and are not carried forward.')
   if (res.schedule1.unemployment > 0 || f['6b'] > 0) issues.push('Social Security and unemployment benefits are not taxed in New Jersey.')
-  if (d.missingCoverage) issues.push('Line 53c: figure the shared responsibility payment on Schedule NJ-HCC (Worksheet L) and enter it yourself.')
+  if (hcc?.worksheet) issues.push(`Line 53c: shared responsibility payment ${L['53c'].toLocaleString('en-US')} (Worksheet L, Part ${'II1' in hcc.worksheet ? 'II' : 'III'}). Keep the worksheet.`)
+  if (L['29'] <= hccThreshold) issues.push('Line 53c: your income on line 29 is at or below the filing threshold, so no shared responsibility payment is due and Schedule NJ-HCC is not needed.')
+  if (members.length > 5 && hcc && !hcc.allYear) issues.push('Schedule NJ-HCC holds five people: enclose a statement listing the others.')
 
   return {
-    lines: L, exemptions: ex,
+    hcc, lines: L, exemptions: ex,
     propertyTax: { eligible, method, deduction: ded, benefit: saved },
     pensionExclusion: { qualifies, maximum, otherQualifies },
     childCredit: { children: young, per },

@@ -59,6 +59,9 @@ const F = {
   '32': 'line 32. Income Tax After Credits. Subtract total of lines 29 through 31 from line 28. Not less than 0',
   '33': 'line 33. Total voluntary fund contributions. Add lines 33a through 33f',
   '34': 'line 34. Use tax due on Internet, mail order and other out-of-state purchases (from worksheet)',
+  '35a': 'line 35a. Your Health Care penalty. Not less than 0 (from worksheet). Enclose Schedule HC',
+  '35b': "line 35b. Spouse's Health Care penalty. Not less than 0 (from worksheet). Enclose Schedule HC",
+  '35': 'line 35. Total health care penalty. Add lines 35a and 35b',
   '37': 'line 37. Income Tax After Credits, Contributions, Use Tax And Hc Penalty. Add lines 32 through 36',
   '38a': 'Line 38a. Massachusetts income tax withheld from Form(s) W-2',
   '38b': 'Line 38b. Massachusetts income tax withheld from Form(s) 1099. Enclose Schedule 62-WH. See instructions',
@@ -220,8 +223,25 @@ export function scheduleMaHc(ret: TaxReturnInput, res: TaxReturnResult, ma: MaRe
       }
     }
   }
+  const yn = (b: boolean): string => (b ? 'Yes' : 'No')
+  const HC_RADIOS: Record<string, [string, string]> = {
+    l8a: ['8a. Religious exemption. Are you claiming an exemption from the requirement to purchase health insurance based on your sincerely-held religious beliefs that cause you to object to substantially all forms of treatment covered by health insurance?', '8a. Religious exemption. Is your spouse claiming an exemption from the requirement to purchase health insurance based on your sincerely-held religious beliefs that cause you to object to substantially all forms of treatment covered by health insurance?'],
+    l8b: ['8b. Received medical health care during the 2025 tax year?', '8b. Spouse Received medical health care during the 2025 tax year?'],
+    l9: ['9 Have you obtained a Certificate of Exemption issued by the Massachusetts Health Connector for the 2025 tax year?', '9 Has your spouse obtained a Certificate of Exemption issued by the Massachusetts Health Connector for the 2025 tax year?'],
+    l10: ['10 Did your employer offer affordable health insurance that met the minimum creditable coverage requirements as determined by completing the Schedule HC Worksheet for line 10?', "10 Did your spouse's employer offer affordable health insurance that met the minimum creditable coverage requirements as determined by completing the Schedule HC Worksheet for line 10?"],
+    l11: ['11 Were you eligible for government-subsidized health insurance as determined by completing the Schedule HC Worksheet for Line 11?', '11 Was your spouse eligible for government-subsidized health insurance as determined by completing the Schedule HC Worksheet for Line 11?'],
+    l12: ['12. Were you able to purchase affordable private health insurance that met the minimum creditable coverage requirements as determined by completing the Schedule HC Worksheet for line 12?', '12. Was your spouse able to purchase affordable private health insurance that met the minimum creditable coverage requirements as determined by completing the Schedule HC Worksheet for line 12?']
+  }
+  for (const [o, i] of [['taxpayer', 0], ['spouse', 1]] as const) {
+    const x = ma.health.hc[o]
+    if (!x) continue
+    for (const k of ['l8a', 'l8b', 'l9', 'l10', 'l11', 'l12'] as const) { const b = x[k]; if (b !== null) values[HC_RADIOS[k][i]] = yn(b) }
+    if (x.l9) values[i === 0 ? 'Section 9. Massachusetts certificate number' : "Section 9. Spouse's Massachusetts certificate number"] = d.hcPenalty[o].certificate.trim().slice(0, 12)
+    if (x.worksheet && d.hcPenalty[o].appeal) { values[`${i === 0 ? 'I wish' : 'My spouse wishes'} to appeal the penalty. I authorize D O R to share this tax return including this schedule with the Massachusetts Health Connector for purposes of deciding this appeal`] = true; pages.push(3) }
+    if (x.l10 !== null) pages.push(3)
+  }
   if (ma.health.penaltyPossible.taxpayer || ma.health.penaltyPossible.spouse) pages.push(3)
-  return { id: 'maschhc', file: 'maschhc.pdf', title: 'Massachusetts Schedule HC', values, pages }
+  return { id: 'maschhc', file: 'maschhc.pdf', title: 'Massachusetts Schedule HC', values, pages: [...new Set(pages)].sort((a, b) => a - b) }
 }
 
 /** Schedule DI: dependent information. */
@@ -325,7 +345,7 @@ export function buildMaPacket(ret: TaxReturnInput, res: TaxReturnResult, ma: MaR
   if (ma.lines['15'] > 0) forms.push(scheduleMaY(ret, ma))
   const notIncluded = [...ma.attach]
   if (ret.dependents.length > 10) notIncluded.push('A statement listing the dependents beyond the first ten (Schedule DI)')
-  if (ma.health.penaltyPossible.taxpayer || ma.health.penaltyPossible.spouse) notIncluded.push('Schedule HC lines 8–12 and the Health Care Penalty Worksheet (penalty on Form 1, line 35)')
+  if (ma.health.hc.taxpayer?.worksheet || ma.health.hc.spouse?.worksheet) notIncluded.push('Keep the Schedule HC worksheets and the Health Care Penalty Worksheet with your records (they are not filed)')
   notIncluded.push('Signatures on page 1')
   return { forms, notIncluded }
 }

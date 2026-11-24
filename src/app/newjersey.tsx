@@ -26,6 +26,8 @@ const KEY = new Set(['42', '54', '79', '80'])
 const DONATIONS: Record<string, string> = { '70': 'Endangered Wildlife Fund', '71': 'Children’s Trust Fund', '72': 'Vietnam Veterans’ Memorial Fund', '73': 'Breast Cancer Research Fund', '74': 'U.S.S. New Jersey Educational Museum' }
 const firstName = (p: Person, fallback: string): string => p.firstName.trim().split(/\s+/)[0] || fallback
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
 export function NewJerseyStep({ ret, set, result, preparer }: StepProps & { preparer: PreparerInfo | null }): ReactElement {
   const d = ret.nj
   const nj = useMemo(() => computeNewJersey(ret, result), [ret, result])
@@ -109,8 +111,35 @@ export function NewJerseyStep({ ret, set, result, preparer }: StepProps & { prep
           <div className="actions"><button type="button" className="button is-quiet" onClick={() => put({ pensionTaxable: null, pensionExcludable: null })}>Use the federal pension amounts</button></div>
         )}
         <div className="checks">
-          <Check label="Someone in my household had no health coverage for part of 2025" hint="Then Schedule NJ-HCC is required" checked={d.missingCoverage} onChange={(on) => put({ missingCoverage: on })} />
+          <Check label="Someone in my household had no health coverage for part of 2025" hint="Schedule NJ-HCC Part II and the shared responsibility payment (line 53c)" checked={d.missingCoverage} onChange={(on) => put({ missingCoverage: on })} />
+          <Check label="Someone in my household does not have health insurance now" hint="Line 53a; enclose the NJ-EZ Enroll form" checked={d.currentlyUninsured} onChange={(on) => put({ currentlyUninsured: on })} />
+          {d.currentlyUninsured && <Check label="Let Get Covered New Jersey help us get coverage" hint="Line 53b" checked={d.getCoveredHelp} onChange={(on) => put({ getCoveredHelp: on })} />}
         </div>
+        {d.missingCoverage && nj.hcc && (
+          <div className="hcc">
+            <p className="why">Check every month each person had minimum essential coverage or an exemption (coverage for part of a month counts as the whole month).</p>
+            {nj.hcc.members.map((m) => {
+              const cur = d.hcc[m.key] ?? { months: Array(12).fill(true), exemption: '', moreExemptions: false }
+              const putM = (q: Partial<typeof cur>): void => put({ hcc: { ...d.hcc, [m.key]: { ...cur, ...q } } })
+              return (
+                <fieldset key={m.key} className="statement">
+                  <legend>{m.name || 'Household member'}{m.under18 ? ' (under 18)' : ''}</legend>
+                  <div className="checks months">
+                    {MONTHS.map((mo, i) => <Check key={mo} label={mo} checked={cur.months[i] !== false} onChange={(on) => putM({ months: cur.months.map((x, j) => (j === i ? on : x)) })} />)}
+                  </div>
+                  <div className="grid">
+                    <TextField label="Exemption number" hint="If an exemption covered some months" autoComplete="off" value={cur.exemption} onChange={(v) => putM({ exemption: v })} />
+                    {cur.exemption.trim() !== '' && <Check label="This person has more than one exemption number" checked={cur.moreExemptions} onChange={(on) => putM({ moreExemptions: on })} />}
+                  </div>
+                </fieldset>
+              )
+            })}
+            <div className="grid">
+              <MoneyField label="Dependents’ income and tax-exempt interest" hint="Worksheet L line 3; include estimates for dependents who do not file" value={d.dependentIncome} onChange={(n) => put({ dependentIncome: n })} />
+            </div>
+            <p className="why">{nj.hcc.worksheet ? `Shared responsibility payment (line 53c): ${usd(L['53c'])}.` : 'Everyone was covered every month: no payment is due.'}</p>
+          </div>
+        )}
         <details className="more">
           <summary>Donate to a New Jersey fund (lines 70–74)</summary>
           <div className="grid">

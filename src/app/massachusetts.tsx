@@ -107,8 +107,39 @@ export function MassachusettsStep({ ret, set, result, preparer }: StepProps & { 
             </fieldset>
           )
         })}
+        {(ma.health.penaltyPossible.taxpayer || ma.health.penaltyPossible.spouse) && (
+          <>
+            <h3>Lines 8–12: exemptions and whether insurance was affordable</h3>
+            <div className="grid">
+              <SelectField label="Region of your county (Table 4 premiums)" value={String(d.hcRegion)} onChange={(v) => put({ hcRegion: Number(v) as 1 | 2 | 3 })}
+                options={[{ value: '1', label: 'Berkshire, Franklin, Hampden or Hampshire' }, { value: '2', label: 'Barnstable, Bristol, Essex, Middlesex, Norfolk, Plymouth, Suffolk or Worcester' }, { value: '3', label: 'Dukes or Nantucket' }]} />
+            </div>
+            {(['taxpayer', 'spouse'] as Owner[]).filter((o) => ma.health.penaltyPossible[o]).map((o) => {
+              const p = d.hcPenalty[o]
+              const x = ma.health.hc[o]
+              const putP = (q: Partial<MaInput['hcPenalty']['taxpayer']>): void => put({ hcPenalty: { ...d.hcPenalty, [o]: { ...p, ...q } } })
+              return (
+                <fieldset key={o} className="statement">
+                  <legend>{o === 'taxpayer' ? 'You' : 'Your spouse'}</legend>
+                  <div className="grid">
+                    <Check label="Religious exemption" hint="Line 8a" checked={p.religious} onChange={(on) => putP({ religious: on })} />
+                    {p.religious && <Check label="Received medical care in 2025" hint="Line 8b" checked={p.receivedCare} onChange={(on) => putP({ receivedCare: on })} />}
+                    <TextField label="Health Connector certificate of exemption number" hint="Line 9; leave blank if none" autoComplete="off" value={p.certificate} onChange={(s) => putP({ certificate: s })} />
+                    <Check label="An employer offered coverage that met MCC for the whole uninsured period" hint="Line 10" checked={p.employerOffered} onChange={(on) => putP({ employerOffered: on })} />
+                    {p.employerOffered && <MoneyField label="Lowest monthly premium for that coverage" hint="Your share, covering your family; 0 if free" value={p.employerPremium} onChange={(n) => putP({ employerPremium: n })} />}
+                    <Check label="Not eligible for subsidized coverage" hint="Line 11: not legally residing in the U.S., offered an employer plan under 9.02% of income, or denied MassHealth / Connector subsidies" checked={p.govIneligible} onChange={(on) => putP({ govIneligible: on })} />
+                    <Check label="Appeal the penalty" hint="No penalty is entered on line 35; DOR and the Health Connector review it" checked={p.appeal} onChange={(on) => putP({ appeal: on })} />
+                  </div>
+                  {x && <p className="why">{x.worksheet
+                    ? `Line ${x.l10 ? '10' : x.l11 ? '11' : '12'}: Yes. Penalty: ${x.worksheet.l7} months × ${usd(x.worksheet.l3)} (column ${x.worksheet.l2}) = ${usd(x.worksheet.l8)}${p.appeal ? ', appealed — not entered on line 35' : ` on Form 1 line 35${o === 'taxpayer' ? 'a' : 'b'}`}.`
+                    : 'No penalty: an exemption applies or insurance was not affordable.'}</p>}
+                </fieldset>
+              )
+            })}
+          </>
+        )}
         <p className="why">{ma.health.penaltyPossible.taxpayer || ma.health.penaltyPossible.spouse
-          ? 'A penalty may apply: finish Schedule HC lines 8–12 and the penalty worksheet in the instructions.'
+          ? `Line 35 health care penalty: ${usd(L['35'])}.`
           : ma.health.askLine6 && ma.health.atOrBelowFpl
             ? `No penalty: your federal AGI is at or below 150% of the poverty level (${usd(ma.health.fpl150)} for ${ma.health.familySize}).`
             : 'No health care penalty applies.'}</p>
