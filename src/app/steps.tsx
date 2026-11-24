@@ -1,6 +1,6 @@
 import { ReactElement, useState } from 'react'
-import type { TaxReturnInput, Owner, BusinessExpenses, Person } from '../engine/model.ts'
-import { EXPENSE_LABELS, PROPERTY_CLASS_LABELS, RENTAL_EXPENSE_LABELS, emptyAsset, emptyK1, emptySale, RENTAL_TYPE_LABELS, emptyBusiness, emptyDependent, emptyProvider, emptyRental, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099Int, empty1099R, emptySocialSecurity } from '../engine/model.ts'
+import type { TaxReturnInput, Owner, BusinessExpenses, Person, ScheduleCInventory } from '../engine/model.ts'
+import { EXPENSE_LABELS, PROPERTY_CLASS_LABELS, RENTAL_EXPENSE_LABELS, emptyAsset, emptyK1, emptySale, RENTAL_TYPE_LABELS, emptyBusiness, emptyInventory, inventoryLines, emptyDependent, emptyProvider, emptyRental, emptyStudent, emptyTransaction, emptyW2, empty1099Div, empty1099Int, empty1099R, emptySocialSecurity } from '../engine/model.ts'
 import type { BasisReporting, CapitalTransaction, DepreciableAsset, K1, PropertySale, HomeOffice, PropertyClass, HsaAccount, RentalExpenses, RentalType } from '../engine/model.ts'
 import { boxFor, gainOf, holdingTermFromDates, isAggregated } from '../engine/capital.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
@@ -306,7 +306,31 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
                 </div>
                 <MoneyField label="Gross receipts or sales" hint="Include all 1099-NEC and 1099-K income" value={b.grossReceipts} onChange={(n) => biz.patch(b.id, { grossReceipts: n })} />
                 <MoneyField label="Returns and allowances" value={b.returnsAndAllowances} onChange={(n) => biz.patch(b.id, { returnsAndAllowances: n })} />
-                <MoneyField label="Cost of goods sold" value={b.costOfGoodsSold} onChange={(n) => biz.patch(b.id, { costOfGoodsSold: n })} />
+                {!b.inventory && <MoneyField label="Cost of goods sold" hint="Line 4; or enter the inventory below" value={b.costOfGoodsSold} onChange={(n) => biz.patch(b.id, { costOfGoodsSold: n })} />}
+                <div className="span-2">
+                  <Check label="I sell products and keep inventory (Part III, lines 33–42)" checked={b.inventory !== null} onChange={(v) => biz.patch(b.id, { inventory: v ? { ...emptyInventory(), purchases: b.costOfGoodsSold } : null })} />
+                  {b.inventory && (() => {
+                    const iv = b.inventory
+                    const setIv = (p: Partial<ScheduleCInventory>): void => biz.patch(b.id, { inventory: { ...iv, ...p } })
+                    const { line40, line42 } = inventoryLines(iv)
+                    return (
+                      <>
+                        <Choice legend="Method used to value closing inventory (line 33)" value={iv.method} onChange={(v) => setIv({ method: v as ScheduleCInventory['method'] })}
+                          options={[{ value: 'cost', label: 'Cost' }, { value: 'lcm', label: 'Lower of cost or market' }, { value: 'other', label: 'Other (attach an explanation)' }]} />
+                        <Check label="Quantities, costs or valuations changed between opening and closing inventory" hint="Line 34; attach an explanation" checked={iv.changed} onChange={(v) => setIv({ changed: v })} />
+                        <div className="grid">
+                          <MoneyField label="Inventory at beginning of year" hint="Line 35; should match last year’s closing inventory" value={iv.beginning} onChange={(n) => setIv({ beginning: n })} />
+                          <MoneyField label="Purchases, less items withdrawn for personal use" hint="Line 36" value={iv.purchases} onChange={(n) => setIv({ purchases: n })} />
+                          <MoneyField label="Cost of labor" hint="Line 37; not amounts paid to yourself" value={iv.labor} onChange={(n) => setIv({ labor: n })} />
+                          <MoneyField label="Materials and supplies" hint="Line 38" value={iv.materials} onChange={(n) => setIv({ materials: n })} />
+                          <MoneyField label="Other costs" hint="Line 39" value={iv.otherCosts} onChange={(n) => setIv({ otherCosts: n })} />
+                          <MoneyField label="Inventory at end of year" hint="Line 41" value={iv.ending} onChange={(n) => setIv({ ending: n })} />
+                        </div>
+                        <p className="why">Line 40: {usd(line40)}. Cost of goods sold (line 42, and line 4): {usd(line42)}.</p>
+                      </>
+                    )
+                  })()}
+                </div>
                 <MoneyField label="Other business income" value={b.otherIncome} onChange={(n) => biz.patch(b.id, { otherIncome: n })} />
                 <details className="more span-2" open={Object.values(b.expenses).some((v) => v > 0)}>
                   <summary>Expenses {res && res.totalExpenses > 0 ? `· ${usd(res.totalExpenses)}` : ''}</summary>

@@ -311,6 +311,23 @@ export interface HomeOffice {
   amount: number
 }
 
+export interface ScheduleCInventory {
+  /** Line 33: method used to value closing inventory (other: attach an explanation). */
+  method: 'cost' | 'lcm' | 'other'
+  /** Line 34: a change in determining quantities, costs or valuations between opening and closing inventory. */
+  changed: boolean
+  /** Lines 35–39 and 41. */
+  beginning: number; purchases: number; labor: number; materials: number; otherCosts: number; ending: number
+}
+export const emptyInventory = (): ScheduleCInventory => ({ method: 'cost', changed: false, beginning: 0, purchases: 0, labor: 0, materials: 0, otherCosts: 0, ending: 0 })
+/** Schedule C Part III lines 40 and 42. */
+export const inventoryLines = (v: ScheduleCInventory): { line40: number; line42: number } => {
+  const line40 = v.beginning + v.purchases + v.labor + v.materials + v.otherCosts
+  return { line40, line42: line40 - v.ending }
+}
+/** Schedule C line 4: Part III line 42 when the inventory lines are filled in, else the amount entered. */
+export const scheduleCCogs = (b: { costOfGoodsSold: number; inventory?: ScheduleCInventory | null }): number => (b.inventory ? inventoryLines(b.inventory).line42 : b.costOfGoodsSold)
+
 export interface ScheduleCBusiness {
   id: string
   owner: Owner
@@ -339,6 +356,8 @@ export interface ScheduleCBusiness {
   grossReceipts: number
   returnsAndAllowances: number
   costOfGoodsSold: number
+  /** Part III (lines 33–41); when set, line 42 replaces costOfGoodsSold. */
+  inventory: ScheduleCInventory | null
   otherIncome: number
   expenses: BusinessExpenses
 }
@@ -2889,7 +2908,7 @@ export const emptyBusiness = (owner: Owner = 'taxpayer'): ScheduleCBusiness => (
   id: newId('biz'), owner, name: '', activity: '', businessCode: '', ein: '', address: '', cityStateZip: '',
   accountingMethod: 'cash', materiallyParticipated: true, startedThisYear: false, required1099s: null, filed1099s: false,
   allAtRisk: true, vehicle: emptyVehicle(), homeOffice: emptyHomeOffice(), assets: [], qbi: { w2Wages: 0, ubia: 0, sstb: false }, grossReceipts: 0, returnsAndAllowances: 0,
-  costOfGoodsSold: 0, otherIncome: 0, expenses: emptyExpenses()
+  costOfGoodsSold: 0, inventory: null, otherIncome: 0, expenses: emptyExpenses()
 })
 export const emptyDependent = (): Dependent => ({
   id: newId('dep'), name: '', relationship: '', age: 0, hasSsn: true, monthsLivedWithYou: 12,
@@ -3100,7 +3119,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
         // Older files kept a home office amount among the expenses; move it to the "already figured" method.
         if (expenses.homeOffice > 0 && homeOffice.method === 'none') { homeOffice.method = 'amount'; homeOffice.amount = expenses.homeOffice }
         expenses.homeOffice = 0
-        return { ...emptyBusiness(), ...b, expenses, homeOffice, vehicle: { ...emptyVehicle(), ...(b?.vehicle ?? {}) }, qbi: { ...emptyBusiness().qbi, ...(b?.qbi ?? {}) }, assets: arr(b?.assets, emptyAsset).map(normalizeAsset) }
+        return { ...emptyBusiness(), ...b, expenses, homeOffice, vehicle: { ...emptyVehicle(), ...(b?.vehicle ?? {}) }, qbi: { ...emptyBusiness().qbi, ...(b?.qbi ?? {}) }, assets: arr(b?.assets, emptyAsset).map(normalizeAsset), inventory: b?.inventory ? { ...emptyInventory(), ...b.inventory } : null }
       })
       : [],
     schedule1A: { ...base.schedule1A, ...(r.schedule1A ?? {}) },

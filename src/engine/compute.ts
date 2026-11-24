@@ -5,6 +5,7 @@
  * schedule is derived here, in IRS order, with whole-dollar rounding at each line.
  */
 import type { Dependent, HomeOffice, HsaAccount, Owner, Person, ScheduleCBusiness, TaxReturnInput } from './model.ts'
+import { scheduleCCogs } from './model.ts'
 import * as R from './rules.ts'
 import { qbiDeduction } from './qbi.ts'
 import { gainOf, holdingTermFromDates, isAggregated, parseDate, withDefaults } from './capital.ts'
@@ -290,7 +291,7 @@ export function homeOfficeDeduction(h: HomeOffice, tentativeProfit: number, item
 }
 
 function scheduleC(b: ScheduleCBusiness, assets: AssetResult[], section179Allowed: number, itemizing: boolean): ScheduleCResult {
-  const grossIncome = b.grossReceipts - b.returnsAndAllowances - b.costOfGoodsSold + b.otherIncome
+  const grossIncome = b.grossReceipts - b.returnsAndAllowances - scheduleCCogs(b) + b.otherIncome
   const depreciation = r(sum(assets.map((a) => a.depreciation)) + section179Allowed)
   const totalExpenses = sum(Object.entries(b.expenses).filter(([k]) => k !== 'homeOffice').map(([, v]) => v)) + depreciation
   const tentativeProfit = r(grossIncome - totalExpenses)
@@ -492,7 +493,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
     const depreciatesVehicle = (b.assets ?? []).some((a) => a.listed === 'auto' || a.listed === 'heavy')
     if (depreciatesVehicle && b.expenses.carAndTruck > 0) issues.push({ level: 'info', step: 'income', message: `${who}: you depreciate a vehicle, so car and truck expenses must be actual costs (gas, insurance, repairs), not the standard mileage rate.` })
     if (!depreciatesVehicle && b.expenses.carAndTruck > 0 && (!b.vehicle.placedInService.trim() || b.vehicle.businessMiles <= 0)) issues.push({ level: 'warning', step: 'income', message: `${who}: car and truck expenses need the vehicle details (Schedule C, Part IV).` })
-    if (b.costOfGoodsSold > 0) issues.push({ level: 'info', step: 'income', message: `${who}: cost of goods sold is printed on Schedule C line 4 and 42. Fill in the inventory lines 33–41 on the printed form by hand.` })
+    if (b.costOfGoodsSold > 0 && !b.inventory) issues.push({ level: 'info', step: 'income', message: `${who}: cost of goods sold is printed on Schedule C lines 4 and 42. Enter the inventory (Part III, lines 33–41) to fill in the rest of Part III.` })
     if (b.homeOffice.method === 'amount' && b.homeOffice.amount > 0) issues.push({ level: 'info', step: 'income', message: `${who}: you entered the home office deduction directly. Attach your own Form 8829 or simplified-method worksheet, or switch to a method the app figures.` })
     if (b.homeOffice.method === 'regular' && (b.homeOffice.mortgageInterest > 0 || b.homeOffice.realEstateTaxes > 0) && input.deductionChoice !== 'standard') issues.push({ level: 'info', step: 'deductions', message: `${who}: if you itemize, enter only the personal part of mortgage interest and real estate taxes on Schedule A; the business part is on Form 8829.` })
     if (b.homeOffice.method === 'simplified' && b.homeOffice.officeSqFt > R.HOME_OFFICE_SIMPLIFIED_MAX_SQFT) issues.push({ level: 'info', step: 'income', message: `${who}: the simplified method counts at most ${R.HOME_OFFICE_SIMPLIFIED_MAX_SQFT} square feet.` })
@@ -558,7 +559,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
   const rentAssets = new Map(rentalsOwned.map((p) => [p.id, (p.assets ?? []).map((a) => assetDepreciation(a, { midQuarter, allow179: false }))]))
   ;[...bizAssets.values(), ...rentAssets.values()].flat().forEach((a) => a.issues.forEach((m) => issues.push({ level: 'warning', step: 'income', message: m })))
   const profitBefore179 = (b: ScheduleCBusiness): number =>
-    b.grossReceipts - b.returnsAndAllowances - b.costOfGoodsSold + b.otherIncome -
+    b.grossReceipts - b.returnsAndAllowances - scheduleCCogs(b) + b.otherIncome -
     sum(Object.entries(b.expenses).filter(([k]) => k !== 'homeOffice').map(([, v]) => v)) - sum((bizAssets.get(b.id) ?? []).map((a) => a.depreciation))
   const electedBy = businesses.map((b) => sum((bizAssets.get(b.id) ?? []).map((a) => a.section179Elected)))
   const s179 = section179({

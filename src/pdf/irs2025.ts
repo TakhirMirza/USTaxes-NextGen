@@ -6,6 +6,7 @@
  * irs2025.test.ts load the real PDFs and enforce that.
  */
 import type { Owner, Person, TaxReturnInput } from '../engine/model.ts'
+import { inventoryLines, scheduleCCogs } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import { careQualifyingPerson, ctcChild, eicChild } from '../engine/compute.ts'
 import * as R from '../engine/rules.ts'
@@ -691,7 +692,8 @@ function scheduleC(ret: TaxReturnInput, res: TaxReturnResult, b: TaxReturnInput[
   const c = res.scheduleC.find((x) => x.id === b.id)
   const e = b.expenses
   const line3 = b.grossReceipts - b.returnsAndAllowances
-  const line5 = line3 - b.costOfGoodsSold
+  const cogs = scheduleCCogs(b)
+  const line5 = line3 - cogs
   const line7 = line5 + b.otherIncome
   const line28 = c ? c.totalExpenses : Object.entries(e).filter(([k]) => k !== 'homeOffice').reduce((t, [, n]) => t + n, 0)
   const line29 = c ? c.tentativeProfit : line7 - line28
@@ -707,7 +709,7 @@ function scheduleC(ret: TaxReturnInput, res: TaxReturnResult, b: TaxReturnInput[
     'Page1[0].c1_4[0]': b.required1099s === true, 'Page1[0].c1_4[1]': b.required1099s === false,
     // Part I
     'f1_10[0]': amt(b.grossReceipts, true), 'f1_11[0]': amt(b.returnsAndAllowances), 'f1_12[0]': amt(line3, true),
-    'f1_13[0]': amt(b.costOfGoodsSold), 'f1_14[0]': amt(line5, true), 'f1_15[0]': amt(b.otherIncome), 'f1_16[0]': amt(line7, true),
+    'f1_13[0]': amt(cogs), 'f1_14[0]': amt(line5, true), 'f1_15[0]': amt(b.otherIncome), 'f1_16[0]': amt(line7, true),
     // Part II
     'f1_17[0]': amt(e.advertising), 'f1_18[0]': amt(e.carAndTruck), 'f1_20[0]': amt(e.contractLabor),
     'f1_22[0]': amt(c?.depreciation ?? 0), 'f1_24[0]': amt(e.insurance), 'f1_27[0]': amt(e.legalAndProfessional), 'f1_28[0]': amt(e.office),
@@ -721,7 +723,13 @@ function scheduleC(ret: TaxReturnInput, res: TaxReturnResult, b: TaxReturnInput[
     v['Line30_ReadOrder[0].f1_44[0]'] = amt(Math.min(b.homeOffice.officeSqFt, R.HOME_OFFICE_SIMPLIFIED_MAX_SQFT))
   }
   if (line31 < 0) { v['Page1[0].c1_7[0]'] = b.allAtRisk; v['Page1[0].c1_7[1]'] = !b.allAtRisk }
-  if (b.costOfGoodsSold > 0) v['f2_8[0]'] = amt(b.costOfGoodsSold)
+  if (b.inventory) {
+    const iv = b.inventory
+    const { line40, line42 } = inventoryLines(iv)
+    v[iv.method === 'cost' ? 'Page2[0].c2_1[0]' : iv.method === 'lcm' ? 'Page2[0].c2_2[0]' : 'Page2[0].c2_3[0]'] = true
+    v[iv.changed ? 'Page2[0].c2_4[0]' : 'Page2[0].c2_4[1]'] = true
+    Object.assign(v, { 'f2_1[0]': amt(iv.beginning, true), 'f2_2[0]': amt(iv.purchases), 'f2_3[0]': amt(iv.labor), 'f2_4[0]': amt(iv.materials), 'f2_5[0]': amt(iv.otherCosts), 'f2_6[0]': amt(line40, true), 'f2_7[0]': amt(iv.ending, true), 'f2_8[0]': amt(line42, true) })
+  } else if (cogs > 0) v['f2_8[0]'] = amt(cogs)
   // Part IV only when no Form 4562 is filed for the vehicle.
   if (e.carAndTruck > 0 && !(b.assets ?? []).some((a) => a.listed === 'auto' || a.listed === 'heavy')) {
     const [mm, dd, yy] = b.vehicle.placedInService.split('/').map((x) => x.trim())

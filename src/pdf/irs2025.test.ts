@@ -426,3 +426,21 @@ test('Form 8582 prints Parts I–VIII and Schedule E line 22 matches the allowed
   if (process.env.PDF_OUT10) await writeFile(process.env.PDF_OUT10, bytes)
 })
 const amt8582 = (n: number): string => (n < 0 ? `-${Math.abs(n).toLocaleString('en-US')}` : n.toLocaleString('en-US'))
+
+test('Schedule C Part III: inventory lines 33–42 set cost of goods sold on line 4', async () => {
+  const ret = busy()
+  ret.businesses[0].inventory = { method: 'lcm', changed: false, beginning: 3000, purchases: 9000, labor: 500, materials: 700, otherCosts: 300, ending: 2500 }
+  const res = computeReturn(ret)
+  assert.equal(res.scheduleC[0].grossIncome, 40000 - 11000)
+  const packet = buildPacket2025(ret, res)
+  const sc = packet.forms.find((f) => f.id.startsWith('sc-'))!
+  assert.equal(sc.values['f2_6[0]'], '13,500')
+  assert.equal(sc.values['f2_8[0]'], '11,000')
+  assert.equal(sc.values['f1_13[0]'], '11,000')
+  assert.equal(sc.values['Page2[0].c2_2[0]'], true)
+  assert.equal(sc.values['Page2[0].c2_4[1]'], true)
+  const problems: FillProblem[] = []
+  await fillForm(lib, await load(sc.file), { ...sc }, problems)
+  assert.deepEqual(problems, [])
+  if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-SCINV.pdf`, (await buildPdf(lib, [sc], load, '2025 Schedule C')).bytes)
+})
