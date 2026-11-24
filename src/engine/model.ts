@@ -1761,6 +1761,9 @@ export type IaRetirementKind = 'standard' | 'military' | 'railroad' | 'nonqualif
 export interface IaInput {
   /** Iowa W-2 details by W-2 id (line 28). */
   w2: Record<string, StateStatement>
+  /** Married filing separately: the spouse's net income (Alternate Tax Worksheet line 1g, entered in Step 2; null if not given) and Iowa taxable income (IA 1040 line 4), for the low-income exemption and the prorated alternate tax. */
+  spouseNet: number | null
+  spouseTaxable: number
   /** Line 28: Iowa tax withheld on 1099s; line 29: 2025 estimated and other payments. */
   withholdingOther: number
   estimatedPayments: number
@@ -1830,14 +1833,16 @@ export interface IaCredit148 {
   carryforward: number; current: number; expired: number
   /** Part IV, when the credit came from a pass-through entity. */
   entityName: string; entityFein: string; disregardedFein: string
+  /** Part V: the award falls under the claim reduction (codes 46, 47, 62, 97, 67 under the agreements listed on IA 148; codes 58 and 59 always). */
+  reduce: boolean
 }
-export const emptyIaCredit148 = (): IaCredit148 => ({ refundable: false, code: '', certificate: '', carryforward: 0, current: 0, expired: 0, entityName: '', entityFein: '', disregardedFein: '' })
+export const emptyIaCredit148 = (): IaCredit148 => ({ refundable: false, code: '', certificate: '', carryforward: 0, current: 0, expired: 0, entityName: '', entityFein: '', disregardedFein: '', reduce: false })
 export const emptyIa = (): IaInput => ({
   w2: {}, withholdingOther: 0, estimatedPayments: 0, birthDate: { taxpayer: '', spouse: '' }, countyNo: '', schoolDistrictNo: '', surtaxRate: 0,
   usObligationInterest: 0, otherStateBondInterest: 0, retirementKind: {}, disabled: { taxpayer: false, spouse: false }, activeDutyPay: 0,
   iowa529: 0, healthInsurance: 0, capitalGainsDeduction: 0, otherAddition: { code: '', amount: 0 }, otherSubtraction: { code: '', amount: 0 }, otherAdjustment: { code: '', amount: 0 },
   tuition: {}, earlyChildhood: {}, volunteerCredit: 0, fuel: emptyIaFuel(), oos: emptyIaOos(), credits148: [],
-  fishWildlife: 0, childAbuse: 0, creditForward: 0, license: { taxpayer: '', spouse: '' }
+  fishWildlife: 0, childAbuse: 0, creditForward: 0, license: { taxpayer: '', spouse: '' }, spouseNet: null, spouseTaxable: 0
 })
 
 export interface KsInput {
@@ -3148,7 +3153,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     ia: (() => {
       const e = emptyIa(); const x: Partial<IaInput> = r.ia ?? {}
       return {
-        ...e, ...x, w2: normalizeStatements(x.w2), birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, disabled: { ...e.disabled, ...(x.disabled ?? {}) },
+        ...e, ...x, spouseNet: typeof x.spouseNet === 'number' ? x.spouseNet : null, w2: normalizeStatements(x.w2), birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, disabled: { ...e.disabled, ...(x.disabled ?? {}) },
         otherAddition: { ...e.otherAddition, ...(x.otherAddition ?? {}) }, otherSubtraction: { ...e.otherSubtraction, ...(x.otherSubtraction ?? {}) }, otherAdjustment: { ...e.otherAdjustment, ...(x.otherAdjustment ?? {}) },
         tuition: { ...(x.tuition ?? {}) }, earlyChildhood: { ...(x.earlyChildhood ?? {}) }, license: { ...e.license, ...(x.license ?? {}) },
         oos: { ...e.oos, ...(x.oos ?? {}) }, fuel: { ...e.fuel, ...(x.fuel ?? {}), rows: { ...(x.fuel?.rows ?? {}) } }, credits148: Array.isArray(x.credits148) ? x.credits148.map((c: Partial<IaCredit148>) => ({ ...emptyIaCredit148(), ...c })) : []

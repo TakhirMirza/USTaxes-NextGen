@@ -150,7 +150,7 @@ export function formCt1040(ret: TaxReturnInput, res: TaxReturnResult, ct1: CtRes
   return { id: 'ct1040', file: 'ct1040.pdf', title: 'Connecticut Form CT-1040', values: {}, draw }
 }
 
-export function formCtEitc(ret: TaxReturnInput, ct1: CtResult): FormFill {
+export function formCtEitc(ret: TaxReturnInput, ct1: CtResult, res?: TaxReturnResult): FormFill {
   const E = ct1.eitc
   const draw: Draw[] = []
   const X = (page: number, x: number, base: number): Draw => ei(page, x, base, 'X', { size: 9 })
@@ -170,8 +170,22 @@ export function formCtEitc(ret: TaxReturnInput, ct1: CtResult): FormFill {
     if (k.disabled) draw.push(X(0, 439, 383 + dy))
   })
   // Page 2: wages with Connecticut withholding are on CT-1040; questions 6, 7 and 11.
-  const unwithheld = ret.w2s.some((w) => !(ret.ct.w2[w.id]?.stateTax))
-  draw.push(X(1, unwithheld ? 335 : 395, 104), X(1, ret.businesses.length ? 407 : 471, 250), X(1, 238, 507))
+  const owners = ret.filingStatus === 'mfj' ? ['taxpayer', 'spouse'] : ['taxpayer']
+  const unw = ret.w2s.filter((w) => owners.includes(w.owner) && !(ret.ct.w2[w.id]?.stateTax) && w.wages > 0)
+  const biz = (res?.scheduleC ?? []).filter((b) => owners.includes(b.owner) && b.netProfit !== 0)
+  draw.push(X(1, unw.length ? 335 : 395, 104), X(1, biz.length || ret.businesses.length ? 407 : 471, 250), X(1, 238, 507))
+  // Lines 6a–6c: W-2s without Connecticut withholding; lines 7a–7c: self-employment.
+  const ein = (s: string): string => { const d = digits(s); return d.length === 9 ? `${d.slice(0, 2)}-${d.slice(2)}` : d }
+  unw.slice(0, 3).forEach((w, i) => {
+    const st = ret.ct.w2[w.id]
+    const top = 181 + 21 * i
+    draw.push(ei(1, 72, top, ein(st?.ein ?? '')), ei(1, 240, top, upper(st?.stateId ?? '').slice(0, 20)), ei(1, 557, top, money(st?.stateIncome ?? w.wages, true), { right: true }))
+  })
+  biz.slice(0, 3).forEach((b, i) => {
+    const src = ret.businesses.find((x) => x.id === b.id)
+    const top = 324 + 20 * i
+    draw.push(ei(1, 72, top, ein(src?.ein ?? '')), ei(1, 557, top, b.netProfit < 0 ? `(${money(-b.netProfit, true)})` : money(b.netProfit, true), { right: true }))
+  })
   draw.push(ei(1, 557, 400, money(E['8'], true), { right: true }), ei(1, 557, 451, money(E['10'], true), { right: true }))
   if (E['15a']) { draw.push(X(1, 63, 678)); draw.push(ei(1, 557, 660, '250', { right: true })) }
   draw.push(ei(1, 557, 719, money(E['16'], true), { right: true }))
@@ -211,11 +225,12 @@ export function formCtDependent(ret: TaxReturnInput): FormFill | null {
 
 export function buildCtPacket(ret: TaxReturnInput, res: TaxReturnResult, ct1: CtResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formCt1040(ret, res, ct1, preparer)]
-  if (ct1.eitc['16'] > 0) forms.push(formCtEitc(ret, ct1))
+  if (ct1.eitc['16'] > 0) forms.push(formCtEitc(ret, ct1, res))
   const dep = formCtDependent(ret)
   if (dep) forms.push(dep)
   const notIncluded = [...ct1.attach]
-  if (ct1.eitc['16'] > 0) notIncluded.push('Schedule CT-EITC lines 6a–6c and 7a–7c: list wages without Connecticut withholding and self-employment income by hand')
+  if (ct1.eitc['16'] > 0 && ret.w2s.filter((w) => !(ret.ct.w2[w.id]?.stateTax) && w.wages > 0).length > 3) notIncluded.push('Schedule CT-EITC line 6: more than three W-2s without Connecticut withholding; list the rest on a separate sheet')
+  if (ct1.eitc['16'] > 0 && res.scheduleC.length) notIncluded.push('Schedule CT-EITC line 7: enter each business’s Connecticut Tax Registration Number in column B if it has one')
   if (ct1.eitcChildren > 3) notIncluded.push('Schedule CT-EITC: children after the third on an attached list')
   return { forms, notIncluded }
 }

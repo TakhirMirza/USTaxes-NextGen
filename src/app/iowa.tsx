@@ -7,7 +7,7 @@ import type { IaCredit148, IaFuel, IaFuelRow, IaInput, IaOutOfState, IaRetiremen
 import { computeIowa } from '../engine/ia2025.ts'
 import { buildIaPacket } from '../pdf/ia2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
-import { Choice, MoneyField, NumberField, Section, TextField, usd } from './fields'
+import { Check, Choice, MoneyField, NumberField, Section, TextField, usd } from './fields'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -91,6 +91,17 @@ export function IowaStep({ ret, set, result, preparer }: StepProps & { preparer:
             <TextField key={`l-${o}`} label={`${names[o]}: driver’s license or state ID number`} hint="Optional" autoComplete="off" value={d.license[o]} onChange={(s) => put({ license: { ...d.license, [o]: s } })} />
           ))}
         </div>
+        {ret.filingStatus === 'mfs' && (
+          <>
+            <Check label="Use our combined income for the low-income exemption and alternate tax" hint="Married filing separately: Step 2 asks for your spouse’s net income" checked={d.spouseNet !== null} onChange={(on) => put({ spouseNet: on ? 0 : null })} />
+            {d.spouseNet !== null && (
+              <div className="grid">
+                <MoneyField label="Spouse’s net income" hint="Alternate Tax Worksheet line 1g from the spouse’s return; Step 2" allowNegative value={d.spouseNet} onChange={(n) => put({ spouseNet: n })} />
+                <MoneyField label="Spouse’s Iowa taxable income" hint="The spouse’s IA 1040 line 4; prorates the alternate tax" value={d.spouseTaxable} onChange={(n) => put({ spouseTaxable: n })} />
+              </div>
+            )}
+          </>
+        )}
       </Section>
 
       <Section title="Iowa withholding and payments" intro="From the state section of each W-2 (boxes 15–17).">
@@ -187,6 +198,7 @@ export function IowaStep({ ret, set, result, preparer }: StepProps & { preparer:
                   {c.entityName.trim() && <TextField label="Pass-through entity FEIN" autoComplete="off" value={c.entityFein} onChange={(s) => set1({ entityFein: s.replace(/[^\d-]/g, '').slice(0, 10) })} />}
                   {c.entityName.trim() && <TextField label="Disregarded entity’s FEIN" hint="Only if reported through one" autoComplete="off" value={c.disregardedFein} onChange={(s) => set1({ disregardedFein: s.replace(/[^\d-]/g, '').slice(0, 10) })} />}
                 </div>
+                {['46', '47', '62', '97', '67'].includes(c.code.trim().replace(/^0+/, '')) && <Check label="This award is subject to the Part V claim reduction" hint="High Quality Jobs agreements (codes 46, 47, 62, 97) or redevelopment awards (67) from 2023 on" checked={c.reduce} onChange={(on) => set1({ reduce: on })} />}
                 {row && <p className="why">Applied this year: {usd(row.F)}; carried forward: {usd(row.H)}.</p>}
                 <div className="actions"><button type="button" className="button" onClick={() => put({ credits148: d.credits148.filter((_, j) => j !== i) })}>Remove this credit</button></div>
               </fieldset>

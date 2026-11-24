@@ -81,6 +81,7 @@ export function formIa1040(ret: TaxReturnInput, res: TaxReturnResult, ia: IaResu
   // ── Step 2 ──
   v['Filing Status'] = { single: 'Single', mfj: 'Married Joint', mfs: 'Married Sep', hoh: 'Head', qss: 'Widow' }[fs]
   if (fs === 'single') v["Single - Claimed on another person's return?"] = ret.canBeClaimedAsDependent ? 'Yes' : 'No'
+  if (fs === 'mfs' && d.spouseNet !== null) { v["Spouse's net income"] = String(Math.round(d.spouseNet)); v["Spouse's net income (cents)"] = '00' }
   // ── Step 3 ──
   v['a Personal Credit. Enter 1 (enter 2 if filing status 2 or 4)'] = String(ia.step3.a)
   money(F.IIIa, L.IIIa, true)
@@ -218,7 +219,25 @@ export function formIa148(ret: TaxReturnInput, ia: IaResult): FormFill | null {
     v[`${n}N. Pass-through entity FEIN`] = digits(c.entityFein)
     if (c.disregardedFein.trim()) v[`${n}O. Disregarded entity’s FEIN`] = digits(c.disregardedFein)
   })
-  return { id: 'ia148', file: 'ia-148.pdf', title: 'Iowa IA 148', values: v }
+  // Part V: Section A (page 3) and Section B (page 4).
+  const pages = [0, 1]
+  for (const [rows, sfx, liab, label, page] of [[ia.partV.A, 'V', ia.partV.liabilityA, 'Tax liability after specified nonrefundable tax credits', 2], [ia.partV.B, 'B', ia.partV.liabilityB, 'Tax liability after refundable tax credits', 3]] as const) {
+    if (!rows.length) continue
+    pages.push(page)
+    v[label] = String(Math.round(liab))
+    rows.slice(0, 10).forEach((x, i) => {
+      const n = i + 1
+      v[`${n}A. Tax Credit Code ${sfx}`] = x.code
+      if (x.certificate) v[`${n}B. Certificate Number ${sfx}`] = x.certificate
+      dollars(v, `${n}C. Tax liability before claim ${sfx}`, x.C, true, `${n}C. Tax liability before claim (cents) ${sfx}`)
+      dollars(v, `${n}D. Tentative tax credit claim ${sfx}`, x.D, true, `${n}D. Tentative tax credit claim (cents) ${sfx}`)
+      dollars(v, `${n}E. Remaining tax liablity after tax credit (C minus D) ${sfx}`, x.E, true, `${n}E. Total available (add columns C and D) (cents) ${sfx}`)
+      dollars(v, `${n}F. Tax credit claim subject to limitation (D minus C) ${sfx}`, x.F, true, `${n}F. Tax credit claim subject to limitation (D minus C) (cents) ${sfx}`)
+      dollars(v, `${n}G. Tax credit claim reduction (F x 0.05) ${sfx}`, x.G, true, `${n}G. Tax credit claim reduction (F x 0.05) (cents) ${sfx}`)
+      dollars(v, `${n}H. Allowable tax credit claim (D minus G) ${sfx}`, x.H, true, `${n}H. Allowable tax credit claim (D minus G) (cents) ${sfx}`)
+    })
+  }
+  return { id: 'ia148', file: 'ia-148.pdf', title: 'Iowa IA 148', values: v, pages }
 }
 
 const FUEL_FIELDS: Record<IaFuelRow, [invoice: string, hwy: string, claimed: string, paid: string, sales: string, credit: string]> = {
@@ -255,7 +274,7 @@ export function formIa4136(ret: TaxReturnInput, ia: IaResult): FormFill | null {
 
 export function buildIaPacket(ret: TaxReturnInput, res: TaxReturnResult, ia: IaResult, preparer?: PreparerInfo | null): FormPacket {
   const notIncluded = [...ia.attach]
-  if (ret.filingStatus === 'mfs') notIncluded.push('Step 2: your spouse’s Iowa taxable income')
+  if (ret.filingStatus === 'mfs' && ret.ia.spouseNet === null) notIncluded.push('Step 2: your spouse’s net income (enter it in the Iowa section)')
   const forms = [formIa1040(ret, res, ia, preparer), formIa130(ret, ia), formIa148(ret, ia), formIa4136(ret, ia)]
   return { forms: forms.filter((x): x is FormFill => x !== null), notIncluded }
 }
