@@ -169,11 +169,18 @@ export function formNmPit1(ret: TaxReturnInput, res: TaxReturnResult, nm: NmResu
 }
 
 /** PIT-CR Supplemental (credits 6–30; a flat page, drawn). */
-export function formNmPitCrSupplemental(ret: TaxReturnInput, nm: NmResult): FormFill | null {
+export function formNmPitCrSupplemental(ret: TaxReturnInput, nm: NmResult): FormFill[] {
   void nm
-  const cr = ret.nm.crCredits.filter((x) => x.code.trim() && (x.applied > 0 || x.refund > 0)).slice(5, 30)
-  if (!cr.length) return null
+  const all = ret.nm.crCredits.filter((x) => x.code.trim() && (x.applied > 0 || x.refund > 0)).slice(5)
+  const sheets: FormFill[] = []
+  for (let k = 0; k < all.length; k += 25) sheets.push(pitCrSheet(ret, all.slice(k, k + 25), k / 25))
+  return sheets
+}
+
+/** One PIT-CR Supplemental page: up to 25 credits on the rows printed 6–30 (a second sheet holds credits 31–55, and so on). */
+function pitCrSheet(ret: TaxReturnInput, cr: NonNullable<TaxReturnInput['nm']['crCredits']>, n: number): FormFill {
   const draw: Draw[] = [t(0, 40, 666, upper(`${ret.taxpayer.firstName} ${ret.taxpayer.lastName}`)), t(0, 449, 661, digits(ret.taxpayer.ssn), 10)]
+  if (n > 0) draw.push(t(0, 330, 666, `SHEET ${n + 1}: CREDITS ${6 + 25 * n}–${30 + 25 * n}`, 8))
   cr.forEach((x, i) => {
     const y = 565 - 11.96 * i
     draw.push(t(0, 60, y, upper(x.code).slice(0, 3), 8), t(0, 124, y, upper(x.approval).slice(0, 30), 8))
@@ -181,12 +188,12 @@ export function formNmPitCrSupplemental(ret: TaxReturnInput, nm: NmResult): Form
     if (x.refund > 0) draw.push({ ...money(0, 572, y, x.refund), size: 8 })
   })
   draw.push(money(0, 392, 207, cr.reduce((s, x) => s + Math.max(0, x.applied), 0)), money(0, 572, 179, cr.reduce((s, x) => s + Math.max(0, x.refund), 0)))
-  return { id: 'nm-pitcrs', file: 'nm-pitcrs.pdf', title: 'New Mexico PIT-CR Supplemental', values: {}, draw }
+  return { id: n === 0 ? 'nm-pitcrs' : `nm-pitcrs-${n + 1}`, file: 'nm-pitcrs.pdf', title: n === 0 ? 'New Mexico PIT-CR Supplemental' : `New Mexico PIT-CR Supplemental (sheet ${n + 1})`, values: {}, draw }
 }
 
 export function buildNmPacket(ret: TaxReturnInput, res: TaxReturnResult, nm: NmResult, preparer?: PreparerInfo | null): FormPacket {
   const drawn = ['Schedule PIT-ADJ', 'Schedule PIT-RC', 'Schedule PIT-S (dependents 6 and up)', 'Schedule PIT-D']
   const notIncluded = nm.attach.filter((x) => !drawn.includes(x))
   notIncluded.push('Driver’s license or state ID number, state and expiration date under each signature (or NONE / DECLINED)')
-  return { forms: [formNmPit1(ret, res, nm, preparer), formNmPitCrSupplemental(ret, nm)].filter((x): x is FormFill => x !== null), notIncluded }
+  return { forms: [formNmPit1(ret, res, nm, preparer), ...formNmPitCrSupplemental(ret, nm)], notIncluded }
 }

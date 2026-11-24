@@ -473,3 +473,20 @@ test('Schedule C (Form 8995-A) nets a loss and the 2024 carryforward against the
   assert.deepEqual(problems, [])
   if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-8995AC.pdf`, bytes)
 })
+
+test('a rental counted as a trade or business joins the QBI deduction', () => {
+  const base0: TaxReturnInput = { ...emptyReturn(), filingStatus: 'single', taxpayer: { ...emptyReturn().taxpayer, firstName: 'Ana', lastName: 'Lee', ssn: '123456789', age: 40 }, w2s: [w2('taxpayer', 60000, 6000)] }
+  const rental = { ...emptyRental(), address: '9 Elm St', rents: 30000, expenses: { ...emptyRental().expenses, taxes: 4000, repairs: 6000 } }
+  const off = computeReturn({ ...base0, rentals: [rental] })
+  assert.equal(off.qbi.deduction, 0)
+  const on = computeReturn({ ...base0, rentals: [{ ...rental, qbi: { trade: true, w2Wages: 0, ubia: 0 } }] })
+  const net = on.scheduleE.properties[0].net
+  assert.ok(net > 0)
+  assert.equal(on.qbi.form, '8995')
+  assert.equal(on.qbi.totalQbi, net)
+  assert.equal(on.qbi.deduction, Math.min(Math.round(net * 0.2), on.qbi.incomeLimit))
+  const packet = buildPacket2025({ ...base0, rentals: [{ ...rental, qbi: { trade: true, w2Wages: 0, ubia: 0 } }] }, on)
+  const f = packet.forms.find((x) => x.id === '8995')!
+  assert.ok(Object.values(f.values).includes('9 Elm St'))
+  assert.ok(Object.values(f.values).includes('123-45-6789'))
+})

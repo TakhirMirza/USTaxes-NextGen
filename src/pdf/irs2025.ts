@@ -891,6 +891,8 @@ function form8960(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
 // ── Form 8995 / 8995-A ───────────────────────────────────────────────────────
 const businessTin = (ret: TaxReturnInput, id: string): string => {
   const b = ret.businesses.find((x) => x.id === id)
+  const rental = ret.rentals.find((x) => x.id === id)
+  if (rental) return ssnDashed((rental.owner === 'spouse' ? ret.spouse : ret.taxpayer).ssn)
   if (!b) return ''
   const ein = digits(b.ein)
   if (ein.length === 9) return `${ein.slice(0, 2)}-${ein.slice(2)}`

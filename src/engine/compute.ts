@@ -907,11 +907,18 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
       qbi: r(profit - seShare - healthShare), w2Wages: pos(b.qbi.w2Wages), ubia: pos(b.qbi.ubia)
     }
   })
+  // Rentals that are a trade or business: the income (or the loss allowed this year) on Schedule E.
+  const rentalQbi = rentalsIn.filter((p) => p.qbi?.trade).map((p) => {
+    const x = rentalResults.find((y) => y.id === p.id)
+    const person = p.owner === 'spouse' ? input.spouse : input.taxpayer
+    const amount = x ? (x.net > 0 ? x.net : -x.line22) : 0
+    return { id: p.id, name: p.address.trim() || 'Rental real estate', tin: person.ssn, sstb: false, qbi: r(amount), w2Wages: pos(p.qbi.w2Wages), ubia: pos(p.qbi.ubia) }
+  })
   const k1Qbi = k1In.filter((k) => k.qbi.income !== 0).map((k) => ({
     id: k.id, name: k.entityName.trim() || 'Schedule K-1', tin: k.ein, sstb: k.qbi.sstb, qbi: r(k.qbi.income), w2Wages: pos(k.qbi.w2Wages), ubia: pos(k.qbi.ubia)
   }))
   const qbi = qbiDeduction({
-    fs, taxableIncomeBeforeQbi: tiBeforeQbi, netCapitalGain: netCapitalGainForQbi, businesses: [...qbiInputs, ...k1Qbi],
+    fs, taxableIncomeBeforeQbi: tiBeforeQbi, netCapitalGain: netCapitalGainForQbi, businesses: [...qbiInputs, ...rentalQbi, ...k1Qbi],
     priorLoss: input.qbiCarryforward.business, priorReitLoss: input.qbiCarryforward.reitPtp,
     reitPtp: sum(input.dividends.map((d) => pos(d.section199ADividends)))
   })
@@ -925,7 +932,8 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
     if (qbi.businesses.some((b) => !b.excluded && b.line2 > 0 && b.line4 === 0 && b.line7 === 0)) issues.push({ level: 'warning', step: 'income', message: 'Your taxable income is above the QBI threshold, so the deduction depends on W-2 wages paid and property (UBIA) for each business. Enter them under the business if it had employees or property; otherwise the deduction may be limited or zero.' })
   }
   if (qbi.lossCarryforward > 0) issues.push({ level: 'info', step: 'review', message: `Qualified business loss of $${qbi.lossCarryforward.toLocaleString()} carries forward to ${R.TAX_YEAR + 1} (Form 8995 line 16).` })
-  if (input.rentals.some((x) => x.rents > 0)) issues.push({ level: 'info', step: 'income', message: 'Rental income is not included in the QBI deduction. A rental that qualifies as a trade or business (for example under the Rev. Proc. 2019-38 safe harbor) needs to be added by hand.' })
+  if (input.rentals.some((x) => x.rents > 0 && !x.qbi?.trade)) issues.push({ level: 'info', step: 'income', message: 'Rental income is left out of the QBI deduction unless you mark the rental as a trade or business (for example under the Rev. Proc. 2019-38 safe harbor, attach the safe-harbor statement).' })
+  if (input.rentals.some((x) => x.qbi?.trade)) issues.push({ level: 'info', step: 'review', message: 'A rental counted for the QBI deduction under the Rev. Proc. 2019-38 safe harbor needs the signed safe-harbor statement attached to the return.' })
   const line14 = line12 + line13a + line13b
   const line15 = pos(line11 - line14)
 

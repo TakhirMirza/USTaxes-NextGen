@@ -405,6 +405,8 @@ export interface RentalProperty {
   assets: DepreciableAsset[]
   /** Loss from this property not allowed in earlier years (2024 Form 8582). */
   priorUnallowed: number
+  /** The rental is a trade or business for the QBI deduction (for example the Rev. Proc. 2019-38 safe harbor: 250+ hours of rental services, separate books); W-2 wages and UBIA for Form 8995-A. */
+  qbi: { trade: boolean; w2Wages: number; ubia: number }
 }
 
 export interface HsaAccount {
@@ -2166,13 +2168,16 @@ export interface HiInput {
   /** Line 46: applied to 2026 estimated tax. Occupations for the signature block. */
   creditForward: number
   occupation: Record<Owner, string>
+  /** Lines 51–52: Hawaii gross receipts (null = Schedule C gross receipts) and rents (null = Schedule E rents), main activity and product, and the Hawaii Tax I.D. (GE) numbers. */
+  activity: { grossReceipts: number | null; activity: string; product: string; businessGe: string; grossRents: number | null; rentalGe: string }
 }
 export const emptyHi = (): HiInput => ({
   w2: {}, withholdingOther: 0, estimatedPayments: 0, priorYearApplied: 0, extensionPayment: 0, retirementKind: {}, wageDifference: 0, otherStateBondInterest: 0,
   otherAdditions: 0, guardPay: 0, housingAccount: 0, usObligationInterest: 0, otherSubtractions: 0, disabled: { taxpayer: false, spouse: false },
   rentPaid: 0, rentExclusions: 0, rentalAddress: '', carSeats: 0, refundableCredits: 0, nonrefundableCredits: 0, cr: { lines: {}, energy: '', energy28: '', carry: {} },
   schools: { taxpayer: false, spouse: false }, libraries: { taxpayer: false, spouse: false }, violence: { taxpayer: false, spouse: false },
-  electionFund: { taxpayer: false, spouse: false }, creditForward: 0, occupation: { taxpayer: '', spouse: '' }
+  electionFund: { taxpayer: false, spouse: false }, creditForward: 0, occupation: { taxpayer: '', spouse: '' },
+  activity: { grossReceipts: null, activity: '', product: '', businessGe: '', grossRents: null, rentalGe: '' }
 })
 
 /** Idaho Form 39R line 8e: which 1099-R benefits qualify for the retirement benefits deduction. */
@@ -2883,7 +2888,7 @@ export const RENTAL_TYPE_LABELS: Record<RentalType, string> = {
 }
 export const emptyRental = (owner: Owner = 'taxpayer'): RentalProperty => ({
   id: newId('rent'), owner, address: '', type: 'single', fairRentalDays: 365, personalUseDays: 0, activeParticipation: true,
-  rents: 0, royalties: 0, expenses: emptyRentalExpenses(), assets: [], priorUnallowed: 0
+  rents: 0, royalties: 0, expenses: emptyRentalExpenses(), assets: [], priorUnallowed: 0, qbi: { trade: false, w2Wages: 0, ubia: 0 }
 })
 export const emptyAsset = (propertyClass: PropertyClass = '5'): DepreciableAsset => ({
   id: newId('asset'), description: '', placedInService: '', cost: 0, businessPct: 100, propertyClass, section179: 0,
@@ -3124,7 +3129,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       : [],
     schedule1A: { ...base.schedule1A, ...(r.schedule1A ?? {}) },
     itemized: { ...base.itemized, ...(r.itemized ?? {}) },
-    rentals: Array.isArray(r.rentals) ? r.rentals.map((x) => ({ ...emptyRental(), ...x, expenses: { ...emptyRentalExpenses(), ...(x?.expenses ?? {}) }, assets: arr(x?.assets, emptyAsset).map(normalizeAsset) })) : [],
+    rentals: Array.isArray(r.rentals) ? r.rentals.map((x) => ({ ...emptyRental(), ...x, qbi: { ...emptyRental().qbi, ...(x?.qbi ?? {}) }, expenses: { ...emptyRentalExpenses(), ...(x?.expenses ?? {}) }, assets: arr(x?.assets, emptyAsset).map(normalizeAsset) })) : [],
     rentalForms1099: { ...base.rentalForms1099, ...(r.rentalForms1099 ?? {}) },
     hsa: normalizeHsa(r.hsa, r.adjustments?.hsaDeduction ?? 0),
     adjustments: { ...base.adjustments, ...(r.adjustments ?? {}), hsaDeduction: 0 },
@@ -3212,7 +3217,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       const e = emptyHi(); const x: Partial<HiInput> = r.hi ?? {}
       const pair = (k: 'disabled' | 'schools' | 'libraries' | 'violence' | 'electionFund') => ({ ...e[k], ...(x[k] ?? {}) })
       return {
-        ...e, ...x, cr: { ...e.cr, ...(x.cr ?? {}), lines: { ...(x.cr?.lines ?? {}) }, carry: { ...(x.cr?.carry ?? {}) } }, w2: normalizeStatements(x.w2), retirementKind: { ...(x.retirementKind ?? {}) }, disabled: pair('disabled'), schools: pair('schools'),
+        ...e, ...x, activity: { ...e.activity, ...(x.activity ?? {}) }, cr: { ...e.cr, ...(x.cr ?? {}), lines: { ...(x.cr?.lines ?? {}) }, carry: { ...(x.cr?.carry ?? {}) } }, w2: normalizeStatements(x.w2), retirementKind: { ...(x.retirementKind ?? {}) }, disabled: pair('disabled'), schools: pair('schools'),
         libraries: pair('libraries'), violence: pair('violence'), electionFund: pair('electionFund'), occupation: { ...e.occupation, ...(x.occupation ?? {}) }
       }
     })(),

@@ -274,7 +274,6 @@ export function computeNewMexico(ret: TaxReturnInput, res: TaxReturnResult): NmR
   if (L['11'] + L['15'] > 0) attach.push('Schedule PIT-ADJ')
   if (L['24'] > 0) attach.push('Schedule PIT-RC')
   if (L['21'] + L['26'] > 0) attach.push('Schedule PIT-CR and the claim form and approval for each credit')
-  if (cr.length > 30) attach.push('PIT-CR Supplemental for credits 31 and up — not filled in here (one supplemental sheet holds credits 6–30)')
   if (L['20'] > 0) attach.push(`The Line 20 worksheet and a copy of your ${os.name.trim() || 'other state’s'} return`)
   if (ret.dependents.length > 5) attach.push('Schedule PIT-S (dependents 6 and up)')
   if (R['22'] > 0) attach.push('The Child Day Care Credit Worksheet and a Form PIT-CG from each caregiver')

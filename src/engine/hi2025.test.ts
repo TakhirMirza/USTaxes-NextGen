@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import * as lib from 'pdf-lib'
 import { computeReturn } from './compute.ts'
-import { empty1099R, emptyDependent, emptyProvider, emptyReturn, emptySocialSecurity, emptyW2 } from './model.ts'
+import { empty1099R, emptyDependent, emptyProvider, emptyBusiness as emptyBusinessHi, emptyRental as emptyRentalHi, emptyReturn, emptySocialSecurity, emptyW2 } from './model.ts'
 import type { HiInput, TaxReturnInput } from './model.ts'
 import { computeHawaii, hiCareDecimal, hiFoodCreditPer, hiTax } from './hi2025.ts'
 import { buildHiPacket } from '../pdf/hi2025.ts'
@@ -193,4 +193,18 @@ test('HI Schedule CR by line: refundable lines, nonrefundable credits applied in
   assert.deepEqual(problems, [])
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 HI')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-HICR.pdf`, bytes)
+})
+
+test('HI lines 51–52: Hawaii gross receipts, rents and GE numbers', () => {
+  const r0 = emptyReturn()
+  const biz = { ...emptyBusinessHi(), activity: 'Surf lessons', grossReceipts: 30000 }
+  const rental = { ...emptyRentalHi(), address: '1 Kalia Rd', rents: 24000 }
+  const { hi: r, res, ret } = hi(base({ w2s: [w2(50000)], businesses: [biz], rentals: [rental] }), { activity: { ...r0.hi.activity, businessGe: 'GE-123-456-7890-01', rentalGe: '' } })
+  const v = buildHiPacket(ret, res, r).forms[0].values
+  assert.equal(v['51_y'], true)
+  assert.equal(v['51'], '30000')
+  assert.equal(v['51_activity'], 'SURF LESSONS')
+  assert.equal(v['51_id'], '123-456-7890-01')
+  assert.equal(v['52'], '24000')
+  assert.ok(r.issues.some((t) => t.includes('GE')))
 })

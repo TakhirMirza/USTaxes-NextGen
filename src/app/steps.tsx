@@ -458,7 +458,14 @@ export function IncomeStep({ ret, set, result }: StepProps): ReactElement {
                   onChange={(assets) => rent.patch(x.id, { assets })} /></div>
                 <div className="span-2 checks">
                   <Check label="I actively participate (I approve tenants, set rents, or approve repairs)" hint="Needed to deduct up to $25,000 of rental losses" checked={x.activeParticipation} onChange={(v) => rent.patch(x.id, { activeParticipation: v })} />
+                  {x.type !== 'royalties' && <Check label="Count this rental for the QBI deduction (trade or business)" hint="For example the Rev. Proc. 2019-38 safe harbor: separate books and 250+ hours of rental services a year; attach the safe-harbor statement" checked={x.qbi.trade} onChange={(v) => rent.patch(x.id, { qbi: { ...x.qbi, trade: v } })} />}
                 </div>
+                {x.qbi.trade && (
+                  <>
+                    <MoneyField label="W-2 wages paid for the rental" hint="Form 8995-A, only above the QBI threshold" value={x.qbi.w2Wages} onChange={(n) => rent.patch(x.id, { qbi: { ...x.qbi, w2Wages: n } })} />
+                    <MoneyField label="UBIA of qualified property" hint="Unadjusted basis of the building and other depreciable property; Form 8995-A" value={x.qbi.ubia} onChange={(n) => rent.patch(x.id, { qbi: { ...x.qbi, ubia: n } })} />
+                  </>
+                )}
                 {x.type !== 'royalties' && x.type !== 'selfrental' && (
                   <MoneyField label="Loss not allowed in earlier years" hint={`This property’s unallowed loss from your ${TAX_YEAR - 1} Form 8582`} value={x.priorUnallowed} onChange={(n) => rent.patch(x.id, { priorUnallowed: n })} />
                 )}

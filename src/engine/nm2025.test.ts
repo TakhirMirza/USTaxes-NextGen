@@ -164,3 +164,14 @@ test('PIT-CR Supplemental lists credits six and up', async () => {
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 NM')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-NMCR.pdf`, bytes)
 })
+
+test('PIT-CR Supplemental: a second sheet for credits 31 and up', async () => {
+  const crs = Array.from({ length: 33 }, (_, i) => ({ code: 'A01', approval: `AP-${i + 1}`, applied: 1, refund: 0 }))
+  const { nm: r, res, ret } = nm(base({ w2s: [w2(80000)] }), { crCredits: crs })
+  const packet = buildNmPacket(ret, res, r)
+  const ids = packet.forms.map((f) => f.id)
+  assert.deepEqual(ids, ['nmpit1', 'nm-pitcrs', 'nm-pitcrs-2'])
+  const second = packet.forms.find((f) => f.id === 'nm-pitcrs-2')!
+  assert.ok(second.draw!.some((d) => d.text === 'AP-31') && second.draw!.some((d) => d.text === 'AP-33'))
+  assert.ok(!r.attach.some((x) => x.includes('31 and up')))
+})

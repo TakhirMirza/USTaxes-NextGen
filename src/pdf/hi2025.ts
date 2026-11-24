@@ -138,10 +138,26 @@ export function formHiN11(ret: TaxReturnInput, res: TaxReturnResult, hi: HiResul
   }
   money('48', L['48'])
   money('49', L['49'])
-  // Lines 51–53: Schedule C / E / F questions (Hawaii gross receipts and GE license are left for you).
-  v[res.scheduleC.length ? '51_y' : '51_n'] = true
-  v[ret.rentals.length ? '52_y' : '52_n'] = true
+  // Lines 51–53: Schedule C / E / F questions with Hawaii gross receipts or rents and the GE license numbers.
+  const act = d.activity
+  const hasC = res.scheduleC.length > 0
+  const hasE = ret.rentals.length > 0
+  v[hasC ? '51_y' : '51_n'] = true
+  v[hasE ? '52_y' : '52_n'] = true
   v['53_n'] = true
+  const ge = (s: string): string => s.toUpperCase().replace(/^GE[-\s]*/, '').replace(/[^0-9A-Z-]/g, '')
+  if (hasC) {
+    const biz = ret.businesses.filter((b) => joint || b.owner === 'taxpayer')
+    const top = [...biz].sort((a, b) => b.grossReceipts - a.grossReceipts)[0]
+    v['51'] = String(Math.round(act.grossReceipts ?? biz.reduce((s, b) => s + Math.max(0, b.grossReceipts - b.returnsAndAllowances), 0)))
+    v['51_activity'] = upper(act.activity || top?.activity || '').slice(0, 14)
+    v['51_product'] = upper(act.product || top?.activity || '').slice(0, 14)
+    if (act.businessGe.trim()) v['51_id'] = ge(act.businessGe)
+  }
+  if (hasE) {
+    v['52'] = String(Math.round(act.grossRents ?? ret.rentals.reduce((s, x) => s + Math.max(0, x.rents), 0)))
+    if (act.rentalGe.trim()) v['52_id'] = ge(act.rentalGe)
+  }
   if (d.electionFund.taxpayer) v['election_fund_p'] = true
   if (joint && d.electionFund.spouse) v['election_fund_s'] = true
   v['occupation_p'] = upper(d.occupation.taxpayer || tp.occupation).slice(0, 24)

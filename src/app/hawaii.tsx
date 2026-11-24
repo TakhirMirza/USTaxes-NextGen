@@ -48,6 +48,8 @@ export function HawaiiStep({ ret, set, result, preparer }: StepProps & { prepare
   const names: Record<Owner, string> = { taxpayer: firstName(ret.taxpayer, 'You'), spouse: firstName(ret.spouse, 'Spouse') }
   const packet = buildHiPacket(ret, result, hi, preparer)
   const L = hi.lines
+  const act = d.activity
+  const putAct = (p: Partial<HiInput['activity']>): void => put({ activity: { ...act, ...p } })
   const crUsed = Object.keys(hi.cr).length > 0
   const putCr = (p: Partial<HiInput['cr']>): void => put({ cr: { ...d.cr, ...p }, refundableCredits: 0, nonrefundableCredits: 0 })
   const owes = L['49'] > 0
@@ -166,6 +168,23 @@ export function HawaiiStep({ ret, set, result, preparer }: StepProps & { prepare
           </tbody></table>
         )}
       </Section>
+
+      {(result.scheduleC.length > 0 || ret.rentals.length > 0) && (
+        <Section title="Business and rental activity (lines 51–52)" intro="Hawaii asks for your Hawaii gross receipts or rents and the general excise (GE) license number for each activity. Leave the amounts at their defaults if all of it was earned in Hawaii.">
+          <div className="grid">
+            {result.scheduleC.length > 0 && <>
+              <MoneyField label="Hawaii gross receipts" hint="Line 51; default is Schedule C gross receipts" value={act.grossReceipts ?? ret.businesses.reduce((s, b) => s + Math.max(0, b.grossReceipts - b.returnsAndAllowances), 0)} onChange={(n) => putAct({ grossReceipts: n })} />
+              <TextField label="Main business activity" hint="Up to 14 characters" autoComplete="off" value={act.activity} onChange={(s) => putAct({ activity: s })} />
+              <TextField label="Main business product" hint="Up to 14 characters" autoComplete="off" value={act.product} onChange={(s) => putAct({ product: s })} />
+              <TextField label="Hawaii Tax I.D. (GE) for the business" hint="General excise license, e.g. GE-123-456-7890-01" autoComplete="off" value={act.businessGe} onChange={(s) => putAct({ businessGe: s })} />
+            </>}
+            {ret.rentals.length > 0 && <>
+              <MoneyField label="Hawaii gross rents received" hint="Line 52; default is Schedule E rents" value={act.grossRents ?? ret.rentals.reduce((s, x) => s + Math.max(0, x.rents), 0)} onChange={(n) => putAct({ grossRents: n })} />
+              <TextField label="Hawaii Tax I.D. (GE) for the rental" autoComplete="off" value={act.rentalGe} onChange={(s) => putAct({ rentalGe: s })} />
+            </>}
+          </div>
+        </Section>
+      )}
 
       <Section title="Contributions and signature" intro="Each checked box takes $2 (schools) or $5 (libraries, domestic violence) from your refund. The election campaign fund box costs nothing.">
         {owners.map((o) => (
