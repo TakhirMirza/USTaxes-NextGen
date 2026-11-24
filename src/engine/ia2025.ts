@@ -31,11 +31,7 @@ export function iaCarePercent(income: number): number {
   return 0
 }
 
-export interface IaPartVRow { credit: IaCredit148; code: string; certificate: string; C: number; D: number; E: number; F: number; G: number; H: number }
-
 export interface IaResult {
-  /** IA 148 Part V: claim reduction rows (Section A nonrefundable, Section B refundable) and the starting tax liabilities. */
-  partV: { A: IaPartVRow[]; B: IaPartVRow[]; liabilityA: number; liabilityB: number }
   lines: Record<string, number>
   step3: { a: number; b: number; c: number }
   schedule1: { A: Record<string, number>; B: Record<string, number>; lines: Record<string, number> }
@@ -125,13 +121,9 @@ export function computeIowa(ret: TaxReturnInput, res: TaxReturnResult): IaResult
   // ── Net income for the low-income exemption, alternate tax and tax reduction ──
   const netIncome = L['4'] + Math.min(L['1d'], pos(agi)) + L['1f'] + L['1e']
   const single = fs === 'single' || fs === 'mfs'
-  // Married filing separately: both spouses' net income combined (only one spouse needs to be 65), with the married amounts.
-  const mfsCombined = fs === 'mfs' && d.spouseNet !== null
-  const any65m = any65 || (fs === 'mfs' && (ret.spouse.age >= 65 || ret.spouse.age65OrOlder))
-  const threshold = mfsCombined ? (any65m ? 32000 : 13500) : single ? (any65 ? 24000 : 9000) : (any65 ? 32000 : 13500)
-  const combinedNet = mfsCombined ? netIncome + (d.spouseNet ?? 0) : netIncome
+  const threshold = single ? (any65 ? 24000 : 9000) : (any65 ? 32000 : 13500)
   const dependent = ret.canBeClaimedAsDependent
-  const lowIncomeExempt = dependent ? L['4'] < 5000 && netIncome <= threshold : combinedNet <= threshold
+  const lowIncomeExempt = dependent ? L['4'] < 5000 && netIncome <= threshold : netIncome <= threshold
 
   // ── Step 5: tax ──
   let alternateTax = false
@@ -140,11 +132,6 @@ export function computeIowa(ret: TaxReturnInput, res: TaxReturnResult): IaResult
   L['5'] = rateTax
   if (fs === 'mfj' || fs === 'hoh' || fs === 'qss') {
     const alt = r(pos(netIncome - (any65 ? 32000 : 13500)) * IA_ALT_RATE)
-    if (alt < rateTax) { L['5'] = alt; alternateTax = true }
-  } else if (mfsCombined) {
-    // Alternate tax on the combined net income, prorated by each spouse's share of the combined Iowa taxable income.
-    const both = ti + pos(d.spouseTaxable)
-    const alt = both > 0 ? r(pos(combinedNet - threshold) * IA_ALT_RATE * ti / both) : 0
     if (alt < rateTax) { L['5'] = alt; alternateTax = true }
   }
   L['6'] = 0
@@ -181,22 +168,9 @@ export function computeIowa(ret: TaxReturnInput, res: TaxReturnResult): IaResult
   L['15'] = Math.min(L['14'], oos?.['23'] ?? 0)
   L['16'] = pos(L['14'] - L['15'])
   // ── IA 148 Part I: applied in order up to the tax left after line 16 ──
-  // ── IA 148 Part V: claim reduction (Section A before Part I, Section B before Part II), rows in the listed code order ──
-  const code0 = (c: IaCredit148): string => c.code.trim().replace(/^0+/, '')
-  const partV = (list: IaCredit148[], order: string[], start: number, rate: (code: string) => number): IaPartVRow[] => {
-    let liab = start
-    return list.filter((c) => order.includes(code0(c))).sort((a, b) => order.indexOf(code0(a)) - order.indexOf(code0(b))).map((c) => {
-      const C = liab; const D = r(pos(c.current)); const E = pos(C - D); const F = pos(D - C); const G = r(F * rate(code0(c))); const H = D - G
-      liab = E
-      return { credit: c, code: code0(c), certificate: c.certificate.trim(), C, D, E, F, G, H }
-    })
-  }
-  const vA = partV(d.credits148.filter((c) => !c.refundable && c.reduce), ['46', '47'], L['16'], () => 0.15)
-  const vAby = new Map(vA.map((x) => [x.credit, x]))
   let room = L['16']
   const part1 = d.credits148.filter((c) => !c.refundable && c.code.trim()).map((c) => {
-    const v = vAby.get(c)
-    const C = r(pos(c.carryforward)); const D = v ? v.H : r(pos(c.current)); const E = C + D; const G = Math.min(E, r(pos(c.expired)))
+    const C = r(pos(c.carryforward)); const D = r(pos(c.current)); const E = C + D; const G = Math.min(E, r(pos(c.expired)))
     const F = Math.min(E - G, room); room -= F
     return { ...c, C, D, E, F, G, H: E - F - G }
   })
@@ -241,9 +215,7 @@ export function computeIowa(ret: TaxReturnInput, res: TaxReturnResult): IaResult
   const careCredit: IaResult['careCredit'] = cdcc === 0 && ecdc === 0 ? null : cdcc >= ecdc ? 'care' : 'early'
   L['24'] = Math.max(cdcc, ecdc)
   L['25'] = r(pos(f['27a']) * 0.15)
-  const vB = partV(d.credits148.filter((c) => c.refundable && (c.reduce || ['58', '59'].includes(code0(c)))), ['58', '59', '62', '97', '67'], L['18'], (k) => (k === '58' ? 0.3 : 0.15))
-  const vBby = new Map(vB.map((x) => [x.credit, x]))
-  const part2 = d.credits148.filter((c) => c.refundable && c.code.trim()).map((c) => ({ ...c, K: vBby.get(c)?.H ?? r(pos(c.current)) }))
+  const part2 = d.credits148.filter((c) => c.refundable && c.code.trim()).map((c) => ({ ...c, K: r(pos(c.current)) }))
   L['26'] = part2.reduce((s, c) => s + c.K, 0)
   L['27'] = 0
   const w2s = ret.w2s.filter((w) => owners.includes(w.owner))
@@ -269,8 +241,8 @@ export function computeIowa(ret: TaxReturnInput, res: TaxReturnResult): IaResult
   if (part1.length + part2.length > 0) attach.push('The certificate or schedule required for each IA 148 tax credit (see the IA 148 instructions)')
   if (oos && !o.state.trim()) issues.push('IA 130: enter the name of the other state or jurisdiction.')
   if (part1.length > 10 || part2.length > 7) issues.push('IA 148 has room for 10 nonrefundable and 7 refundable credits; use a second IA 148 for the rest.')
-  if (vA.some((x) => x.G > 0) || vB.some((x) => x.G > 0)) issues.push(`IA 148 Part V reduces credits beyond your tax by 15% (30% for research activities, code 58): ${[...vA, ...vB].filter((x) => x.G > 0).map((x) => `code ${x.code} −${x.G.toLocaleString('en-US')}`).join(', ')}. The reduction expires.`)
-  if (d.credits148.some((c) => ['46', '47', '62', '97', '67'].includes(code0(c)) && !c.reduce)) issues.push('IA 148 Part V: credit codes 46, 47, 62, 97 and 67 are reduced only for the agreements or awards listed on the form (2023 and later); mark the credit if yours is one of them.')
+  const reduced = ['46', '47', '58', '59', '62', '97']
+  if (d.credits148.some((c) => reduced.includes(c.code.trim().replace(/^0+/, '')))) issues.push('Tax credit codes 46, 47, 58, 59, 62 and 97 are subject to the IA 148 Part V claim reduction; complete Part V by hand and enter the allowable claim as the current year amount.')
   if (part1.some((c) => c.H > 0)) issues.push('Some IA 148 nonrefundable credit is more than your tax; the rest (column H) may carry forward if the credit allows it.')
   if (L['23'] > 0 && !(fu.farming || fu.commercial || fu.fishing || fu.other)) issues.push('IA 4136: check what the fuel was used for (farming, commercial, commercial fishing or other).')
   if (Object.values(fuelRows).some((x) => x && x.sales === 0) && !fu.salesTaxExempt && Object.entries(fu.rows).some(([, x]) => x && x.invoice > 0 && !(x.price > 0))) issues.push('IA 4136: enter the average cost per gallon for each fuel so the 6% sales tax can be subtracted, or mark the use as sales-tax exempt (farming or processing).')
@@ -278,11 +250,11 @@ export function computeIowa(ret: TaxReturnInput, res: TaxReturnResult): IaResult
   if (lowIncomeExempt) issues.push(`Net income ${netIncome.toLocaleString('en-US')} is not more than $${threshold.toLocaleString('en-US')}: the low-income exemption applies and you owe no Iowa tax${L['30'] > 0 ? '; payments and refundable credits are refunded' : ''}.`)
   if (alternateTax) issues.push('The alternate tax (4.3% of net income above the exemption amount) is lower than 3.8% and is used on line 5.')
   if (taxReduction) issues.push('The Iowa Income Tax Reduction Worksheet (41-146) lowers line 12.')
-  if (fs === 'mfs' && d.spouseNet === null) issues.push('Married filing separately: enter your spouse’s net income and Iowa taxable income in the Iowa section to test the low-income exemption and the alternate tax (both use your combined income).')
+  if (fs === 'mfs') issues.push('Married filing separately: enter your spouse’s Iowa taxable income in Step 2 yourself; the alternate tax is not computed here.')
   if (L['18'] > 0 && !d.surtaxRate && !d.schoolDistrictNo) issues.push('Enter your school district number and its surtax rate (table 41-027); most districts levy a surtax on line 19.')
   if (mine.some((x) => kind(x.id) === 'standard' && !eligible(x.owner) && x.taxableAmount > 0)) issues.push('Retirement income of someone under 55 is taxed unless they are disabled or a surviving spouse.')
   if (L['34'] > 0 && L['34'] > L['22'] * 0.1 && L['29'] === 0) issues.push('A balance due may mean an underpayment penalty (IA 2210).')
   if (ret.dependents.length > 4) issues.push('More than four dependents: attach a page listing the rest.')
 
-  return { partV: { A: vA, B: vB, liabilityA: L['16'], liabilityB: L['18'] }, lines: L, step3, schedule1: { A, B, lines: S }, netIncome, threshold, lowIncomeExempt, alternateTax, taxReduction, careCredit, oos, part1, part2, fuel: { rows: fuelRows, line7: fuel7, line8: fuel8, line9: fuel7 + fuel8 }, issues, attach }
+  return { lines: L, step3, schedule1: { A, B, lines: S }, netIncome, threshold, lowIncomeExempt, alternateTax, taxReduction, careCredit, oos, part1, part2, fuel: { rows: fuelRows, line7: fuel7, line8: fuel8, line9: fuel7 + fuel8 }, issues, attach }
 }
