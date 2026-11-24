@@ -150,3 +150,24 @@ test('RI-1040H fills and builds for a renter 65 or older', async () => {
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 RI-H')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-RIH.pdf`, bytes)
 })
+
+test('RI Schedule CR by line and the recapture on line 10b', async () => {
+  const { ri: r, res, ret } = run(base({ w2s: [w2(90000)] }), { crLines: { '2': 300, '8': 150 }, recapture: [{ number: '286B', name: 'Historic structures', amount: 120 }] })
+  assert.equal(r.cr['9'], 450)
+  assert.equal(r.lines['9c'], 450)
+  assert.equal(r.lines['10b'], 120)
+  assert.equal(r.lines['13a'], r.lines['10a'] + 120 + r.lines['11'] + r.lines['12a'] + r.lines['12b'])
+  const packet = buildRiPacket(ret, res, r)
+  const cr = packet.forms.find((f) => f.id === 'rischcr')!
+  const T = 'topmostSubform[0].Page1[0].'
+  assert.equal(cr.values[`${T}CreditScholarOrg[0]`], '300')
+  assert.equal(cr.values[`${T}RecCreditNum1[0]`], '286B')
+  assert.equal(cr.values[`${T}TotalCreditRecapture[0]`], '120')
+  assert.ok(!packet.notIncluded.some((x) => x.includes('list each credit')))
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-RICR.pdf`, (await buildPdf(lib, packet.forms, load, '2025 RI')).bytes)
+})

@@ -32,6 +32,24 @@ const KEY = new Set(['12', '23', '42', '47'])
 const firstName = (p: Person, fallback: string): string => p.firstName.trim().split(/\s+/)[0] || fallback
 const date = (s: string): string => (/^\d{8}$/.test(s.trim()) ? `${s.slice(0, 2)}/${s.slice(2, 4)}/${s.slice(4)}` : s)
 
+const CO_REFUNDABLE: [string, string][] = [
+  ['7', 'Business personal property credit'], ['8', 'Refundable renewable energy credit (DR 1366)'], ['9', 'COEITC for ITIN filers or certain filers under 25 (DR 0104EE)'],
+  ['10', 'Early childhood educator credit (DR 1703)'], ['11', 'Share of tax paid with a composite return or SALT parity election'], ['12', 'Credits for employee-owned businesses'],
+  ['13', 'Alternative transportation options credit'], ['14', 'Heat pump credit for registered contractors (DR 1322)'], ['15', 'Refundable residential energy storage systems credit'],
+  ['16', 'Certified greenhouse gas avoidance credits'], ['17', 'Food accessibility credit'], ['18', 'Electric-powered lawn equipment credit'], ['19', 'Colorado film incentive credit'],
+  ['20', 'Refundable CHIPS zone credit (DR 1370)'], ['21', 'Colorado Promise tuition and fee credit'], ['22', 'Aircraft modification for unleaded fuel credit'], ['23', 'Apprenticeship credit'],
+  ['24', 'Disability assistance credit'], ['25', 'Qualified care worker credit (DR 1217)']
+]
+const CO_PART3: [string, string][] = [
+  ['35', 'Plastic recycling investment (carryforward)'], ['36', 'Colorado minimum tax credit'], ['37', 'Historic property preservation (carryforward)'], ['38', 'Child care center investment'],
+  ['39', 'Employer child care facility investment'], ['40', 'School-to-career investment (carryforward)'], ['41', 'Colorado Works program (carryforward)'], ['42', 'Child care contribution (DR 1317)'],
+  ['43', 'Long-term care insurance'], ['44', 'Aircraft manufacturer new employee (carryforward)'], ['45', 'Remediation of contaminated land (DR 0349)'], ['46', 'Colorado job growth incentive'],
+  ['47', 'Disability funding committee license fee (carryforward)'], ['48', 'Advanced industry investment'], ['49', 'CHFA housing credits'], ['50', 'Preservation of historic structures (carried forward)'],
+  ['51', 'Preservation of historic structures'], ['53', 'Rural jump-start zone (DR 0113)'], ['54', 'Rural & frontier health care preceptor'], ['55', 'Retrofitting a residence for visitability'],
+  ['56', 'Employer contributions to employee 529 plans (DR 0289)'], ['57', 'Employer paid leave for live organ donation (carryforward)'], ['58', 'Wildfire mitigation expenses'],
+  ['59', 'Enterprise zone contribution'], ['60', 'Nonrefundable residential energy storage systems (DR 1307)'], ['61', 'Homeless contribution'], ['63', 'Employer assistance for home purchase']
+]
+
 export function ColoradoStep({ ret, set, result, preparer }: StepProps & { preparer: PreparerInfo | null }): ReactElement {
   const d = ret.co
   const co = useMemo(() => computeColorado(ret, result), [ret, result])
@@ -44,6 +62,9 @@ export function ColoradoStep({ ret, set, result, preparer }: StepProps & { prepa
   const L = co.lines
   const A = co.ad
   const CR = co.cr
+  const osUsed = co.cr['29'] !== undefined
+  const refUsed = Object.values(d.cr.refundable).some((x) => x > 0)
+  const putCr = (p: Partial<CoInput['cr']>): void => put({ cr: { ...d.cr, ...p } })
   const owes = L['47'] > 0
   const ageOf = (o: Owner): number => (o === 'taxpayer' ? ret.taxpayer : ret.spouse).age
   const w2s = ret.w2s.filter((w) => owners.includes(w.owner))
@@ -119,9 +140,9 @@ export function ColoradoStep({ ret, set, result, preparer }: StepProps & { prepa
 
       <Section title="Credits">
         <div className="grid">
-          <MoneyField label="Credit for tax paid to another state" hint="DR 0104CR Part II" value={d.otherStateCredit} onChange={(n) => put({ otherStateCredit: n })} />
-          <MoneyField label="Other nonrefundable credits" hint="DR 0104CR Part III" value={d.nonrefundableCredits} onChange={(n) => put({ nonrefundableCredits: n })} />
-          <MoneyField label="Other refundable credits" hint="DR 0104CR lines 7–25" value={d.refundableCredits} onChange={(n) => put({ refundableCredits: n })} />
+          {d.otherStateCredit > 0 && !osUsed && <MoneyField label="Credit for tax paid to another state (amount)" hint="Or enter the figures below" value={d.otherStateCredit} onChange={(n) => put({ otherStateCredit: n })} />}
+          {d.nonrefundableCredits > 0 && !Object.keys(co.crUsed).length && <MoneyField label="Other nonrefundable credits (total)" hint="Or list them below" value={d.nonrefundableCredits} onChange={(n) => put({ nonrefundableCredits: n })} />}
+          {d.refundableCredits > 0 && !refUsed && <MoneyField label="Other refundable credits (total)" hint="Or list them below" value={d.refundableCredits} onChange={(n) => put({ refundableCredits: n })} />}
           {L['40'] > 0 && <MoneyField label="Carry to 2026 estimated tax" value={d.creditForward} onChange={(n) => put({ creditForward: n })} />}
         </div>
         <table className="lines"><tbody>
@@ -129,6 +150,40 @@ export function ColoradoStep({ ret, set, result, preparer }: StepProps & { prepa
             <tr key={k} className={k === '26' ? 'is-key' : ''}><th scope="row"><span className="line-no">{k}</span>{label}</th><td>{usd(CR[k] ?? 0)}</td></tr>
           ))}
         </tbody></table>
+      </Section>
+
+      <Section title="DR 0104CR by line" intro="Fill in only the credits you have, and attach the certificate or schedule each one asks for.">
+        <details open={osUsed}>
+          <summary>Part II: tax paid to another state</summary>
+          <p className="why">Full-year residents only. The credit is the smaller of that state’s tax and the Colorado tax times the share of your modified Colorado AGI from that state. Attach the other state’s return.</p>
+          <div className="grid">
+            <TextField label="Name of other state" autoComplete="off" value={d.cr.otherState.name} onChange={(s) => putCr({ otherState: { ...d.cr.otherState, name: s } })} />
+            <MoneyField label="Modified Colorado AGI from sources in that state" hint="Line 29" value={d.cr.otherState.sourceIncome} onChange={(n) => putCr({ otherState: { ...d.cr.otherState, sourceIncome: n } })} />
+            <MoneyField label="Tax liability to that state" hint="Line 33; not the amount withheld" value={d.cr.otherState.tax} onChange={(n) => putCr({ otherState: { ...d.cr.otherState, tax: n } })} />
+          </div>
+          {osUsed && <p className="why">Line 31: {(CR['31'] ?? 0).toFixed(4)}%; line 32: {usd(CR['32'] ?? 0)}; credit (line 34): {usd(CR['34'] ?? 0)}.</p>}
+        </details>
+        <details open={refUsed}>
+          <summary>Refundable credits, lines 7–25</summary>
+          <div className="grid">
+            {CO_REFUNDABLE.map(([k, label]) => <MoneyField key={k} label={label} hint={`Line ${k}`} value={d.cr.refundable[k] ?? 0} onChange={(n) => putCr({ refundable: { ...d.cr.refundable, [k]: n } })} />)}
+          </div>
+        </details>
+        <details open={Object.keys(co.crUsed).length > 0}>
+          <summary>Part III: nonrefundable credits, lines 35–63</summary>
+          <p className="why">Enter the credit available (this year’s credit plus any carryforward). Credits are used in line order up to the tax left after line 34; check each credit’s own limit at Tax.Colorado.gov/Income-Tax-Credits.</p>
+          <div className="grid">
+            {CO_PART3.map(([k, label]) => <MoneyField key={k} label={label} hint={`Line ${k}, column A`} value={d.cr.available[k] ?? 0} onChange={(n) => putCr({ available: { ...d.cr.available, [k]: n } })} />)}
+            {(d.cr.available['51'] ?? 0) > 0 && <TextField label="Historic structures credit certificate number" hint="Line 52" autoComplete="off" value={d.cr.historicCert} onChange={(s) => putCr({ historicCert: s })} />}
+            {(d.cr.available['61'] ?? 0) > 0 && <TextField label="Homeless contribution credit certificate number" hint="Line 62" autoComplete="off" value={d.cr.homelessCert} onChange={(s) => putCr({ homelessCert: s })} />}
+          </div>
+          {Object.keys(co.crUsed).length > 0 && (
+            <table className="lines"><tbody>
+              {Object.entries(co.crUsed).map(([k, x]) => <tr key={k}><th scope="row"><span className="line-no">{k}</span>Used of {usd(x.a)}</th><td>{usd(x.b)}</td></tr>)}
+              <tr className="is-key"><th scope="row"><span className="line-no">65</span>Nonrefundable credits used</th><td>{usd(CR['65'] ?? 0)}</td></tr>
+            </tbody></table>
+          )}
+        </details>
       </Section>
 
       {co.issues.length > 0 && (

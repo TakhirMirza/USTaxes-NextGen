@@ -60,6 +60,8 @@ export function riFullRetirementAge(dob: string, age: number): boolean {
 }
 
 export interface RiResult {
+  /** RI Schedule CR lines (1–9 when listed by line; 10–12 recapture). */
+  cr: Record<string, number>
   lines: Record<string, number>
   m: Record<string, number>
   h: Record<string, number> | null
@@ -135,7 +137,13 @@ export function computeRhodeIsland(ret: TaxReturnInput, res: TaxReturnResult): R
     L['29'] = Math.min(L['23'], L['27'], L['28'])
   } else L['29'] = 0
   L['9b'] = L['29']
-  L['9c'] = c2(pos(d.otherCredits))
+  const crListed = Object.values(d.crLines).some((x) => x > 0)
+  const CR: Record<string, number> = {}
+  if (crListed) { for (let n = 1; n <= 8; n++) CR[String(n)] = c2(pos(d.crLines[String(n)] ?? 0)); CR['9'] = [1, 2, 3, 4, 5, 6, 7, 8].reduce((s, n) => s + CR[String(n)], 0) }
+  const rec = d.recapture.filter((x) => x.amount > 0).slice(0, 2)
+  rec.forEach((x, i) => { CR[String(10 + i)] = c2(x.amount) })
+  CR['12'] = rec.reduce((s, x) => s + c2(x.amount), 0)
+  L['9c'] = crListed ? CR['9'] : c2(pos(d.otherCredits))
   L['9d'] = c2(L['9a'] + L['9b'] + L['9c'])
   L['10a'] = c2(pos(L['8'] - L['9d']))
   // Checkoffs (lines 30–37).
@@ -144,7 +152,8 @@ export function computeRhodeIsland(ret: TaxReturnInput, res: TaxReturnResult): R
   L['11'] = L['38']
   L['12a'] = c2(pos(d.useTax))
   L['12b'] = d.fullYearCoverage ? 0 : c2(pos(d.mandatePenalty))
-  L['13a'] = c2(L['10a'] + L['11'] + L['12a'] + L['12b'])
+  L['10b'] = CR['12']
+  L['13a'] = c2(L['10a'] + L['10b'] + L['11'] + L['12a'] + L['12b'])
 
   // ── RI-1040H ──
   let H: Record<string, number> | null = null
@@ -216,7 +225,7 @@ export function computeRhodeIsland(ret: TaxReturnInput, res: TaxReturnResult): R
   if (M['1y'] !== 0 || M['2m'] !== 0) attach.push('RI Schedule M with supporting documents')
   if (L['14a'] > 0) attach.push('RI Schedule W and every W-2 and 1099 with Rhode Island withholding')
   if (exemptions > (joint ? 2 : 1)) attach.push('RI Schedule E (dependents with dates of birth)')
-  if (L['9c'] > 0) attach.push('RI Schedule CR with the credit forms and certificates')
+  if (L['9c'] > 0 || L['10b'] > 0) attach.push('RI Schedule CR with the credit forms and certificates')
   if (L['29'] > 0) attach.push(`A copy of your ${os.state.trim() || 'other state'} return (Schedule II)`)
   if (H && L['14c'] > 0) attach.push(d.relief.owner ? 'RI-1040H with your 2025 property tax bill' : 'RI-1040H with your lease or three rent receipts')
   if (H) attach.push('Your 2025 Social Security award letter or Form 1099 (RI-1040H)')
@@ -226,5 +235,5 @@ export function computeRhodeIsland(ret: TaxReturnInput, res: TaxReturnResult): R
   if (fagi > limit && (f['6b'] > 0 || ret.retirement.some((x) => d.pensionKind[x.id] === 'pension'))) issues.push(`Federal AGI is over ${limit.toLocaleString('en-US')}, so the Social Security and pension modifications don’t apply.`)
   if (phaseout < 1) issues.push(`Modified federal AGI is over $254,250: the standard deduction and exemptions are reduced to ${Math.round(phaseout * 100)}%.`)
   if (L['17'] > 0 && L['17'] < 5) issues.push('Refunds under $5 are paid only on request.')
-  return { lines: L, m: M, h: H, exemptions, phaseout, issues, attach }
+  return { cr: CR, lines: L, m: M, h: H, exemptions, phaseout, issues, attach }
 }

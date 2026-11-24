@@ -67,6 +67,8 @@ export function coFamilyCredit(fagi: number, joint: boolean): { under6: number; 
 }
 
 export interface CoResult {
+  /** DR 0104CR Part III by line: credit available (A) and used (B). */
+  crUsed: Record<string, { a: number; b: number }>
   lines: Record<string, number>
   /** DR 0104AD lines 1–22. */
   ad: Record<string, number>
@@ -206,10 +208,30 @@ export function computeColorado(ret: TaxReturnInput, res: TaxReturnResult): CoRe
   CR['4'] = r(pos(f['27a']))
   CR['3'] = CR['4'] > 0 ? r(pos(res.eic.earnedIncome)) : 0
   CR['5'] = r(CR['4'] * CO_EITC_RATE)
-  CR['26'] = CR['1'] + CR['2'] + CR['5'] + r(pos(d.refundableCredits))
+  const refLines = Object.entries(d.cr.refundable).filter(([k, x]) => +k >= 7 && +k <= 25 && x > 0)
+  for (const [k, x] of refLines) CR[k] = r(x)
+  CR['26'] = CR['1'] + CR['2'] + CR['5'] + (refLines.length ? refLines.reduce((s, [, x]) => s + r(x), 0) : r(pos(d.refundableCredits)))
   // Part II: credit for tax paid to another state, and the other nonrefundable credits.
-  CR['34'] = Math.min(r(pos(d.otherStateCredit)), L['16'])
-  CR['65'] = Math.min(CR['34'] + r(pos(d.nonrefundableCredits)), L['16'])
+  // Part II: one other state. Modified Colorado AGI = federal AGI plus Colorado additions minus subtractions.
+  const os = d.cr.otherState
+  const crUsed: Record<string, { a: number; b: number }> = {}
+  if (os.sourceIncome > 0 || os.tax > 0) {
+    CR['28'] = L['13'] + L['14']
+    CR['29'] = r(pos(os.sourceIncome))
+    CR['30'] = pos(r(f['11a']) + (L['10'] - L['1']) - L['11'])
+    CR['31'] = CR['30'] > 0 ? Math.min(100, Math.round(CR['29'] / CR['30'] * 1e6) / 1e4) : 0
+    CR['32'] = r(CR['28'] * CR['31'] / 100)
+    CR['33'] = r(pos(os.tax))
+    CR['34'] = Math.min(CR['32'], CR['33'], L['16'])
+  } else CR['34'] = Math.min(r(pos(d.otherStateCredit)), L['16'])
+  const avail = Object.entries(d.cr.available).filter(([k, x]) => +k >= 35 && +k <= 63 && x > 0).sort((a, b) => +a[0] - +b[0])
+  if (avail.length) {
+    // Part III: each credit used in line order up to the tax left after line 34 (credit-specific limits are not applied).
+    let room = pos(L['16'] - CR['34'])
+    for (const [k, x] of avail) { const a = r(x); const b = Math.min(a, room); room -= b; crUsed[k] = { a, b } }
+    CR['64'] = Object.values(crUsed).reduce((s, x) => s + x.a, 0)
+    CR['65'] = CR['34'] + Object.values(crUsed).reduce((s, x) => s + x.b, 0)
+  } else CR['65'] = Math.min(CR['34'] + r(pos(d.nonrefundableCredits)), L['16'])
   L['17'] = CR['65']
   L['18'] = 0; L['19'] = 0; L['20'] = 0
   L['21'] = pos(L['16'] - L['17'] - L['18'] - L['19'] - L['20'])
@@ -268,5 +290,5 @@ export function computeColorado(ret: TaxReturnInput, res: TaxReturnResult): CoRe
   if (L['47'] > 1000 && L['26'] === 0) issues.push('A balance due over $1,000 may mean an estimated tax penalty (DR 0204).')
   if (statements.some((x) => x.tax > 0 && !x.ein)) issues.push('Enter each W-2’s employer ID for your records.')
 
-  return { lines: L, ad: A, cr: CR, cn: CN, care: K, dependents, statements, issues, attach }
+  return { crUsed, lines: L, ad: A, cr: CR, cn: CN, care: K, dependents, statements, issues, attach }
 }

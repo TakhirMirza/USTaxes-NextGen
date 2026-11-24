@@ -91,6 +91,7 @@ export function formRi1040(ret: TaxReturnInput, ri: RiResult, preparer?: Prepare
   amount(v, 'Page1', 'OtherRICredits', L['9c'])
   amount(v, 'Page1', 'TotalRICredits', L['9d'], true)
   amount(v, 'Page1', 'RIIncomeTaxAfterCredit', L['10a'], true)
+  amount(v, 'Page1', 'RecaptureofPriorYear', L['10b'])
   amount(v, 'Page1', 'RIContributions', L['11'])
   amount(v, 'Page1', 'UseSalesTaxDue', L['12a'], true)
   v[`${P1}UseTax[0]`] = true
@@ -237,7 +238,16 @@ function formRiSchM(ret: TaxReturnInput, ri: RiResult): FormFill {
 function formRiSchCR(ret: TaxReturnInput, ri: RiResult): FormFill {
   const v: Record<string, FieldValue> = {}
   header(v, ret, 'Page1')
+  const C = ri.cr
+  const names = ['HistHO', 'CreditScholarOrg', 'HistPresInvestCredit', 'LowincomeHousingCredit', 'QJobsCredit', 'RebuildRICredit', 'MotionPictCredit', 'WavemakerCredit']
+  if (C['9'] !== undefined) names.forEach((b, i) => amount(v, 'Page1', b, C[String(i + 1)]))
   amount(v, 'Page1', 'TotalCredits', ri.lines['9c'], true)
+  ret.ri.recapture.filter((x) => x.amount > 0).slice(0, 2).forEach((x, i) => {
+    v[`${T}Page1[0].RecCreditNum${i + 1}[0]`] = x.number.replace(/[^0-9A-Za-z-]/g, '').slice(0, 5).toUpperCase()
+    v[`${T}Page1[0].RecCreditName${i + 1}[0]`] = upper(x.name).slice(0, 14)
+    amount(v, 'Page1', `RecCreditAmt${i + 1}`, x.amount)
+  })
+  if (C['12'] > 0) amount(v, 'Page1', 'TotalCreditRecapture', C['12'], true)
   return { id: 'rischcr', file: 'ri-schcr.pdf', title: 'RI Schedule CR', values: v }
 }
 
@@ -320,7 +330,7 @@ export function buildRiPacket(ret: TaxReturnInput, res: TaxReturnResult, ri: RiR
   const notIncluded: string[] = []
   for (const a of ri.attach) {
     if (a.startsWith('RI Schedule M')) forms.push(formRiSchM(ret, ri))
-    else if (a.startsWith('RI Schedule CR')) { forms.push(formRiSchCR(ret, ri)); notIncluded.push('RI Schedule CR lines 1–8: enter each credit yourself (only the total is filled) and attach the credit forms and certificates') }
+    else if (a.startsWith('RI Schedule CR')) { forms.push(formRiSchCR(ret, ri)); notIncluded.push(ri.cr['9'] === undefined && ri.lines['9c'] > 0 ? 'RI Schedule CR lines 1–8: list each credit in the Rhode Island section (only the total is filled); attach the credit forms and certificates' : 'With RI Schedule CR, attach the original certificate for each credit and a carryforward schedule for any carryforward') }
     else if (a.startsWith('RI Schedule W') || a.startsWith('RI Schedule E')) notIncluded.push(a.startsWith('RI Schedule W') ? 'Every W-2 and 1099 with Rhode Island withholding (Schedule W is filled in)' : 'Schedule E is filled in: check each dependent’s date of birth')
     else if (a.startsWith('RI-1040H')) { forms.push(formRi1040H(ret, ri)); notIncluded.push(`With RI-1040H, attach ${d(ret)}`) }
     else notIncluded.push(a)

@@ -8,6 +8,7 @@ import { computeRhodeIsland } from '../engine/ri2025.ts'
 import { buildRiPacket } from '../pdf/ri2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { Check, MoneyField, NumberField, Section, TextField, usd } from './fields'
+import { RowList } from './creditrows'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -24,6 +25,12 @@ const CHECKOFFS: [string, string][] = [['30', 'Drug program account'], ['31', 'O
 const firstName = (p: Person, fallback: string): string => p.firstName.trim().split(/\s+/)[0] || fallback
 const date = (s: string): string => (/^\d{8}$/.test(s.trim()) ? `${s.slice(0, 2)}/${s.slice(2, 4)}/${s.slice(4)}` : s)
 const usd2 = (n: number): string => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+const RI_CR: [string, string][] = [
+  ['1', 'Historic homeowner assistance, carryforward only (RI-0715)'], ['2', 'Contributions to scholarship organizations (RI-2276)'], ['3', 'Historic structures and historic preservation (RI-286B)'],
+  ['4', 'Low income housing (RI-5442)'], ['5', 'New qualified jobs incentive (RI-6754)'], ['6', 'Rebuild Rhode Island (RI-7253)'],
+  ['7', 'Motion picture, musical and theatrical production (RI-8201)'], ['8', 'Wavemaker fellowship (RI-9283)']
+]
 
 export function RhodeIslandStep({ ret, set, result, preparer }: StepProps & { preparer: PreparerInfo | null }): ReactElement {
   const d = ret.ri
@@ -130,8 +137,19 @@ export function RhodeIslandStep({ ret, set, result, preparer }: StepProps & { pr
           <TextField label="Other state you paid tax to" hint="Schedule II; two-letter abbreviation" autoComplete="off" value={d.otherState.state} onChange={(s) => put({ otherState: { ...d.otherState, state: s } })} />
           <MoneyField label="Income derived from that state" value={d.otherState.income} onChange={(n) => put({ otherState: { ...d.otherState, income: n } })} />
           <MoneyField label="Tax due and paid to that state" value={d.otherState.tax} onChange={(n) => put({ otherState: { ...d.otherState, tax: n } })} />
-          <MoneyField label="Other Rhode Island credits" hint="Schedule CR line 9" value={d.otherCredits} onChange={(n) => put({ otherCredits: n })} />
+          {d.otherCredits > 0 && ri.cr['9'] === undefined && <MoneyField label="Other Rhode Island credits (total)" hint="Schedule CR line 9; or list them below" value={d.otherCredits} onChange={(n) => put({ otherCredits: n })} />}
         </div>
+        <details open={ri.cr['9'] !== undefined || d.recapture.length > 0}>
+          <summary>RI Schedule CR: other Rhode Island credits</summary>
+          <p className="why">Attach the original certificate for each credit, and a carryforward schedule if you use a carryforward.</p>
+          <div className="grid">
+            {RI_CR.map(([k, label]) => <MoneyField key={k} label={label} hint={`Line ${k}`} value={d.crLines[k] ?? 0} onChange={(n) => put({ crLines: { ...d.crLines, [k]: n }, otherCredits: 0 })} />)}
+          </div>
+          <h3>Recapture of prior-year credits (lines 10–11)</h3>
+          <RowList rows={d.recapture} max={2} noun="recapture" empty={() => ({ number: '', name: '', amount: 0 })} onChange={(rows) => put({ recapture: rows })}
+            fields={[['number', 'Credit number', 'text', 'For example 286B'], ['name', 'Credit name', 'text'], ['amount', 'Amount recaptured', 'money']]} />
+          {(L['9c'] > 0 || L['10b'] > 0) && <p className="why">Line 9c: {usd(L['9c'])}. Line 10b: {usd(L['10b'])}.</p>}
+        </details>
       </Section>
 
       <Section title="Property tax relief (RI-1040H)" intro="Up to $700 if you or your spouse were 65 or older or disabled, your household income was $40,730 or less, and you paid property tax or rent on your Rhode Island home.">

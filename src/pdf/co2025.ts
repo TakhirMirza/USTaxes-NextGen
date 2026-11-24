@@ -93,8 +93,24 @@ export function formCo104CR(ret: TaxReturnInput, co: CoResult): FormFill {
     [q(1)]: amt(CR['1']), [q(2)]: amt(CR['2']), [q(3)]: amt(CR['3']), [q(4)]: amt(CR['4']), [q(5)]: amt(CR['5']),
     [q(26)]: amt(CR['26'], true), [q(34)]: amt(CR['34']), [q(63)]: amt(CR['65'])
   }
-  if (CR['34'] > 0) values[q(33)] = amt(CR['34'])
-  return { id: 'co104cr', file: 'co104cr.pdf', title: 'Colorado DR 0104CR (credits)', values, pages: CR['65'] > 0 ? [0, 1, 2, 3, 8] : [0, 1, 2, 3] }
+  const d = ret.co.cr
+  for (let n = 7; n <= 25; n++) if (CR[String(n)] > 0) values[q(n)] = amt(CR[String(n)])
+  if (CR['29'] !== undefined) {
+    values[q(27)] = upper(d.otherState.name)
+    for (const n of [28, 29, 30, 32, 33]) values[q(n)] = amt(CR[String(n)], true)
+    values[q(31)] = CR['31'].toFixed(4)
+  } else if (CR['34'] > 0) values[q(33)] = amt(CR['34'])
+  const pages = [0, 1, 2, 3]
+  for (const [k, x] of Object.entries(co.crUsed)) {
+    values[`Credit Available ${k}A`] = amt(x.a, true)
+    values[`Credit Used ${k}B`] = amt(x.b, true)
+    pages.push(4 + Math.floor((+k <= 39 ? 0 : +k <= 46 ? 1 : +k <= 53 ? 2 : +k <= 59 ? 3 : 4)))
+  }
+  if (co.crUsed['51'] && d.historicCert.trim()) values[q(52)] = upper(d.historicCert)
+  if (co.crUsed['61'] && d.homelessCert.trim()) values[q(62)] = upper(d.homelessCert)
+  if (Object.keys(co.crUsed).length) values['Credit Available 64A'] = amt(CR['64'], true)
+  if (CR['65'] > 0) pages.push(8)
+  return { id: 'co104cr', file: 'co104cr.pdf', title: 'Colorado DR 0104CR (credits)', values, pages: [...new Set(pages)].sort((a, b) => a - b) }
 }
 
 export function formCo104CN(ret: TaxReturnInput, co: CoResult): FormFill {
@@ -152,9 +168,9 @@ export function buildCoPacket(ret: TaxReturnInput, res: TaxReturnResult, co: CoR
   if (co.cr['2'] > 0) forms.push(formCo0347(ret, co))
   const shown = new Set(['DR 0104AD', 'DR 0104CR', 'DR 0104CN', 'DR 0347'])
   const notIncluded = co.attach.filter((a) => ![...shown].some((s) => a.startsWith(s)))
-  if (co.cr['34'] > 0) notIncluded.push('DR 0104CR Part II (lines 27–33): name the other state and show the income ratio; the credit is on line 34')
-  if (ret.co.nonrefundableCredits > 0) notIncluded.push('DR 0104CR Part III: list your other nonrefundable credits by line (only the line 65 total is filled in)')
-  if (ret.co.refundableCredits > 0) notIncluded.push('DR 0104CR: enter your other refundable credits on their own lines (lines 7–25)')
+  if (co.cr['34'] > 0 && co.cr['29'] === undefined) notIncluded.push('DR 0104CR Part II (lines 27–33): enter the other state’s figures in the Colorado section to fill them in; only the line 34 credit is entered')
+  if (ret.co.nonrefundableCredits > 0 && !Object.keys(co.crUsed).length) notIncluded.push('DR 0104CR Part III: list your other nonrefundable credits by line in the Colorado section (only the line 65 total is filled in)')
+  if (ret.co.refundableCredits > 0 && !Object.values(ret.co.cr.refundable).some((x) => x > 0)) notIncluded.push('DR 0104CR: enter your other refundable credits on their own lines (lines 7–25) in the Colorado section')
   if (co.lines['9'] > 0 || co.ad['20'] > 0) notIncluded.push('A statement explaining other additions (line 9) or other subtractions (DR 0104AD line 20)')
   if (co.cr['2'] > 0) notIncluded.push('A copy of federal Form 2441 (with DR 0347); on DR 0347 add each child’s care expenses (only the total on line 2(e) is filled in)')
   if (ret.dependentCare.providers.length > 2) notIncluded.push('DR 0347: more than two care providers — list the rest on an extra page')

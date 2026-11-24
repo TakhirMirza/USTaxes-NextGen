@@ -100,3 +100,31 @@ test('Colorado DR 0347 is filled when AGI is $60,000 or less', async () => {
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 CO care')
   if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-CO-care.pdf`, bytes)
 })
+
+test('Colorado DR 0104CR by line: refundable lines, Part II worksheet and Part III used in order', async () => {
+  const b = household('CO')
+  const r0 = { ...b, w2s: [{ ...b.w2s[0], wages: 152000, socialSecurityWages: 152000, medicareWages: 152000 }] }
+  const ret: TaxReturnInput = { ...r0, co: { ...r0.co, cr: { refundable: { '10': 750 }, otherState: { name: 'Kansas', sourceIncome: 20000, tax: 900 }, available: { '43': 150, '58': 99999 }, historicCert: '', homelessCert: '' } } }
+  const res = computeReturn(ret)
+  const co = computeColorado(ret, res)
+  const CR = co.cr
+  assert.equal(CR['10'], 750)
+  assert.equal(CR['26'], CR['1'] + CR['2'] + CR['5'] + 750)
+  assert.equal(CR['28'], co.lines['13'] + co.lines['14'])
+  assert.equal(CR['31'], Math.round(20000 / CR['30'] * 1e6) / 1e4)
+  assert.equal(CR['32'], Math.round(CR['28'] * CR['31'] / 100))
+  assert.equal(CR['34'], Math.min(CR['32'], 900))
+  assert.deepEqual(co.crUsed['43'], { a: 150, b: 150 })
+  assert.equal(co.crUsed['58'].b, co.lines['16'] - CR['34'] - 150)
+  assert.equal(CR['65'], co.lines['16'])
+  assert.equal(co.lines['17'], co.lines['16'])
+  const packet = buildCoPacket(ret, res, co)
+  const cr = packet.forms.find((f) => f.id === 'co104cr')!
+  assert.equal(cr.values['Form Question 27'], 'KANSAS')
+  assert.deepEqual(cr.pages, [0, 1, 2, 3, 5, 7, 8])
+  assert.ok(!packet.notIncluded.some((x) => x.startsWith('DR 0104CR')))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-COCR.pdf`, (await buildPdf(lib, packet.forms, load, '2025 CO')).bytes)
+})

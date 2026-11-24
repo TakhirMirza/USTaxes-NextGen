@@ -1207,10 +1207,12 @@ export interface CoInput {
   famliBenefits: number
   /** DR 0104AD line 20. */
   otherSubtractions: number
-  /** DR 0104CR Part II: credit for tax paid to another state, and other credits. */
+  /** DR 0104CR Part II: credit for tax paid to another state, and other credits (totals, used when the detail below is empty). */
   otherStateCredit: number
   nonrefundableCredits: number
   refundableCredits: number
+  /** DR 0104CR by line: refundable lines 7–25; Part II (one other state: name, modified Colorado AGI from sources there, that state's tax); Part III lines 35–63 credit available (column A), with the certificate numbers for lines 52 and 62. */
+  cr: { refundable: Record<string, number>; otherState: { name: string; sourceIncome: number; tax: number }; available: Record<string, number>; historicCert: string; homelessCert: string }
   /** Eligible for the TABOR sales tax refund (full-year resident, generally 18 or older on January 1, 2025). */
   tabor: boolean
   /** Line 41: overpayment carried to 2026. */
@@ -1224,7 +1226,7 @@ export interface CoInput {
 export const emptyCo = (): CoInput => ({
   w2: {}, withholding1099: 0, priorCarryforward: 0, estimatedPayments: 0, extensionPayment: 0, deductedSalesTax: false, otherStateBondInterest: 0,
   otherAdditions: 0, stateRefundInFagi: 0, usObligationInterest: 0, militaryRetirement: { taxpayer: 0, spouse: 0 }, collegeInvest: 0, coloradoAble: 0, beneficiaries: 1,
-  famliBenefits: 0, otherSubtractions: 0, otherStateCredit: 0, nonrefundableCredits: 0, refundableCredits: 0, tabor: true, creditForward: 0,
+  famliBenefits: 0, otherSubtractions: 0, otherStateCredit: 0, cr: { refundable: {}, otherState: { name: '', sourceIncome: 0, tax: 0 }, available: {}, historicCert: '', homelessCert: '' }, nonrefundableCredits: 0, refundableCredits: 0, tabor: true, creditForward: 0,
   idState: { taxpayer: '', spouse: '' }, idLast4: { taxpayer: '', spouse: '' }, idIssued: { taxpayer: '', spouse: '' }, birthDate: { taxpayer: '', spouse: '' }
 })
 
@@ -2291,8 +2293,11 @@ export interface RiInput {
   otherIncreasing: number
   /** Schedule II: credit for tax paid to another state. */
   otherState: { state: string; income: number; tax: number }
-  /** Schedule CR total (other Rhode Island credits). */
+  /** Schedule CR total (other Rhode Island credits), used when the lines below are empty. */
   otherCredits: number
+  /** Schedule CR lines 1–8 by line, and lines 10–11 recapture of prior-year credits (credit number, name, amount) for RI-1040 line 10b. */
+  crLines: Record<string, number>
+  recapture: { number: string; name: string; amount: number }[]
   /** Line 12a: use tax; 12b: individual mandate penalty (0 with full-year coverage). */
   useTax: number
   fullYearCoverage: boolean
@@ -2309,7 +2314,7 @@ export interface RiInput {
 
 export const emptyRi = (): RiInput => ({
   w2: {}, other1099: [], estimatedPayments: 0, birthDates: { taxpayer: '', spouse: '' }, dependentBirthDates: {}, usObligationInterest: 0, railroadRetirement: 0, tuition529: 0,
-  pensionKind: {}, otherDecreasing: 0, otherStateBondInterest: 0, otherIncreasing: 0, otherState: { state: '', income: 0, tax: 0 }, otherCredits: 0, useTax: 0,
+  pensionKind: {}, otherDecreasing: 0, otherStateBondInterest: 0, otherIncreasing: 0, otherState: { state: '', income: 0, tax: 0 }, otherCredits: 0, crLines: {}, recapture: [], useTax: 0,
   fullYearCoverage: true, mandatePenalty: 0, checkoffs: {}, electoral: false, electoralParty: '',
   relief: { claim: false, owner: false, propertyTax: 0, rent: 0, householdSize: 1, dependentsUnder18: 0, publicAssistance: 0, otherNontaxable: 0, disabled: false, landlord: '' },
   driversLicense: { taxpayer: '', spouse: '' }, creditForward: 0
@@ -3098,7 +3103,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     nj: { ...emptyNj(), ...(r.nj ?? {}), w2: normalizeStatements(r.nj?.w2), disabled: { ...emptyNj().disabled, ...(r.nj?.disabled ?? {}) }, veteran: { ...emptyNj().veteran, ...(r.nj?.veteran ?? {}) }, electionFund: { ...emptyNj().electionFund, ...(r.nj?.electionFund ?? {}) }, donations: { ...(r.nj?.donations ?? {}) }, dependentBirthYears: { ...(r.nj?.dependentBirthYears ?? {}) }, pensionTaxable: typeof r.nj?.pensionTaxable === 'number' ? r.nj.pensionTaxable : null, pensionExcludable: typeof r.nj?.pensionExcludable === 'number' ? r.nj.pensionExcludable : null },
     ma: { ...emptyMa(), ...(r.ma ?? {}), w2: normalizeStatements(r.ma?.w2), commuter: { ...emptyMa().commuter, ...(r.ma?.commuter ?? {}) }, veteran: { ...emptyMa().veteran, ...(r.ma?.veteran ?? {}) }, electionFund: { ...emptyMa().electionFund, ...(r.ma?.electionFund ?? {}) }, donations: { ...(r.ma?.donations ?? {}) }, birthDate: { ...emptyMa().birthDate, ...(r.ma?.birthDate ?? {}) }, dependentBirthDates: { ...(r.ma?.dependentBirthDates ?? {}) }, health: { taxpayer: normalizeMaHealth(r.ma?.health?.taxpayer), spouse: normalizeMaHealth(r.ma?.health?.spouse) } },
     az: { ...emptyAz(), ...(r.az ?? {}), w2: normalizeStatements(r.az?.w2), governmentPension: { ...emptyAz().governmentPension, ...(r.az?.governmentPension ?? {}) }, militaryRetirement: { ...emptyAz().militaryRetirement, ...(r.az?.militaryRetirement ?? {}) }, donations: { ...(r.az?.donations ?? {}) }, ptc: { ...emptyAzPtc(), ...(r.az?.ptc ?? {}) } },
-    co: { ...emptyCo(), ...(r.co ?? {}), w2: normalizeStatements(r.co?.w2), militaryRetirement: { ...emptyCo().militaryRetirement, ...(r.co?.militaryRetirement ?? {}) }, idState: { ...emptyCo().idState, ...(r.co?.idState ?? {}) }, idLast4: { ...emptyCo().idLast4, ...(r.co?.idLast4 ?? {}) }, idIssued: { ...emptyCo().idIssued, ...(r.co?.idIssued ?? {}) }, birthDate: { ...emptyCo().birthDate, ...(r.co?.birthDate ?? {}) } },
+    co: { ...emptyCo(), ...(r.co ?? {}), w2: normalizeStatements(r.co?.w2), militaryRetirement: { ...emptyCo().militaryRetirement, ...(r.co?.militaryRetirement ?? {}) }, idState: { ...emptyCo().idState, ...(r.co?.idState ?? {}) }, idLast4: { ...emptyCo().idLast4, ...(r.co?.idLast4 ?? {}) }, idIssued: { ...emptyCo().idIssued, ...(r.co?.idIssued ?? {}) }, birthDate: { ...emptyCo().birthDate, ...(r.co?.birthDate ?? {}) },
+      cr: { ...emptyCo().cr, ...(r.co?.cr ?? {}), refundable: { ...(r.co?.cr?.refundable ?? {}) }, available: { ...(r.co?.cr?.available ?? {}) }, otherState: { ...emptyCo().cr.otherState, ...(r.co?.cr?.otherState ?? {}) } } },
     mn: { ...emptyMn(), ...(r.mn ?? {}), w2: normalizeStatements(r.mn?.w2), birthDate: { ...emptyMn().birthDate, ...(r.mn?.birthDate ?? {}) }, campaignCode: { ...emptyMn().campaignCode, ...(r.mn?.campaignCode ?? {}) } },
     wi: { ...emptyWi(), ...(r.wi ?? {}), w2: normalizeStatements(r.wi?.w2), donations: { ...(r.wi?.donations ?? {}) } },
     in: { ...emptyIn(), ...(r.in ?? {}), w2: normalizeStatements(r.in?.w2), countyLived: { ...emptyIn().countyLived, ...(r.in?.countyLived ?? {}) }, countyWorked: { ...emptyIn().countyWorked, ...(r.in?.countyWorked ?? {}) } },
@@ -3200,6 +3206,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       const e = emptyRi(); const x: Partial<RiInput> = r.ri ?? {}
       return {
         ...e, ...x, w2: normalizeStatements(x.w2), other1099: Array.isArray(x.other1099) ? x.other1099.map((o) => ({ payer: o.payer ?? '', ein: o.ein ?? '', code: o.code ?? '', owner: o.owner === 'spouse' ? 'spouse' : 'taxpayer', tax: Number(o.tax) || 0 })) : [],
+        crLines: { ...(x.crLines ?? {}) }, recapture: Array.isArray(x.recapture) ? x.recapture.map((c: Partial<{ number: string; name: string; amount: number }>) => ({ number: c.number ?? '', name: c.name ?? '', amount: c.amount ?? 0 })) : [],
         birthDates: { ...e.birthDates, ...(x.birthDates ?? {}) }, dependentBirthDates: { ...(x.dependentBirthDates ?? {}) }, pensionKind: { ...(x.pensionKind ?? {}) },
         otherState: { ...e.otherState, ...(x.otherState ?? {}) }, checkoffs: { ...(x.checkoffs ?? {}) }, relief: { ...e.relief, ...(x.relief ?? {}) },
         driversLicense: { ...e.driversLicense, ...(x.driversLicense ?? {}) }
