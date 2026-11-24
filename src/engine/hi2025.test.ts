@@ -162,3 +162,35 @@ test('N-11 negative AGI goes in the minus box', () => {
   assert.equal(v['20_neg'], '-')
   assert.equal(v['20'], '3000')
 })
+
+test('HI Schedule CR by line: refundable lines, nonrefundable credits applied in order with carryovers', async () => {
+  const w = w2(70000)
+  const { hi: r, res, ret } = hi(base({ w2s: [w] }), {
+    cr: { lines: { '4': 1200, '10a': 300, '12': 500 }, energy: 'solar', energy28: 'solar', carry: { '14': { prior: 100, current: 0 }, '28': { prior: 50000, current: 2000 } } }
+  })
+  assert.equal(r.cr['10c'], 300)
+  assert.equal(r.cr['11'], 1500 + r.lines['eitc'])
+  assert.equal(r.lines['32'], r.cr['11'])
+  const tax = r.lines['34']
+  assert.ok(tax > 600 && tax < 52600)
+  assert.equal(r.cr['12'], 500)
+  assert.deepEqual(r.crCarry['14'], { a: 100, b: 0, c: 100, d: 0 })
+  const c28 = r.crCarry['28']
+  assert.equal(c28.c, tax - 600)
+  assert.equal(c28.d, 52000 - c28.c)
+  assert.equal(r.lines['35'], tax)
+  assert.equal(r.lines['36'], 0)
+  const packet = buildHiPacket(ret, res, r)
+  const v = packet.forms[0].values
+  assert.equal(v['CR3A'], true)
+  assert.equal(v['CR28solar'], true)
+  assert.equal(v['CR28D'], String(c28.d))
+  assert.ok(!r.issues.some((x) => x.includes('Schedule CR section')))
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, packet.forms, load, '2025 HI')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-HICR.pdf`, bytes)
+})

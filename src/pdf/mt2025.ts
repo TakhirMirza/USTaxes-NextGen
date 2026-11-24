@@ -130,6 +130,22 @@ export function formMt2(ret: TaxReturnInput, mt: MtResult, preparer?: PreparerIn
     money('Schedule III Part I Line 14', S3['14'], true)
     money('Schedule III Part I Line 17', S3['17'])
   }
+  const Q = mt.s3p2
+  if (Q) {
+    pages.push(6)
+    const st = upper(d.otherStateCredit.state).replace(/[^A-Z]/g, '').slice(0, 2)
+    for (const k of ['1', '2', '3a', '3b', '3', '4', '5', '7', '9', '10']) money(`Schedule III Part II Line ${k}`, Q[k], ['3', '10'].includes(k))
+    v['Schedule III Part II Line 6'] = Q['6'].toFixed(6)
+    v['Schedule III Part II Line 8'] = Q['8'].toFixed(6)
+    if (st) v['Schedule III, Part II, Line 2, State'] = st
+    if (Q['11'] > 0) {
+      for (const k of ['11', '12', '13', '14', '15', '17', '19', '20']) money(`Schedule III Part II Line ${k}`, Q[k], k === '20')
+      v['Schedule III Part II Line 16'] = Q['16'].toFixed(6)
+      v['Schedule III Part II Line 18'] = Q['18'].toFixed(6)
+      if (st) v['Schedule III, Part II, Line 12, State'] = st
+    }
+    money('Schedule III Part II Line 21', Q['21'], true)
+  }
   // ── Schedule IV ──
   const S4 = mt.s4
   if (S4['8'] > 0) {

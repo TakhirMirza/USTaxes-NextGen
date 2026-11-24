@@ -26,7 +26,7 @@ const splitName = (name: string): [string, string] => {
   return [parts.join(' '), last]
 }
 
-const PAGES = { schC: 5, schE: 7, schJ1: 11, schJ2: 12, careRefundable: 13, eic: 14, careNonrefundable: 15 }
+const PAGES = { schF: 9, schI: 10, schC: 5, schE: 7, schJ1: 11, schJ2: 12, careRefundable: 13, eic: 14, careNonrefundable: 15 }
 
 export function formIt540(ret: TaxReturnInput, res: TaxReturnResult, la: LaResult, preparer?: PreparerInfo | null): FormFill {
   const L = la.lines
@@ -177,6 +177,24 @@ export function formIt540(ret: TaxReturnInput, res: TaxReturnResult, la: LaResul
     if (la.exempt.some((x) => x.code === '06')) v['PNS (06E)'] = upper([...new Set(ret.retirement.filter((x) => owners.includes(x.owner) && x.taxableAmount > 0).map((x) => x.payer.trim()).filter(Boolean))].join(', ')).slice(0, 60)
   }
 
+  // ── Schedule F (line 17) and Schedule I (line 26); the field numbers on Schedule F run one ahead of the line numbers ──
+  const code2 = (s: string): string => s.toUpperCase().replace(/F$/, '').replace(/[^0-9A-Z]/g, '').slice(0, 2)
+  const fRows = d.schF.filter((x) => x.amount > 0).slice(0, 5)
+  const mRows = d.musical.filter((x) => x.amount > 0).slice(0, 3)
+  if (L['17'] > 0 && fRows.length + mRows.length > 0) {
+    pages.push(PAGES.schF)
+    fRows.forEach((x, i) => { v[`SchFDescript${i + 2}`] = upper(x.description).slice(0, 50); v[`SchFCode${i + 2}`] = code2(x.code); v[`SchFCrAmt${i + 2}`] = money(x.amount) })
+    if (fRows.some((x) => code2(x.code) === '66')) v['SchFSchReadinessLicenseNo'] = d.schoolReadinessLicense.replace(/[^0-9A-Za-z]/g, '').slice(0, 9)
+    mRows.forEach((x, i) => { v[`SchFCrAmt${i + 7}`] = money(x.amount); v[`SchFCertNo${i + 7}A`] = upper(x.cert).replace(/[^0-9A-Z]/g, '').slice(0, 26) })
+    v['SchFTotalCredits'] = keep0(L['17'])
+  }
+  const iRows = d.schI.filter((x) => x.amount > 0).slice(0, 5)
+  if (L['26'] > 0 && iRows.length > 0) {
+    pages.push(PAGES.schI)
+    iRows.forEach((x, i) => { v[`SchIDescript${i + 1}`] = upper(x.description).slice(0, 50); v[`SchICode${i + 1}`] = code2(x.code); v[`SchICrAmt${i + 1}`] = money(x.amount) })
+    v['SchITotalCredits'] = keep0(L['26'])
+  }
+
   // ── Schedule J and the nonrefundable child care credit worksheet ──
   const J = la.schJ
   if (J['16'] > 0 || J['1'] > 0 && agi > 25000) {
@@ -262,8 +280,8 @@ export function buildLaPacket(ret: TaxReturnInput, res: TaxReturnResult, la: LaR
   const notIncluded = [...la.attach]
   if (ret.dependents.length > 8) notIncluded.push('Page 1: a statement listing the dependents after the eighth')
   if (ret.dependents.some((x) => !(ret.la.dependentBirthDates[x.id] ?? '').replace(/\D/g, ''))) notIncluded.push('Page 1: dependents’ dates of birth that were not entered')
-  if (la.lines['17'] > 0) notIncluded.push('Schedule F is not filled in here: complete it for line 17')
-  if (la.lines['26'] > 0) notIncluded.push('Schedule I is not filled in here: complete it for line 26')
+  if (la.lines['17'] > 0 && !ret.la.schF.some((x) => x.amount > 0) && !ret.la.musical.some((x) => x.amount > 0)) notIncluded.push('Schedule F: list each credit in the Louisiana section to fill it in (only the line 17 total is entered)')
+  if (la.lines['26'] > 0 && !ret.la.schI.some((x) => x.amount > 0)) notIncluded.push('Schedule I: list each credit in the Louisiana section to fill it in (only the line 26 total is entered)')
   if (la.lines['14'] > 0) notIncluded.push('Refundable child care worksheet: check the expenses split between children in column H')
   return { forms, notIncluded }
 }

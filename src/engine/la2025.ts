@@ -120,7 +120,12 @@ export function computeLouisiana(ret: TaxReturnInput, res: TaxReturnResult): LaR
   L['14B'] = care.line6
   L['15'] = 0
   L['16'] = r(pos(f['27a']) * 0.05)
-  L['17'] = r(pos(d.otherRefundableCredits))
+  const sumRows = (rows: { amount: number }[]): number => rows.reduce((s, x) => s + r(pos(x.amount)), 0)
+  const fRows = d.schF.filter((x) => x.amount > 0).slice(0, 5)
+  const mRows = d.musical.filter((x) => x.amount > 0).slice(0, 3)
+  const iRows = d.schI.filter((x) => x.amount > 0).slice(0, 5)
+  const fListed = fRows.length + mRows.length > 0
+  L['17'] = fListed ? sumRows(fRows) + sumRows(mRows) : r(pos(d.otherRefundableCredits))
   L['18'] = L['14'] + L['15'] + L['16'] + L['17']
   L['19'] = pos(L['13'] - L['18'])
   L['20'] = pos(L['18'] - L['13'])
@@ -146,7 +151,7 @@ export function computeLouisiana(ret: TaxReturnInput, res: TaxReturnResult): LaR
   L['23B'] = r(pos(d.roadUsageFee))
   L['24'] = L['22'] + L['23A'] + L['23B']
   L['25'] = L['20']
-  L['26'] = r(pos(d.priority4Credits))
+  L['26'] = iRows.length ? sumRows(iRows) : r(pos(d.priority4Credits))
   const w2Tax = ret.w2s.filter((w) => owners.includes(w.owner)).reduce((s, w) => s + r(pos(d.w2[w.id]?.stateTax ?? 0)), 0)
   L['27'] = w2Tax + r(pos(d.withholding1099))
   L['28'] = r(pos(d.priorYearCredit))

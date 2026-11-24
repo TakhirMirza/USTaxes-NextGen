@@ -56,6 +56,9 @@ export function hiCareDecimal(agi: number): number {
 const STANDARD: Record<TaxReturnInput['filingStatus'], number> = { single: 4400, mfj: 8800, mfs: 4400, hoh: 6424, qss: 8800 }
 
 export interface HiResult {
+  /** Schedule CR by line (empty when only totals were entered); lines 14–32 by column. */
+  cr: Record<string, number>
+  crCarry: Record<string, { a: number; b: number; c: number; d: number }>
   lines: Record<string, number>
   /** Schedule X lines. */
   x: Record<string, number>
@@ -198,10 +201,37 @@ export function computeHawaii(ret: TaxReturnInput, res: TaxReturnResult): HiResu
   L['31'] = 25 * pos(Math.floor(d.carSeats))
   // Line 32: Schedule CR line 11: the refundable earned income tax credit (40% of federal, Form N-356) plus other refundable credits.
   L['eitc'] = r(pos(f['27a']) * 0.4)
-  L['32'] = L['eitc'] + r(pos(d.refundableCredits))
+  const crIn = d.cr
+  const crUsed = Object.values(crIn.lines).some((x) => x > 0) || Object.values(crIn.carry).some((x) => x.prior > 0 || x.current > 0)
+  const CR: Record<string, number> = {}
+  const crCarry: Record<string, { a: number; b: number; c: number; d: number }> = {}
+  if (crUsed) {
+    for (const k of ['1', '2', '3', '4', '5', '6', '7', '9', '10a', '10b', '12', '13']) CR[k] = r(pos(crIn.lines[k] ?? 0))
+    CR['8'] = L['eitc']
+    CR['10c'] = CR['10a'] + CR['10b']
+    CR['11'] = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10c'].reduce((s, k) => s + CR[k], 0)
+    L['32'] = CR['11']
+  } else L['32'] = L['eitc'] + r(pos(d.refundableCredits))
   L['33'] = L['28'] + L['29'] + L['30'] + L['31'] + L['32']
   L['34'] = L['27'] - L['33']
-  L['35'] = Math.min(pos(L['34']), r(pos(d.nonrefundableCredits)))
+  if (crUsed) {
+    // Part II: applied in line order up to the tax on line 34; lines 14–32 carry the unused part forward (column d), except line 24.
+    let room = pos(L['34'])
+    const take = (x: number): number => { const t = Math.min(room, x); room -= t; return t }
+    CR['12'] = take(CR['12']); CR['13'] = take(CR['13'])
+    let total = CR['12'] + CR['13']
+    for (let n = 14; n <= 32; n++) {
+      const k = String(n)
+      const a = r(pos(crIn.carry[k]?.prior ?? 0))
+      const b = n >= 25 ? r(pos(crIn.carry[k]?.current ?? 0)) : 0
+      if (a + b === 0) continue
+      const c = take(a + b)
+      crCarry[k] = { a, b, c, d: n === 24 ? 0 : a + b - c }
+      total += c
+    }
+    CR['33'] = total
+    L['35'] = total
+  } else L['35'] = Math.min(pos(L['34']), r(pos(d.nonrefundableCredits)))
   L['36'] = L['34'] - L['35']
 
   // ── Payments ──
@@ -231,7 +261,8 @@ export function computeHawaii(ret: TaxReturnInput, res: TaxReturnResult): HiResu
   if (L['eitc'] > 0) attach.push('Form N-356 (earned income tax credit, 40% of your federal credit)')
   if (L['32'] + L['35'] > 0) attach.push('Schedule CR (tax credits)')
   if (L['32'] - L['eitc'] > 0 || L['35'] > 0) attach.push('The forms for each other credit on Schedule CR')
-  if (L['32'] - L['eitc'] > 0 || L['35'] > 0) issues.push('Fill in the other credit lines on Schedule CR yourself; only the earned income tax credit (line 8) and the totals are entered.')
+  if (!crUsed && (L['32'] - L['eitc'] > 0 || L['35'] > 0)) issues.push('List your credits by line in the Schedule CR section to fill in Schedule CR; only the earned income tax credit (line 8) and the totals are entered.')
+  if (crUsed && (CR['4'] > 0 && !crIn.energy || crCarry['28'] && !crIn.energy28)) issues.push('Schedule CR: choose whether the renewable energy system is solar or wind.')
   if (disabledOwners.length) attach.push('Form N-172 (physician’s certification) if not filed before')
   if (capitalGains) attach.push('The Capital Gains Tax Worksheet (keep with your records)')
   if (mine.some((x) => x.taxableAmount > 0) && Object.keys(d.retirementKind).length === 0) issues.push('Mark employer-funded and government pensions among your 1099-Rs: Hawaii does not tax them (line 13). IRA and 401(k) distributions from your own contributions are taxed.')
@@ -242,5 +273,5 @@ export function computeHawaii(ret: TaxReturnInput, res: TaxReturnResult): HiResu
   if (L['48'] > 0 && L['38'] === 0 && L['48'] > L['36'] * 0.1) issues.push('A balance due may mean an estimated tax penalty (Form N-210).')
   issues.push('Hawaii’s fill-in N-11 prints a 2D barcode only from its own PDF viewer; this copy leaves that area blank. You can also file online at hitax.hawaii.gov.')
 
-  return { lines: L, x: X, exemptions: ex, itemize, capitalGains, dependentBox: dependent, issues, attach }
+  return { cr: CR, crCarry, lines: L, x: X, exemptions: ex, itemize, capitalGains, dependentBox: dependent, issues, attach }
 }

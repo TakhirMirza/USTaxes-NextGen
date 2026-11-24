@@ -127,3 +127,29 @@ test('Form 2: every value lands on one field and the PDF builds', async () => {
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 MT')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-MT.pdf`, bytes)
 })
+
+test('MT Schedule III Part II: credit for tax paid to another state, ordinary and long-term gain parts', async () => {
+  const tx = { ...emptyTransaction(), term: 'long' as const, proceeds: 20000, costBasis: 10000 }
+  const oc = { state: 'id', amount: 0, income: 12000, stateIncome: 15000, expenses: 0, tax: 500, ltcgIncome: 3000, ltcgTax: 150 }
+  const { mt, res, ret } = run(base({ w2s: [w2(30000)], capitalTransactions: [tx] }), { otherStateCredit: oc })
+  const Q = mt.s3p2!
+  assert.deepEqual([Q['3a'], Q['3'], Q['5'], Q['6'], Q['7'], Q['8'], Q['9'], Q['10']], [30000, 30000, 670, 0.8, 400, 0.4, 268, 268])
+  assert.deepEqual([Q['13'], Q['15'], Q['16'], Q['17'], Q['18'], Q['19'], Q['20'], Q['21']], [10000, 335, 0.2, 30, 0.3, 101, 30, 298])
+  assert.equal(mt.s3['1'], 298)
+  assert.equal(mt.lines['9'], 298)
+  assert.ok(!mt.issues.some((x) => x.includes('Schedule III section')))
+  const packet = buildMtPacket(ret, res, mt)
+  const v = packet.forms[0].values
+  assert.equal(v['Schedule III Part II Line 6'], '0.800000')
+  assert.equal(v['Schedule III, Part II, Line 2, State'], 'ID')
+  assert.ok(packet.forms[0].pages!.includes(6))
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, packet.forms, load, '2025 MT')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-MT3.pdf`, bytes)
+  // Only an amount: used as entered.
+  assert.equal(run(base({ w2s: [w2(30000)] }), { otherStateCredit: { ...oc, income: 0, stateIncome: 0, tax: 0, ltcgIncome: 0, ltcgTax: 0, amount: 120 } }).mt.lines['9'], 120)
+})

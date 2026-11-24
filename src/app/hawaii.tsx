@@ -6,7 +6,7 @@ import type { HiInput, HiRetirementKind, Owner, Person } from '../engine/model.t
 import { computeHawaii } from '../engine/hi2025.ts'
 import { buildHiPacket } from '../pdf/hi2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
-import { Check, MoneyField, NumberField, Section, TextField, usd } from './fields'
+import { Check, Choice, MoneyField, NumberField, Section, TextField, usd } from './fields'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -23,6 +23,21 @@ const KEY = new Set(['36', '49', '47a'])
 const KINDS: [HiRetirementKind, string][] = [['standard', 'Taxed in Hawaii (IRA, 401(k) from your own contributions, annuity)'], ['employer', 'Employer-funded or government pension (not taxed)']]
 const firstName = (p: Person, fallback: string): string => p.firstName.trim().split(/\s+/)[0] || fallback
 
+const CR_REFUNDABLE: [string, string][] = [
+  ['1', 'Capital goods excise tax credit (N-312)'], ['2', 'Fuel tax credit for commercial fishers (N-163)'], ['3', 'Motion picture, digital media and film production (N-340)'],
+  ['4', 'Renewable energy technologies, refundable (N-342)'], ['5', 'Important agricultural land (N-344)'], ['6', 'Research activities (N-346)'],
+  ['7', 'Renewable fuels production (N-360)'], ['9', 'Claim of right (N-364)'], ['10a', 'Taxes withheld on Hawaii real property sold by a partnership or S corporation'], ['10b', 'Credit from a regulated investment company']
+]
+const CR_CARRY: [string, string][] = [
+  ['14', 'Energy conservation'], ['15', 'High technology business investment'], ['16', 'Cesspool upgrade, conversion or connection'], ['17', 'Technology infrastructure renovation'],
+  ['18', 'Hotel construction and remodeling'], ['19', 'Residential construction and remodeling'], ['20', 'Renewable energy technologies (before July 1, 2009)'], ['21', 'Organic foods production'],
+  ['22', 'Renewable fuels production (before 2022)'], ['23', 'Capital infrastructure (N-348)'], ['24', 'Earned income tax credit carryover (N-356)']
+]
+const CR_NEW: [string, string][] = [
+  ['25', 'Low-income housing (N-586)'], ['26', 'Vocational rehabilitation referrals (N-884)'], ['27', 'School repair and maintenance (N-330)'], ['28', 'Nonrefundable renewable energy technologies (N-342)'],
+  ['29', 'Healthcare preceptor (N-358)'], ['30', 'Historic preservation (N-325)'], ['31', 'Nonrefundable renewable fuels production (N-360)'], ['32', 'Pass-through entity tax credit (N-362)']
+]
+
 export function HawaiiStep({ ret, set, result, preparer }: StepProps & { preparer: PreparerInfo | null }): ReactElement {
   const d = ret.hi
   const hi = useMemo(() => computeHawaii(ret, result), [ret, result])
@@ -33,6 +48,8 @@ export function HawaiiStep({ ret, set, result, preparer }: StepProps & { prepare
   const names: Record<Owner, string> = { taxpayer: firstName(ret.taxpayer, 'You'), spouse: firstName(ret.spouse, 'Spouse') }
   const packet = buildHiPacket(ret, result, hi, preparer)
   const L = hi.lines
+  const crUsed = Object.keys(hi.cr).length > 0
+  const putCr = (p: Partial<HiInput['cr']>): void => put({ cr: { ...d.cr, ...p }, refundableCredits: 0, nonrefundableCredits: 0 })
   const owes = L['49'] > 0
   const w2s = ret.w2s.filter((w) => owners.includes(w.owner))
   const r1099 = ret.retirement.filter((x) => owners.includes(x.owner))
@@ -113,9 +130,41 @@ export function HawaiiStep({ ret, set, result, preparer }: StepProps & { prepare
           <MoneyField label="Rent exclusions" hint="Utilities, parking, rent subsidies included in the rent" value={d.rentExclusions} onChange={(n) => put({ rentExclusions: n })} />
           <TextField label="Rental unit address" hint="Street and apartment number" autoComplete="off" value={d.rentalAddress} onChange={(s) => put({ rentalAddress: s })} />
           <NumberField label="Child car seats bought" hint="Line 31; $25 each" max={10} value={d.carSeats} onChange={(n) => put({ carSeats: n })} />
-          <MoneyField label="Other refundable credits" hint="Schedule CR Part 1 (other than the earned income credit)" value={d.refundableCredits} onChange={(n) => put({ refundableCredits: n })} />
-          <MoneyField label="Nonrefundable credits" hint="Schedule CR line 33, incl. tax paid to another state" value={d.nonrefundableCredits} onChange={(n) => put({ nonrefundableCredits: n })} />
+          {!crUsed && d.refundableCredits > 0 && <MoneyField label="Other refundable credits (total)" hint="Or list them in Schedule CR below" value={d.refundableCredits} onChange={(n) => put({ refundableCredits: n })} />}
+          {!crUsed && d.nonrefundableCredits > 0 && <MoneyField label="Nonrefundable credits (total)" hint="Or list them in Schedule CR below" value={d.nonrefundableCredits} onChange={(n) => put({ nonrefundableCredits: n })} />}
         </div>
+      </Section>
+
+      <Section title="Schedule CR: other tax credits" intro="Enter each credit on its Schedule CR line and attach its form. Nonrefundable credits are applied in line order up to your tax; the unused part of a carryover credit (lines 14–32) is shown in column (d) for 2026.">
+        <details open={crUsed}>
+          <summary>Part I: refundable credits</summary>
+          <div className="grid">
+            {CR_REFUNDABLE.map(([k, label]) => <MoneyField key={k} label={label} hint={`Line ${k}`} value={d.cr.lines[k] ?? 0} onChange={(n) => putCr({ lines: { ...d.cr.lines, [k]: n } })} />)}
+          </div>
+          {(d.cr.lines['4'] ?? 0) > 0 && <Choice legend="Line 4 energy system" value={d.cr.energy || 'solar'} onChange={(energy) => putCr({ energy })} options={[{ value: 'solar', label: 'Solar' }, { value: 'wind', label: 'Wind' }]} />}
+        </details>
+        <details open={crUsed}>
+          <summary>Part II: nonrefundable credits</summary>
+          <div className="grid">
+            <MoneyField label="Income tax paid to another state or foreign country" hint="Line 12; attach the other return or federal Form 1116" value={d.cr.lines['12'] ?? 0} onChange={(n) => putCr({ lines: { ...d.cr.lines, '12': n } })} />
+            <MoneyField label="Enterprise zone tax credit" hint="Line 13; Form N-756" value={d.cr.lines['13'] ?? 0} onChange={(n) => putCr({ lines: { ...d.cr.lines, '13': n } })} />
+            {CR_CARRY.map(([k, label]) => (
+              <MoneyField key={k} label={label} hint={`Line ${k}, column (a): unused carryover from 2024`} value={d.cr.carry[k]?.prior ?? 0} onChange={(n) => putCr({ carry: { ...d.cr.carry, [k]: { prior: n, current: d.cr.carry[k]?.current ?? 0 } } })} />
+            ))}
+            {CR_NEW.map(([k, label]) => [
+              <MoneyField key={`${k}b`} label={label} hint={`Line ${k}, column (b): 2025 credit`} value={d.cr.carry[k]?.current ?? 0} onChange={(n) => putCr({ carry: { ...d.cr.carry, [k]: { prior: d.cr.carry[k]?.prior ?? 0, current: n } } })} />,
+              <MoneyField key={`${k}a`} label={`${label}: carryover`} hint={`Line ${k}, column (a): unused from 2024`} value={d.cr.carry[k]?.prior ?? 0} onChange={(n) => putCr({ carry: { ...d.cr.carry, [k]: { prior: n, current: d.cr.carry[k]?.current ?? 0 } } })} />
+            ])}
+          </div>
+          {hi.crCarry['28'] && <Choice legend="Line 28 energy system" value={d.cr.energy28 || 'solar'} onChange={(energy28) => putCr({ energy28 })} options={[{ value: 'solar', label: 'Solar' }, { value: 'wind', label: 'Wind' }]} />}
+        </details>
+        {crUsed && (
+          <table className="lines"><tbody>
+            {Object.entries(hi.crCarry).map(([k, c]) => <tr key={k}><th scope="row"><span className="line-no">{k}</span>Applied {usd(c.c)} of {usd(c.a + c.b)}</th><td>{k === '24' ? '' : `${usd(c.d)} to 2026`}</td></tr>)}
+            <tr><th scope="row"><span className="line-no">11</span>Total refundable credits (Form N-11 line 32)</th><td>{usd(L['32'])}</td></tr>
+            <tr><th scope="row"><span className="line-no">33</span>Total nonrefundable credits (Form N-11 line 35)</th><td>{usd(L['35'])}</td></tr>
+          </tbody></table>
+        )}
       </Section>
 
       <Section title="Contributions and signature" intro="Each checked box takes $2 (schools) or $5 (libraries, domestic violence) from your refund. The election campaign fund box costs nothing.">

@@ -101,11 +101,22 @@ export function MontanaStep({ ret, set, result, preparer }: StepProps & { prepar
 
       <Section title="Credits (Schedule III)" intro="The earned income credit (10% of your federal credit) is worked out from your return.">
         <div className="grid">
-          <TextField label="Other state you paid tax to" autoComplete="off" value={d.otherStateCredit.state} onChange={(s) => put({ otherStateCredit: { ...d.otherStateCredit, state: s } })} />
-          <MoneyField label="Credit for tax paid to that state" hint="From Schedule III Part II, line 21" value={d.otherStateCredit.amount} onChange={(n) => put({ otherStateCredit: { ...d.otherStateCredit, amount: n } })} />
           <MoneyField label="Other nonrefundable credits" hint="Schedule III lines 2–13" value={d.otherNonrefundableCredits} onChange={(n) => put({ otherNonrefundableCredits: n })} />
           <MoneyField label="Refundable credits" hint="Adoption, unlocking public lands" value={d.refundableCredits} onChange={(n) => put({ refundableCredits: n })} />
         </div>
+        <h3>Credit for income tax paid to another state or country (Part II)</h3>
+        <p className="why">Use the figures from the other state’s return. The credit is the smallest of that state’s tax, that tax times the share of its income sourced there, and the Montana tax times the share of your Montana income sourced there; long-term capital gains are figured separately.</p>
+        <div className="grid">
+          <TextField label="State abbreviation or country" autoComplete="off" value={d.otherStateCredit.state} onChange={(s) => put({ otherStateCredit: { ...d.otherStateCredit, state: s } })} />
+          <MoneyField label="Income sourced and taxed there, without net long-term gains" hint="Line 1; included in Montana taxable income" value={d.otherStateCredit.income} onChange={(n) => put({ otherStateCredit: { ...d.otherStateCredit, income: n, amount: 0 } })} />
+          <MoneyField label="All income taxed by that state" hint="Lines 2 and 12" value={d.otherStateCredit.stateIncome} onChange={(n) => put({ otherStateCredit: { ...d.otherStateCredit, stateIncome: n, amount: 0 } })} />
+          <MoneyField label="Expenses related to that income" hint="Line 3b" value={d.otherStateCredit.expenses} onChange={(n) => put({ otherStateCredit: { ...d.otherStateCredit, expenses: n } })} />
+          <MoneyField label="That state’s tax on the ordinary income" hint="Line 4; the tax liability, not the amount withheld" value={d.otherStateCredit.tax} onChange={(n) => put({ otherStateCredit: { ...d.otherStateCredit, tax: n, amount: 0 } })} />
+          <MoneyField label="Net long-term capital gain sourced there" hint="Line 11" value={d.otherStateCredit.ltcgIncome} onChange={(n) => put({ otherStateCredit: { ...d.otherStateCredit, ltcgIncome: n, amount: 0 } })} />
+          {d.otherStateCredit.ltcgIncome > 0 && <MoneyField label="That state’s tax on the long-term gain" hint="Line 14" value={d.otherStateCredit.ltcgTax} onChange={(n) => put({ otherStateCredit: { ...d.otherStateCredit, ltcgTax: n } })} />}
+          {!mt.s3p2 && d.otherStateCredit.amount > 0 && <MoneyField label="Credit figured yourself" hint="Part I line 1; or enter the figures above" value={d.otherStateCredit.amount} onChange={(n) => put({ otherStateCredit: { ...d.otherStateCredit, amount: n } })} />}
+        </div>
+        {mt.s3p2 && <p className="why">Ordinary income part (line 10): {usd(mt.s3p2['10'])}; long-term gain part (line 20): {usd(mt.s3p2['20'])}; credit (line 21): {usd(mt.s3p2['21'])}.</p>}
       </Section>
 
       <Section title="Elderly homeowner/renter credit (Schedule 2EC)" intro="Up to $1,150 if you are 62 or older, lived in Montana at least nine months, and your household’s total income was under $45,000.">

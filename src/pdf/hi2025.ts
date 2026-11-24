@@ -36,8 +36,9 @@ export function formHiN11(ret: TaxReturnInput, res: TaxReturnResult, hi: HiResul
     v[name] = x < 0 ? `-${-x}` : String(x)
   }
   const schX = L['29'] + L['30'] > 0
-  const cr = L['32'] > 0 || L['35'] > 0
-  const pages = [0, 1, 2, 3, ...(cr ? (L['35'] > 0 ? [4, 5, 6] : [4]) : []), ...(schX ? [7, 8] : [])]
+  const part2 = L['35'] > 0 || Object.keys(hi.crCarry).length > 0
+  const cr = L['32'] > 0 || part2
+  const pages = [0, 1, 2, 3, ...(cr ? (part2 ? [4, 5, 6] : [4]) : []), ...(schX ? [7, 8] : [])]
 
   // ── Page 1: names, address, filing status, exemptions ──
   const tp = ret.taxpayer
@@ -223,6 +224,17 @@ export function formHiN11(ret: TaxReturnInput, res: TaxReturnResult, hi: HiResul
       if (joint) v[s2] = n === 'NAMECOPYP3' ? digits(sp.ssn) : ssnFmt(sp.ssn)
     }
     if (L['eitc'] > 0) v['CR8'] = String(L['eitc'])
+    const C = hi.cr
+    for (const k of ['1', '2', '3', '4', '5', '6', '7', '9', '12', '13']) if (C[k] > 0) v[`CR${k}`] = String(C[k])
+    if (C['10c'] > 0) { if (C['10a'] > 0) v['CR10A'] = String(C['10a']); if (C['10b'] > 0) v['CR10B'] = String(C['10b']); v['CR10C'] = String(C['10c']) }
+    if (C['4'] > 0 && ret.hi.cr.energy) v[ret.hi.cr.energy === 'solar' ? 'CR3A' : 'CR3B'] = true
+    for (const [k, c] of Object.entries(hi.crCarry)) {
+      v[`CR${k}A`] = String(c.a)
+      if (+k >= 25) v[`CR${k}B`] = String(c.b)
+      v[`CR${k}C`] = String(c.c)
+      if (k !== '24') v[`CR${k}D`] = String(c.d)
+    }
+    if (hi.crCarry['28'] && ret.hi.cr.energy28) v[ret.hi.cr.energy28 === 'solar' ? 'CR28solar' : 'CR28wind'] = true
     if (L['32'] > 0) v['CR11'] = String(L['32'])
     if (L['35'] > 0) v['CR33D'] = String(L['35'])
   }

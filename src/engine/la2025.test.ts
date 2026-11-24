@@ -110,3 +110,29 @@ test('IT-540: every value lands on one field and the PDF builds', async () => {
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 LA')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-LA.pdf`, bytes)
 })
+
+test('LA Schedules F and I: listed credits fill the schedules and lines 17 and 26', async () => {
+  const w = w2(50000)
+  const { la: r, res, ret } = la(base({ w2s: [w] }), {
+    w2: withheld(w, 1000),
+    schF: [{ description: 'Stillborn child', code: '76F', amount: 5000 }, { description: 'School readiness directors', code: '66', amount: 1800 }], schoolReadinessLicense: 'CC-123456',
+    musical: [{ cert: 'MTP-2025-01', amount: 700 }],
+    schI: [{ description: 'Inventory tax', code: '50', amount: 450 }]
+  })
+  assert.equal(r.lines['17'], 7500)
+  assert.equal(r.lines['26'], 450)
+  const packet = buildLaPacket(ret, res, r)
+  const v = packet.forms[0].values
+  assert.deepEqual([v['SchFDescript2'], v['SchFCode2'], v['SchFCode3'], v['SchFSchReadinessLicenseNo'], v['SchFCertNo7A'], v['SchICode1']], ['STILLBORN CHILD', '76', '66', 'CC123456', 'MTP202501', '50'])
+  assert.ok(packet.forms[0].pages!.includes(9) && packet.forms[0].pages!.includes(10))
+  assert.ok(!packet.notIncluded.some((x) => x.includes('list each credit')))
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  const { bytes } = await buildPdf(lib, packet.forms, load, '2025 LA')
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-LAF.pdf`, bytes)
+  // A total entered without rows still works.
+  assert.equal(la(base({ w2s: [w] }), { otherRefundableCredits: 300 }).la.lines['17'], 300)
+})

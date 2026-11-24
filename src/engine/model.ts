@@ -1425,6 +1425,10 @@ export const emptySc = (): ScInput => ({
 })
 
 export type LaRetirementCode = '02E' | '03E' | '04E' | '05E'
+const laRows = (v: unknown): LaCreditRow[] => (Array.isArray(v) ? v.map((c: Partial<LaCreditRow>) => ({ description: c.description ?? '', code: c.code ?? '', amount: c.amount ?? 0 })) : [])
+
+export interface LaCreditRow { description: string; code: string; amount: number }
+
 export interface LaInput {
   /** Louisiana W-2 details by W-2 id (line 27). */
   w2: Record<string, StateStatement>
@@ -1455,9 +1459,15 @@ export interface LaInput {
   /** Schedule C line 1A/1B: tax paid to other states (Form R-10606). */
   otherStateTax: number
   otherStateCredit: number
-  /** Line 17 (Schedule F) and line 26 (Schedule I) totals. */
+  /** Line 17 (Schedule F) and line 26 (Schedule I) totals, used only when the schedule rows below are empty. */
   otherRefundableCredits: number
   priority4Credits: number
+  /** Schedule F lines 1–5 (code without the F), the school readiness facility license (line 5A) and lines 6–8 musical and theatrical production credits (code 62F) with their R-6135 certification numbers. */
+  schF: LaCreditRow[]
+  schoolReadinessLicense: string
+  musical: { cert: string; amount: number }[]
+  /** Schedule I lines 1–5 (code without the F: 50 inventory tax, 51 ad valorem natural gas). */
+  schI: LaCreditRow[]
   /** Schedule J line 3 (carryforward of the nonrefundable child care credit from 2020–2024) and one more priority 3 credit. */
   childCareCarryforward: number
   otherCredit: { code: string; description: string; amount: number }
@@ -1471,7 +1481,7 @@ export const emptyLa = (): LaInput => ({
   otherStateBondInterest: 0, usObligationInterest: 0,
   exemptRetirement: { '02E': { taxpayer: 0, spouse: 0 }, '03E': { taxpayer: 0, spouse: 0 }, '04E': { taxpayer: 0, spouse: 0 }, '05E': { taxpayer: 0, spouse: 0 } },
   retired: { taxpayer: '', spouse: '' }, otherRetirementSystem: '', startContributions: 0, militaryPay: 0, schoolTuition: 0, homeSchool: 0, publicSchool: 0,
-  otherExempt: { code: '', description: '', amount: 0 }, otherStateTax: 0, otherStateCredit: 0, otherRefundableCredits: 0, priority4Credits: 0,
+  otherExempt: { code: '', description: '', amount: 0 }, otherStateTax: 0, otherStateCredit: 0, otherRefundableCredits: 0, priority4Credits: 0, schF: [], schoolReadinessLicense: '', musical: [], schI: [],
   childCareCarryforward: 0, otherCredit: { code: '', description: '', amount: 0 }, useTax: 0, roadUsageFee: 0, creditForward: 0
 })
 
@@ -2092,6 +2102,8 @@ export interface HiInput {
   refundableCredits: number
   /** Line 35: nonrefundable credits (Schedule CR). */
   nonrefundableCredits: number
+  /** Schedule CR by line: refundable lines 1–7, 9, 10a, 10b and nonrefundable lines 12–13 (amounts); the energy system type (lines 4 and 28); lines 14–32 column (a) unused carryover from 2024 and, for lines 25–32, column (b) the 2025 credit. When anything here is entered it replaces the two totals above. */
+  cr: { lines: Record<string, number>; energy: '' | 'solar' | 'wind'; energy28: '' | 'solar' | 'wind'; carry: Record<string, { prior: number; current: number }> }
   /** Lines 43a–c contributions ($2 / $5 / $5 each) and the $3 election campaign fund. */
   schools: Record<Owner, boolean>
   libraries: Record<Owner, boolean>
@@ -2104,7 +2116,7 @@ export interface HiInput {
 export const emptyHi = (): HiInput => ({
   w2: {}, withholdingOther: 0, estimatedPayments: 0, priorYearApplied: 0, extensionPayment: 0, retirementKind: {}, wageDifference: 0, otherStateBondInterest: 0,
   otherAdditions: 0, guardPay: 0, housingAccount: 0, usObligationInterest: 0, otherSubtractions: 0, disabled: { taxpayer: false, spouse: false },
-  rentPaid: 0, rentExclusions: 0, rentalAddress: '', carSeats: 0, refundableCredits: 0, nonrefundableCredits: 0,
+  rentPaid: 0, rentExclusions: 0, rentalAddress: '', carSeats: 0, refundableCredits: 0, nonrefundableCredits: 0, cr: { lines: {}, energy: '', energy28: '', carry: {} },
   schools: { taxpayer: false, spouse: false }, libraries: { taxpayer: false, spouse: false }, violence: { taxpayer: false, spouse: false },
   electionFund: { taxpayer: false, spouse: false }, creditForward: 0, occupation: { taxpayer: '', spouse: '' }
 })
@@ -2238,8 +2250,8 @@ export interface MtInput {
   tier2Railroad: number
   otherSubtractions: number
   otherSubtractionsCode: string
-  /** Schedule III. */
-  otherStateCredit: { state: string; amount: number }
+  /** Schedule III. Part II (one other state or country): line 1 ordinary income sourced there and taxed in Montana (no net long-term gains), line 2 all income taxed by that state, line 3b expenses related to line 3a, line 4 the other state's tax on that income, lines 11 and 14 the net long-term capital gain sourced there and that state's tax on it. With none of these, amount is the Part I line 1 credit as entered. */
+  otherStateCredit: { state: string; amount: number; income: number; stateIncome: number; expenses: number; tax: number; ltcgIncome: number; ltcgTax: number }
   otherNonrefundableCredits: number
   refundableCredits: number
   /** Schedule 2EC: elderly homeowner/renter credit (62 or older). */
@@ -2254,7 +2266,7 @@ export const emptyMt = (): MtInput => ({
   w2: {}, withholding1099: 0, passThroughCredit: 0, k1Withholding: 0, estimatedPayments: 0, priorYearApplied: 0, extensionPayment: 0,
   otherStateBondInterest: 0, otherAdditions: 0, otherAdditionsCode: '', stateRefund: 0, usObligationInterest: 0, activeDutyPay: 0, workingMilitaryRetirement: 0,
   tuition529: 0, ableDeposits: 0, tier1Railroad: 0, tier2Railroad: 0, otherSubtractions: 0, otherSubtractionsCode: '',
-  otherStateCredit: { state: '', amount: 0 }, otherNonrefundableCredits: 0, refundableCredits: 0,
+  otherStateCredit: { state: '', amount: 0, income: 0, stateIncome: 0, expenses: 0, tax: 0, ltcgIncome: 0, ltcgTax: 0 }, otherNonrefundableCredits: 0, refundableCredits: 0,
   elderly: { claim: false, householdSize: 1, otherHouseholdIncome: 0, governmentAssistance: 0, propertyTaxBilled: 0, rentPaid: 0, physicalAddress: '' },
   contributions: {}, birthDates: { taxpayer: '', spouse: '' }, creditForward: 0
 })
@@ -3095,7 +3107,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       const e = emptyLa(); const x: Partial<LaInput> = r.la ?? {}
       return { ...e, ...x, w2: normalizeStatements(x.w2), birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) }, dependentBirthDates: { ...(x.dependentBirthDates ?? {}) },
         exemptRetirement: Object.fromEntries((['02E', '03E', '04E', '05E'] as const).map((k) => [k, { ...e.exemptRetirement[k], ...(x.exemptRetirement?.[k] ?? {}) }])) as LaInput['exemptRetirement'],
-        retired: { ...e.retired, ...(x.retired ?? {}) }, otherExempt: { ...e.otherExempt, ...(x.otherExempt ?? {}) }, otherCredit: { ...e.otherCredit, ...(x.otherCredit ?? {}) } }
+        retired: { ...e.retired, ...(x.retired ?? {}) }, otherExempt: { ...e.otherExempt, ...(x.otherExempt ?? {}) }, otherCredit: { ...e.otherCredit, ...(x.otherCredit ?? {}) },
+        schF: laRows(x.schF), schI: laRows(x.schI), musical: Array.isArray(x.musical) ? x.musical.map((m: Partial<{ cert: string; amount: number }>) => ({ cert: m.cert ?? '', amount: m.amount ?? 0 })) : [] }
     })(),
     ia: (() => {
       const e = emptyIa(); const x: Partial<IaInput> = r.ia ?? {}
@@ -3140,7 +3153,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       const e = emptyHi(); const x: Partial<HiInput> = r.hi ?? {}
       const pair = (k: 'disabled' | 'schools' | 'libraries' | 'violence' | 'electionFund') => ({ ...e[k], ...(x[k] ?? {}) })
       return {
-        ...e, ...x, w2: normalizeStatements(x.w2), retirementKind: { ...(x.retirementKind ?? {}) }, disabled: pair('disabled'), schools: pair('schools'),
+        ...e, ...x, cr: { ...e.cr, ...(x.cr ?? {}), lines: { ...(x.cr?.lines ?? {}) }, carry: { ...(x.cr?.carry ?? {}) } }, w2: normalizeStatements(x.w2), retirementKind: { ...(x.retirementKind ?? {}) }, disabled: pair('disabled'), schools: pair('schools'),
         libraries: pair('libraries'), violence: pair('violence'), electionFund: pair('electionFund'), occupation: { ...e.occupation, ...(x.occupation ?? {}) }
       }
     })(),

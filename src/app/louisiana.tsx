@@ -7,6 +7,7 @@ import { computeLouisiana } from '../engine/la2025.ts'
 import { buildLaPacket } from '../pdf/la2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { MoneyField, Section, TextField, usd } from './fields'
+import { RowList } from './creditrows'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -108,8 +109,8 @@ export function LouisianaStep({ ret, set, result, preparer }: StepProps & { prep
           <MoneyField label="Tax paid to other states (R-10606, line 1A)" value={d.otherStateTax} onChange={(n) => put({ otherStateTax: n })} />
           <MoneyField label="Credit for tax paid to other states (line 1B)" value={d.otherStateCredit} onChange={(n) => put({ otherStateCredit: n })} />
           <MoneyField label="Child care credit carried forward (2020–2024)" value={d.childCareCarryforward} onChange={(n) => put({ childCareCarryforward: n })} />
-          <MoneyField label="Other refundable credits (Schedule F)" value={d.otherRefundableCredits} onChange={(n) => put({ otherRefundableCredits: n })} />
-          <MoneyField label="Refundable priority 4 credits (Schedule I)" value={d.priority4Credits} onChange={(n) => put({ priority4Credits: n })} />
+          {d.otherRefundableCredits > 0 && d.schF.length + d.musical.length === 0 && <MoneyField label="Other refundable credits (Schedule F total)" hint="Or list them below" value={d.otherRefundableCredits} onChange={(n) => put({ otherRefundableCredits: n })} />}
+          {d.priority4Credits > 0 && d.schI.length === 0 && <MoneyField label="Refundable priority 4 credits (Schedule I total)" hint="Or list them below" value={d.priority4Credits} onChange={(n) => put({ priority4Credits: n })} />}
           <TextField label="Other Schedule J credit: code" hint="Three digits" autoComplete="off" value={d.otherCredit.code} onChange={(s) => put({ otherCredit: { ...d.otherCredit, code: s.replace(/\D/g, '').slice(0, 3) } })} />
           <TextField label="Other Schedule J credit: description" autoComplete="off" value={d.otherCredit.description} onChange={(s) => put({ otherCredit: { ...d.otherCredit, description: s } })} />
           <MoneyField label="Other Schedule J credit: amount" value={d.otherCredit.amount} onChange={(n) => put({ otherCredit: { ...d.otherCredit, amount: n } })} />
@@ -122,6 +123,20 @@ export function LouisianaStep({ ret, set, result, preparer }: StepProps & { prep
           {L['14'] > 0 ? `Refundable child care credit: ${usd(L['14'])}. ` : ''}
           {la.schJ['2'] > 0 ? `Nonrefundable child care credit: ${usd(la.schJ['2'])}.` : ''}
         </p>
+      </Section>
+
+      <Section title="Refundable credits (Schedules F and I)" intro="Schedule F (line 17): refundable priority 2 credits, such as 65F–68F school readiness, 76F stillborn child, 78F adoption of an unrelated infant or 80F other. Schedule I (line 26): 50F inventory tax and 51F ad valorem natural gas. Enter the code without the F, and attach each credit’s form.">
+        <h3>Schedule F, lines 1–5</h3>
+        <RowList rows={d.schF} max={5} noun="credit" empty={() => ({ description: '', code: '', amount: 0 })} onChange={(rows) => put({ schF: rows, ...(rows.length ? { otherRefundableCredits: 0 } : {}) })}
+          fields={[['description', 'Credit description', 'text'], ['code', 'Credit code', 'text', 'Two digits; the F is printed', (s) => s.toUpperCase().replace(/[^0-9]/g, '').slice(0, 2)], ['amount', 'Amount of credit claimed', 'money']]} />
+        {d.schF.some((x) => x.code === '66') && <div className="grid"><TextField label="School readiness facility license number" hint="Line 5A, for code 66F" autoComplete="off" value={d.schoolReadinessLicense} onChange={(s) => put({ schoolReadinessLicense: s })} /></div>}
+        <h3>Schedule F, lines 6–8: musical and theatrical production (62F)</h3>
+        <RowList rows={d.musical} max={3} noun="certificate" empty={() => ({ cert: '', amount: 0 })} onChange={(rows) => put({ musical: rows, ...(rows.length ? { otherRefundableCredits: 0 } : {}) })}
+          fields={[['cert', 'State certification number (Form R-6135)', 'text'], ['amount', 'Amount of credit claimed', 'money']]} />
+        <h3>Schedule I, lines 1–5</h3>
+        <RowList rows={d.schI} max={5} noun="credit" empty={() => ({ description: '', code: '', amount: 0 })} onChange={(rows) => put({ schI: rows, ...(rows.length ? { priority4Credits: 0 } : {}) })}
+          fields={[['description', 'Credit description', 'text'], ['code', 'Credit code', 'text', '50 or 51; the F is printed', (s) => s.toUpperCase().replace(/[^0-9]/g, '').slice(0, 2)], ['amount', 'Amount of credit claimed', 'money']]} />
+        {(L['17'] > 0 || L['26'] > 0) && <p className="why">Line 17: {usd(L['17'])}. Line 26: {usd(L['26'])}.</p>}
       </Section>
 
       {la.issues.length > 0 && (
