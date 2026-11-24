@@ -354,12 +354,56 @@ export function computeMissouri(ret: TaxReturnInput, res: TaxReturnResult): MoRe
           P['12'] = r(P['10'] * Math.max(0, Math.floor(u.earlyDays)) * 0.0001918)
           P['13'] = pos(P['11'] - P['12'])
         }
-        if (!u.equalOnTime) m2210Note = 'Your withholding and estimated payments were not made equally through the year, so the MO-2210 short method cannot be used; complete Part III (regular method) by hand.'
+        if (!u.equalOnTime) {
+          // Part III, regular method: withholding counts as paid in four equal parts; estimated payments by due date.
+          const due = ['2025-04-15', '2025-06-15', '2025-09-15', '2026-01-15']
+          const m = u.paidDate.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+          let paid = m ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : '2026-04-15'
+          if (paid > '2026-04-15') paid = '2026-04-15'
+          if (paid >= '2026-01-15' && paid <= '2026-01-31') paid = '2026-01-15'
+          const day = (s: string): number => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)) / 86400000
+          const est = u.quarterly ? u.quarterly.map((x) => r(pos(x))) : [0, 1, 2, 3].map((i) => (i < 3 ? Math.floor(P['8'] / 4) : P['8'] - 3 * Math.floor(P['8'] / 4)))
+          const whq = [0, 1, 2, 3].map((i) => (i < 3 ? Math.floor(P['3'] / 4) : P['3'] - 3 * Math.floor(P['3'] / 4)))
+          P['14'] = P['6']
+          const inst = u.farmer ? [0, 0, 0, P['14']] : [0, 1, 2, 3].map((i) => (i < 3 ? r(P['14'] / 4) : P['14'] - 3 * r(P['14'] / 4)))
+          const prior = r(pos(u.priorTax))
+          let c19c = 0; let c19d = 0; let cum = 0; let total = 0
+          const cols = 'abcd'
+          for (let i = 0; i < 4; i++) {
+            const k = cols[i]
+            const l15 = inst[i]; const l16 = est[i] + whq[i]; const l17 = i === 0 ? 0 : c19c; const l18 = l16 + l17
+            const l19 = pos(l15 - l18); const l19a = pos(l18 - l15); const l19b = c19d
+            let l19c = 0; let l19d = 0
+            if (l19 > 0) l19d = l19 + l19b
+            else if (l19a > l19b) l19c = l19a - l19b
+            else l19d = l19b - l19a
+            Object.assign(P, { [`15${k}`]: l15, [`16${k}`]: l16, [`17${k}`]: l17, [`18${k}`]: l18, [`19${k}`]: l19, [`19a${k}`]: l19a, [`19b${k}`]: l19b, [`19c${k}`]: l19c, [`19d${k}`]: l19d })
+            c19c = l19c; c19d = l19d
+            cum += l16
+            P[`20${k}`] = cum
+            if (prior > 0) P[`21${k}`] = r(prior * (i + 1) / 4)
+            const exempt = prior > 0 && cum >= P[`21${k}`]
+            if (l19d > 0 && !exempt) {
+              const end = i < 3 && due[i + 1] < paid ? due[i + 1] : paid
+              const d27a = i < 3 ? Math.max(0, day(end < '2025-12-31' ? end : '2025-12-31') - day(due[i])) : 0
+              const from = due[i] > '2026-01-01' ? due[i] : '2026-01-01'
+              const d27b = end > '2026-01-01' ? Math.max(0, day(end) - day(from)) : 0
+              const p28a = Math.round(l19d * d27a / 365 * 0.08 * 100) / 100
+              const p28b = Math.round(l19d * d27b / 365 * 0.07 * 100) / 100
+              Object.assign(P, { [`25${k}`]: l19d, [`26${k}`]: day(end), [`27a${k}`]: d27a, [`27b${k}`]: d27b, [`28a${k}`]: p28a, [`28b${k}`]: p28b, [`28c${k}`]: p28a + p28b })
+              total += p28a + p28b
+            }
+          }
+          P['29'] = r(total)
+          P['regular'] = 1
+          delete P['9']; delete P['10']; delete P['11']; delete P['12']; delete P['13']
+          if (P['29'] === 0) m2210Note = 'MO-2210 Part III: no installment was underpaid after the exceptions, so there is no penalty.'
+        }
       }
     }
     m2210 = P
   }
-  const penalty = m2210 && u.equalOnTime ? (m2210['13'] ?? 0) : 0
+  const penalty = m2210 ? (u.equalOnTime ? (m2210['13'] ?? 0) : (m2210['29'] ?? 0)) : 0
   const funds = sum('abcdefghijkl'.split('').map((k) => r(pos(d.trustFunds[k] ?? 0))))
   if (L['49'] > 0) {
     L['50'] = Math.min(r(pos(d.creditForward)), L['49'])

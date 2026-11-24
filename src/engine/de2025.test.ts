@@ -162,3 +162,28 @@ test('DE PIT-UND short method penalty', async () => {
   const { bytes } = await buildPdf(lib, [und], load, '2025 DE PIT-UND')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-DEUND.pdf`, bytes)
 })
+
+test('DE PIT-UND Parts 3–5: installments, over/under payments and the daily penalty', async () => {
+  const r0 = emptyReturn()
+  const { de, res, ret } = run(base({ w2s: [w2(120000)] }), { und: { ...r0.de.und, priorTax: 5000, equalOnTime: false, quarterly: [0, 0, 2500, 2500] } })
+  const P = de.und!
+  assert.equal(P['C'], 5000)
+  assert.deepEqual(['a', 'b', 'c', 'd'].map((k) => P[`27${k}`]), [1250, 1250, 1250, 1250])
+  assert.deepEqual(['a', 'b', 'c', 'd'].map((k) => P[`37${k}`]), [1250, 1250, 1250, 0])
+  assert.deepEqual([P['36b'], P['36c']], [1250, 0])
+  assert.deepEqual(['a', 'b', 'c'].map((k) => P[`40${k}`]), [137, 91, 122])
+  assert.deepEqual(['a', 'b', 'c'].map((k) => P[`42${k}`]), [85.63, 56.88, 76.25])
+  assert.equal(P['43'], 219)
+  assert.equal(de.lines['45'], 219)
+  assert.equal(P['L'], undefined)
+  const packet = buildDePacket(ret, res, de)
+  const und = packet.forms.find((f) => f.id === 'de-und')!
+  assert.deepEqual(und.pages, [0, 1, 2])
+  assert.equal(und.values.ln41a, '0.0685')
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-DEUND3.pdf`, (await buildPdf(lib, [und], load, '2025 DE PIT-UND')).bytes)
+})

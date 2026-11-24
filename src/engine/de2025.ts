@@ -335,11 +335,99 @@ function computeStatus(ret: TaxReturnInput, res: TaxReturnResult, status: DeStat
         P['K'] = r(P['I'] * 0.0005 * Math.max(0, Math.floor(u.earlyDays)))
         P['L'] = pos(P['J'] - P['K'])
       }
-      if (!u.equalOnTime) undNote = 'Your estimated payments were unequal or late, so the PIT-UND short method cannot be used; use the annualized method (Parts 3–5) by hand.'
+      if (!u.equalOnTime) {
+        // Parts 3–5: annualized installment method, over/under payment and penalty (both columns combined).
+        for (const k of ['F', 'G', 'H', 'I', 'J', 'K', 'L']) delete P[k]
+        const col = 'abcd'
+        const agi = sum(cols.map((c) => C[c]['12']))
+        const itemized = itemize ? sum(cols.map((c) => C[c]['22'])) : 0
+        const standard = itemize ? 0 : sum(cols.map((c) => C[c]['22']))
+        const frac = [3 / 12, 5 / 12, 8 / 12, 1]
+        const mult = [4, 2.4, 1.5, 1]
+        const pct = [0.225, 0.45, 0.675, 0.9]
+        const personal = sum(cols.map((c) => C[c]['27a'] + C[c]['27b']))
+        const other = sum(cols.map((c) => C[c]['28'] + C[c]['29'] + C[c]['30'] + C[c]['31']))
+        const estTotal = sum(cols.map((c) => C[c]['36'] + C[c]['37'] + C[c]['38'] + C[c]['39']))
+        const split = (t: number): number[] => [0, 1, 2, 3].map((i) => (i < 3 ? Math.round(t / 4) : t - 3 * Math.round(t / 4)))
+        const est = u.quarterly ? u.quarterly.map((x) => r(pos(x))) : split(estTotal)
+        const wh = split(P['D'])
+        let sum27 = 0; let prev26 = 0; let prev38 = 0; let prev36 = 0; let prev37 = 0
+        for (let i = 0; i < 4; i++) {
+          const k = col[i]
+          P[`2${k}`] = u.periodAgi ? r(u.periodAgi[i]) : r(agi * frac[i])
+          P[`4${k}`] = r(P[`2${k}`] * mult[i])
+          P[`5${k}`] = itemize ? (u.periodItemized ? r(u.periodItemized[i]) : r(itemized * frac[i])) : 0
+          P[`7${k}`] = r(P[`5${k}`] * mult[i])
+          P[`8${k}`] = standard
+          P[`9${k}`] = itemize ? P[`7${k}`] : standard
+          P[`10${k}`] = pos(P[`4${k}`] - P[`9${k}`])
+          P[`11${k}`] = deTax(P[`10${k}`]); P[`12${k}`] = 0; P[`13${k}`] = P[`11${k}`]
+          P[`15${k}`] = personal; P[`17${k}`] = other
+          P[`18${k}`] = pos(P[`13${k}`] - personal - other)
+          P[`20${k}`] = r(P[`18${k}`] * pct[i])
+          P[`21${k}`] = sum27
+          P[`22${k}`] = pos(P[`20${k}`] - sum27)
+          P[`23${k}`] = r(P['C'] / 4)
+          P[`24${k}`] = prev26
+          P[`25${k}`] = P[`23${k}`] + prev26
+          P[`26${k}`] = pos(P[`25${k}`] - P[`22${k}`])
+          P[`27${k}`] = Math.min(P[`22${k}`], P[`25${k}`])
+          sum27 += P[`27${k}`]; prev26 = P[`26${k}`]
+          // Part 4.
+          P[`28${k}`] = P[`27${k}`]; P[`29${k}`] = est[i]; P[`30${k}`] = wh[i]; P[`31${k}`] = est[i] + wh[i]
+          if (i === 0) P[`35${k}`] = P[`31${k}`]
+          else {
+            P[`32${k}`] = prev38; P[`33${k}`] = P[`31${k}`] + prev38; P[`34${k}`] = prev36 + prev37
+            P[`35${k}`] = pos(P[`33${k}`] - P[`34${k}`])
+            if (i < 3) P[`36${k}`] = P[`35${k}`] === 0 ? P[`34${k}`] - P[`33${k}`] : 0
+          }
+          P[`37${k}`] = P[`28${k}`] >= P[`35${k}`] ? P[`28${k}`] - P[`35${k}`] : 0
+          P[`38${k}`] = P[`35${k}`] > P[`28${k}`] ? P[`35${k}`] - P[`28${k}`] : 0
+          prev38 = P[`38${k}`]; prev36 = P[`36${k}`] ?? 0; prev37 = P[`37${k}`]
+        }
+        // Part 5: each underpayment accrues 0.05% a day from its due date until later payments (made by their due dates) or the final payment cover it.
+        const due = ['2025-05-01', '2025-06-16', '2025-09-15', '2026-01-15']
+        const m = u.paidDate.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+        let last = m ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : '2026-04-30'
+        if (last > '2026-04-30') last = '2026-04-30'
+        const day = (s: string): number => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)) / 86400000
+        const open: { col: number; amt: number }[] = []
+        const pen = [0, 0, 0, 0]; const paidOn = ['', '', '', '']; const pieces = [0, 0, 0, 0]
+        for (let i = 0; i < 4; i++) {
+          // Payments of this period first pay earlier underpayments (Part 4 line 34).
+          if (i > 0) {
+            let pay = P[`33${col[i]}`]
+            while (pay > 0 && open.length) {
+              const o = open[0]; const t = Math.min(pay, o.amt)
+              const dd = Math.max(0, day(due[i]) - day(due[o.col]))
+              pen[o.col] += t * Math.round(dd * 0.0005 * 10000) / 10000; paidOn[o.col] = due[i]; pieces[o.col]++
+              o.amt -= t; pay -= t
+              if (o.amt === 0) open.shift()
+            }
+          }
+          if (P[`37${col[i]}`] > 0) open.push({ col: i, amt: P[`37${col[i]}`] })
+        }
+        for (const o of open) {
+          const dd = Math.max(0, day(last) - day(due[o.col]))
+          pen[o.col] += o.amt * Math.round(dd * 0.0005 * 10000) / 10000; paidOn[o.col] = last; pieces[o.col]++
+        }
+        for (let i = 0; i < 4; i++) {
+          const k = col[i]
+          if (!(P[`37${k}`] > 0)) continue
+          const dd = Math.max(0, day(paidOn[i]) - day(due[i]))
+          P[`40${k}`] = dd; P[`41${k}`] = Math.round(dd * 0.0005 * 10000) / 10000
+          P[`42${k}`] = Math.round(pen[i] * 100) / 100
+          if (pieces[i] > 1) P[`split${k}`] = 1
+        }
+        P['43'] = r(sum([0, 1, 2, 3].map((i) => P[`42${col[i]}`] ?? 0)))
+        P['part3'] = 1
+        if (u.periodAgi) P['annualized'] = 1
+        if (P['43'] === 0) undNote = 'PIT-UND Parts 3–5: no installment was underpaid, so there is no penalty.'
+      }
     }
     und = P
   }
-  L['45'] = und && u.equalOnTime && (und['L'] ?? 0) > 0 ? und['L'] : 0
+  L['45'] = und ? (u.equalOnTime ? (und['L'] ?? 0) : (und['43'] ?? 0)) : 0
   const over = sum(cols.map((c) => C[c]['42'])) - sum(cols.map((c) => C[c]['41']))
   const left = over - L['43'] - L['45']
   L['44'] = left > 0 ? Math.min(r(pos(d.creditForward)), left) : 0

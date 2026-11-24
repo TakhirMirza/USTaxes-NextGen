@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import * as lib from 'pdf-lib'
 import { computeReturn } from './compute.ts'
-import { empty1099R, emptyDependent, emptyReturn, emptySocialSecurity, emptyW2 } from './model.ts'
+import { empty1099R, emptyBusiness, emptyDependent, emptyReturn, emptySocialSecurity, emptyW2 } from './model.ts'
 import type { CtInput, TaxReturnInput } from './model.ts'
 import { computeConnecticut, ctExemption, ctInitialTax, ctPensionRate, ctPersonalCredit, ctPhaseOut, ctRecapture, ctTax } from './ct2025.ts'
 import { buildCtPacket } from '../pdf/ct2025.ts'
@@ -136,4 +136,20 @@ test('Schedule CT-Dependent', async () => {
   const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
   const { bytes } = await buildPdf(lib, [dep], load, '2025 CT-Dependent')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-CTDEP.pdf`, bytes)
+})
+
+test('CT-EITC lines 6 and 7: W-2s without Connecticut withholding and self-employment', async () => {
+  const w = w2(15000)
+  const biz = { ...emptyBusiness(), name: 'Doe Lawn Care', ein: '061234567', grossReceipts: 9000 }
+  const { ct: r, res, ret } = ct(base({ filingStatus: 'hoh', w2s: [w], dependents: [kid(4)], businesses: [biz] }), { w2: { [w.id]: { ein: '06-7654321', stateId: '1234567-000', stateIncome: null, stateTax: 0 } } })
+  assert.ok(r.eitc['16'] > 0)
+  const packet = buildCtPacket(ret, res, r)
+  const e = packet.forms.find((x) => x.id === 'cteitc')!
+  const texts = e.draw!.filter((d) => d.page === 1).map((d) => d.text)
+  assert.ok(texts.includes('06-7654321') && texts.includes('1234567-000') && texts.includes('15,000'))
+  assert.ok(texts.includes('06-1234567'))
+  assert.ok(!packet.notIncluded.some((x) => x.includes('by hand')))
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-CTE.pdf`, (await buildPdf(lib, [e], load, '2025 CT-EITC')).bytes)
 })

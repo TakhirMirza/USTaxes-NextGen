@@ -194,7 +194,29 @@ export function DelawareStep({ ret, set, result, preparer }: StepProps & { prepa
             <Check label="My 2024 Delaware AGI was over $150,000 ($75,000 if married filing separately)" hint="Line B uses 110% of the 2024 balance" checked={d.und.priorAgiHigh} onChange={(on) => put({ und: { ...d.und, priorAgiHigh: on } })} />
             <Check label="I made no estimated payments, or four equal payments on time" hint="Needed for the short method" checked={d.und.equalOnTime} onChange={(on) => put({ und: { ...d.und, equalOnTime: on } })} />
             <Check label="I am a farmer or fisherman (2/3 of gross income)" hint="No penalty if the tax was paid in time" checked={d.und.farmer} onChange={(on) => put({ und: { ...d.und, farmer: on } })} />
-            {de.und && <p className="why">{de.lines['45'] > 0 ? `Required annual payment ${usd(de.und['C'])}; penalty (line 45): ${usd(de.lines['45'])}.` : 'No underpayment penalty (see Things to look at).'}</p>}
+            {!d.und.equalOnTime && (
+              <>
+                <p className="why">Parts 3–5 figure each quarter separately. Withholding is spread evenly over the year; leave the income fields at 0 if your income came in evenly.</p>
+                <div className="grid">
+                  <TextField label="Date the rest of the tax was paid" hint="MM/DD/YYYY; blank means April 30, 2026" autoComplete="off" value={d.und.paidDate} onChange={(s) => put({ und: { ...d.und, paidDate: s } })} />
+                  {(['Jan 1–Apr 30', 'May 1–Jun 15', 'Jun 16–Sep 15', 'Sep 16–Jan 15'] as const).map((label, i) => (
+                    <MoneyField key={label} label={`Estimated payments made ${label}`} hint="Line 29" value={d.und.quarterly?.[i] ?? 0} onChange={(n) => { const q = [...(d.und.quarterly ?? [0, 0, 0, 0])] as [number, number, number, number]; q[i] = n; put({ und: { ...d.und, quarterly: q } }) }} />
+                  ))}
+                </div>
+                <Check label="My income came in unevenly (annualize it)" hint="Enter Delaware AGI earned through each date" checked={d.und.periodAgi !== null} onChange={(on) => put({ und: { ...d.und, periodAgi: on ? [0, 0, 0, de.B['12'] + (de.A['12'] ?? 0)] : null, periodItemized: null } })} />
+                {d.und.periodAgi && (
+                  <div className="grid">
+                    {(['Jan 1–Mar 31', 'Jan 1–May 31', 'Jan 1–Aug 31', 'Whole year'] as const).map((label, i) => (
+                      <MoneyField key={label} label={`Delaware AGI ${label}`} hint="Part 3 line 2" value={d.und.periodAgi![i]} onChange={(n) => { const q = [...d.und.periodAgi!] as [number, number, number, number]; q[i] = n; put({ und: { ...d.und, periodAgi: q } }) }} />
+                    ))}
+                    {de.itemize && (['Jan 1–Mar 31', 'Jan 1–May 31', 'Jan 1–Aug 31', 'Whole year'] as const).map((label, i) => (
+                      <MoneyField key={`i${label}`} label={`Itemized deductions ${label}`} hint="Part 3 line 5" value={d.und.periodItemized?.[i] ?? 0} onChange={(n) => { const q = [...(d.und.periodItemized ?? [0, 0, 0, 0])] as [number, number, number, number]; q[i] = n; put({ und: { ...d.und, periodItemized: q } }) }} />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+            {de.und && <p className="why">{de.lines['45'] > 0 ? `Required annual payment ${usd(de.und['C'])}; penalty (line 45): ${usd(de.lines['45'])}${de.und['part3'] ? ' by Parts 3–5' : ''}.` : 'No underpayment penalty (see Things to look at).'}</p>}
           </>
         )}
       </Section>

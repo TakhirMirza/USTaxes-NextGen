@@ -1454,6 +1454,7 @@ export const emptySc = (): ScInput => ({
 })
 
 export type LaRetirementCode = '02E' | '03E' | '04E' | '05E'
+const four = (v: unknown): [number, number, number, number] | null => (Array.isArray(v) && v.length === 4 && v.every((x) => typeof x === 'number') ? (v as [number, number, number, number]) : null)
 const laRows = (v: unknown): LaCreditRow[] => (Array.isArray(v) ? v.map((c: Partial<LaCreditRow>) => ({ description: c.description ?? '', code: c.code ?? '', amount: c.amount ?? 0 })) : [])
 
 export interface LaCreditRow { description: string; code: string; amount: number }
@@ -1760,6 +1761,9 @@ export type IaRetirementKind = 'standard' | 'military' | 'railroad' | 'nonqualif
 export interface IaInput {
   /** Iowa W-2 details by W-2 id (line 28). */
   w2: Record<string, StateStatement>
+  /** Married filing separately: the spouse's net income (Alternate Tax Worksheet line 1g, entered in Step 2; null if not given) and Iowa taxable income (IA 1040 line 4), for the low-income exemption and the prorated alternate tax. */
+  spouseNet: number | null
+  spouseTaxable: number
   /** Line 28: Iowa tax withheld on 1099s; line 29: 2025 estimated and other payments. */
   withholdingOther: number
   estimatedPayments: number
@@ -1829,14 +1833,16 @@ export interface IaCredit148 {
   carryforward: number; current: number; expired: number
   /** Part IV, when the credit came from a pass-through entity. */
   entityName: string; entityFein: string; disregardedFein: string
+  /** Part V: the award falls under the claim reduction (codes 46, 47, 62, 97, 67 under the agreements listed on IA 148; codes 58 and 59 always). */
+  reduce: boolean
 }
-export const emptyIaCredit148 = (): IaCredit148 => ({ refundable: false, code: '', certificate: '', carryforward: 0, current: 0, expired: 0, entityName: '', entityFein: '', disregardedFein: '' })
+export const emptyIaCredit148 = (): IaCredit148 => ({ refundable: false, code: '', certificate: '', carryforward: 0, current: 0, expired: 0, entityName: '', entityFein: '', disregardedFein: '', reduce: false })
 export const emptyIa = (): IaInput => ({
   w2: {}, withholdingOther: 0, estimatedPayments: 0, birthDate: { taxpayer: '', spouse: '' }, countyNo: '', schoolDistrictNo: '', surtaxRate: 0,
   usObligationInterest: 0, otherStateBondInterest: 0, retirementKind: {}, disabled: { taxpayer: false, spouse: false }, activeDutyPay: 0,
   iowa529: 0, healthInsurance: 0, capitalGainsDeduction: 0, otherAddition: { code: '', amount: 0 }, otherSubtraction: { code: '', amount: 0 }, otherAdjustment: { code: '', amount: 0 },
   tuition: {}, earlyChildhood: {}, volunteerCredit: 0, fuel: emptyIaFuel(), oos: emptyIaOos(), credits148: [],
-  fishWildlife: 0, childAbuse: 0, creditForward: 0, license: { taxpayer: '', spouse: '' }
+  fishWildlife: 0, childAbuse: 0, creditForward: 0, license: { taxpayer: '', spouse: '' }, spouseNet: null, spouseTaxable: 0
 })
 
 export interface KsInput {
@@ -2387,7 +2393,8 @@ export interface DeInput {
   estimatedPayments: number
   /** Form PIT-UND, Part 1 and the short method: 2024 tax balance (PIT-RES line 33 minus 34; null if not entered), 2024 AGI over $150,000 ($75,000 MFS),
    *  farmer or fisherman, estimated payments in four equal amounts on time (or none), and days before April 30, 2026 the underpayment was paid. */
-  und: { priorTax: number | null; priorAgiHigh: boolean; farmer: boolean; equalOnTime: boolean; earlyDays: number }
+  /** PIT-UND. With unequal or late payments, Part 3–5: estimated payments made in each period (Part 4 line 29), Delaware AGI and itemized deductions earned through 3/31, 5/31, 8/31 and 12/31 (null: spread evenly), and the date any balance was paid (MM/DD/YYYY; blank = April 30, 2026). */
+  und: { priorTax: number | null; priorAgiHigh: boolean; farmer: boolean; equalOnTime: boolean; earlyDays: number; quarterly: [number, number, number, number] | null; periodAgi: [number, number, number, number] | null; periodItemized: [number, number, number, number] | null; paidDate: string }
   /** Schedule V: S corporation payments. */
   sCorp: { fein: string; name: string; owner: Owner; amount: number }[]
   /** Line 39: REW-EST real estate payments. */
@@ -2406,7 +2413,7 @@ export const emptyDe = (): DeInput => ({
   tuition529: { taxpayer: 0, spouse: 0 }, able: { taxpayer: 0, spouse: 0 }, disabled: { taxpayer: false, spouse: false }, salesTax: false,
   foreignTaxes: 0, charityMiles: 0, unionDues: { taxpayer: 0, spouse: 0 }, landAdjustment: 0, otherState: { state: '', owner: 'taxpayer', income: 0, tax: 0 },
   firefighter: { taxpayer: '', spouse: '' }, crs: {}, estimatedPayments: 0, sCorp: [], realEstatePayments: 0, dependentBirthDates: {}, contributions: {}, creditForward: 0, dmvId: '',
-  und: { priorTax: null, priorAgiHigh: false, farmer: false, equalOnTime: true, earlyDays: 0 }
+  und: { priorTax: null, priorAgiHigh: false, farmer: false, equalOnTime: true, earlyDays: 0, quarterly: null, periodAgi: null, periodItemized: null, paidDate: '' }
 })
 
 export interface VtInput {
@@ -2589,7 +2596,7 @@ export interface MoInput {
   }
   birthDates: Record<Owner, string>
   /** Form MO-2210 short method: tax on the 2024 return (null if not entered; 0 if no 2024 Missouri return), qualified farmer, payments made equally through the year, days before April 15, 2026 the underpayment was paid. */
-  mo2210: { priorTax: number | null; farmer: boolean; equalOnTime: boolean; earlyDays: number }
+  mo2210: { priorTax: number | null; farmer: boolean; equalOnTime: boolean; earlyDays: number; quarterly: [number, number, number, number] | null; paidDate: string }
 }
 
 export const emptyMo = (): MoInput => ({
@@ -2604,7 +2611,7 @@ export const emptyMo = (): MoInput => ({
     rentalAddress: '', rentalApt: '', rentalCity: '', rentalZip: '', landlordName: '', landlordAddress: '', landlordCity: '', landlordState: '', landlordZip: '', landlordPhone: ''
   },
   birthDates: { taxpayer: '', spouse: '' },
-  mo2210: { priorTax: null, farmer: false, equalOnTime: true, earlyDays: 0 }
+  mo2210: { priorTax: null, farmer: false, equalOnTime: true, earlyDays: 0, quarterly: null, paidDate: '' }
 })
 
 export interface MiInput {
@@ -3146,7 +3153,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     ia: (() => {
       const e = emptyIa(); const x: Partial<IaInput> = r.ia ?? {}
       return {
-        ...e, ...x, w2: normalizeStatements(x.w2), birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, disabled: { ...e.disabled, ...(x.disabled ?? {}) },
+        ...e, ...x, spouseNet: typeof x.spouseNet === 'number' ? x.spouseNet : null, w2: normalizeStatements(x.w2), birthDate: { ...e.birthDate, ...(x.birthDate ?? {}) }, retirementKind: { ...(x.retirementKind ?? {}) }, disabled: { ...e.disabled, ...(x.disabled ?? {}) },
         otherAddition: { ...e.otherAddition, ...(x.otherAddition ?? {}) }, otherSubtraction: { ...e.otherSubtraction, ...(x.otherSubtraction ?? {}) }, otherAdjustment: { ...e.otherAdjustment, ...(x.otherAdjustment ?? {}) },
         tuition: { ...(x.tuition ?? {}) }, earlyChildhood: { ...(x.earlyChildhood ?? {}) }, license: { ...e.license, ...(x.license ?? {}) },
         oos: { ...e.oos, ...(x.oos ?? {}) }, fuel: { ...e.fuel, ...(x.fuel ?? {}), rows: { ...(x.fuel?.rows ?? {}) } }, credits148: Array.isArray(x.credits148) ? x.credits148.map((c: Partial<IaCredit148>) => ({ ...emptyIaCredit148(), ...c })) : []
@@ -3199,7 +3206,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
         stateRefund: own('stateRefund'), militaryRetirement: own('militaryRetirement'), railroad: own('railroad'), otherSubtractions: own('otherSubtractions'),
         tuition529: own('tuition529'), healthPremiums: own('healthPremiums'), able: own('able'), publicPension: own('publicPension'), otherState: own('otherState'),
         trustFunds: { ...(x.trustFunds ?? {}) }, pts: own('pts'), birthDates: own('birthDates'),
-        mo2210: { ...e.mo2210, ...(x.mo2210 ?? {}), priorTax: typeof x.mo2210?.priorTax === 'number' ? x.mo2210.priorTax : null },
+        mo2210: { ...e.mo2210, ...(x.mo2210 ?? {}), priorTax: typeof x.mo2210?.priorTax === 'number' ? x.mo2210.priorTax : null, quarterly: Array.isArray(x.mo2210?.quarterly) && x.mo2210!.quarterly.length === 4 ? x.mo2210!.quarterly : null, paidDate: x.mo2210?.paidDate ?? '' },
         moTc: Array.isArray(x.moTc) ? x.moTc.map((c: Partial<MoTcCredit>) => ({ owner: 'taxpayer' as Owner, benefit: '', code: '', name: '', amount: 0, refundable: false, ...c })) : []
       } as MoInput
     })(),
@@ -3222,7 +3229,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
       const own = <T,>(k: 'militaryPension' | 'railroadRetirement' | 'higherEducation' | 'tuition529' | 'able' | 'disabled' | 'unionDues' | 'firefighter') => ({ ...e[k], ...((x[k] ?? {}) as object) }) as T
       return {
         ...e, ...x, w2: normalizeStatements(x.w2), r1099: normalizeStatements(x.r1099), spouseAgi: typeof x.spouseAgi === 'number' ? x.spouseAgi : null,
-        und: { ...e.und, ...(x.und ?? {}), priorTax: typeof x.und?.priorTax === 'number' ? x.und.priorTax : null },
+        und: { ...e.und, ...(x.und ?? {}), priorTax: typeof x.und?.priorTax === 'number' ? x.und.priorTax : null, quarterly: four(x.und?.quarterly), periodAgi: four(x.und?.periodAgi), periodItemized: four(x.und?.periodItemized), paidDate: x.und?.paidDate ?? '' },
         militaryPension: own('militaryPension'), railroadRetirement: own('railroadRetirement'), higherEducation: own('higherEducation'), tuition529: own('tuition529'),
         able: own('able'), disabled: own('disabled'), unionDues: own('unionDues'), firefighter: own('firefighter'), otherState: { ...e.otherState, ...(x.otherState ?? {}) },
         crs: { ...(x.crs ?? {}) }, sCorp: Array.isArray(x.sCorp) ? x.sCorp.map((o) => ({ fein: o.fein ?? '', name: o.name ?? '', owner: o.owner === 'spouse' ? 'spouse' as const : 'taxpayer' as const, amount: Number(o.amount) || 0 })) : [],

@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import * as lib from 'pdf-lib'
 import { computeReturn } from './compute.ts'
-import { empty1099R, emptyDependent, emptyReturn, emptySocialSecurity, emptyW2 } from './model.ts'
+import { empty1099R, emptyDependent, emptyIaCredit148, emptyReturn, emptySocialSecurity, emptyW2 } from './model.ts'
 import type { IaInput, TaxReturnInput } from './model.ts'
 import { computeIowa, iaCarePercent } from './ia2025.ts'
 import { buildIaPacket } from '../pdf/ia2025.ts'
@@ -107,8 +107,8 @@ test('IA 130 out-of-state credit and IA 148 credits', async () => {
   const { ia: x, res, ret } = ia(base({ w2s: [w2(80000)] }), {
     oos: { ...r0.ia.oos, state: 'Nebraska', wages: 20000, taxPaid: 900 },
     credits148: [
-      { refundable: false, code: '20', certificate: 'BFTC-123', carryforward: 100, current: 200, expired: 0, entityName: '', entityFein: '', disregardedFein: '' },
-      { refundable: true, code: '66', certificate: '', carryforward: 0, current: 500, expired: 0, entityName: 'Prairie Farms LLC', entityFein: '421234567', disregardedFein: '' }
+      { refundable: false, code: '20', certificate: 'BFTC-123', carryforward: 100, current: 200, expired: 0, entityName: '', entityFein: '', disregardedFein: '', reduce: false },
+      { refundable: true, code: '66', certificate: '', carryforward: 0, current: 500, expired: 0, entityName: 'Prairie Farms LLC', entityFein: '421234567', disregardedFein: '', reduce: false }
     ]
   })
   const c = x.oos!
@@ -156,4 +156,45 @@ test('IA 4136 fuel tax credit', async () => {
     const { bytes } = await buildPdf(lib, [f], (file: string) => readFile(new URL(file, formsDir)), '2025 IA 4136')
     await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-IA4136.pdf`, bytes)
   }
+})
+
+test('IA 148 Part V claim reduction (Sections A and B)', async () => {
+  const r0 = emptyReturn()
+  const cr = (x: Partial<IaInput['credits148'][number]>) => ({ ...emptyIaCredit148(), ...x })
+  const { ia: x, res, ret } = ia(base({ w2s: [w2(60000)] }), { credits148: [cr({ code: '46', current: 5000, reduce: true }), cr({ refundable: true, code: '58', current: 1000 })] })
+  const a = x.partV.A[0]
+  assert.equal(a.C, x.lines['16'])
+  assert.equal(a.F, 5000 - x.lines['16'])
+  assert.equal(a.G, Math.round(a.F * 0.15))
+  assert.equal(x.part1[0].D, a.H)
+  assert.equal(x.lines['17'], x.lines['16'])
+  const b = x.partV.B[0]
+  assert.deepEqual([b.C, b.F, b.G, b.H], [0, 1000, 300, 700])
+  assert.equal(x.lines['26'], 700)
+  const packet = buildIaPacket(ret, res, x)
+  const f = packet.forms.find((y) => y.id === 'ia148')!
+  assert.deepEqual(f.pages, [0, 1, 2, 3])
+  assert.equal(f.values['1G. Tax credit claim reduction (F x 0.05) B'], '300')
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const g of packet.forms) await fillForm(lib, await load(g.file), { ...g }, problems)
+  assert.deepEqual(problems, [])
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-IA148V.pdf`, (await buildPdf(lib, [f], load, '2025 IA 148')).bytes)
+  // Code 46 without the box is not reduced.
+  assert.equal(ia(base({ w2s: [w2(60000)] }), { credits148: [cr({ code: '46', current: 5000 })] }).ia.partV.A.length, 0)
+  void r0
+})
+
+test('IA married filing separately: combined net income for the exemption and the prorated alternate tax', () => {
+  const r0 = emptyReturn()
+  const mfs = base({ filingStatus: 'mfs', w2s: [w2(16000)], spouse: { ...r0.spouse, firstName: 'Sam', lastName: 'Doe', ssn: '987654321', age: 40 } })
+  const alone = ia(mfs).ia
+  assert.ok(alone.issues.some((t) => t.includes('spouse’s net income')))
+  const both = ia(mfs, { spouseNet: 4000, spouseTaxable: 4000 }).ia
+  assert.equal(both.threshold, 13500)
+  assert.equal(both.lowIncomeExempt, alone.netIncome + 4000 <= 13500)
+  const ti = Math.max(0, both.lines['4'])
+  const alt = Math.round(Math.max(0, alone.netIncome + 4000 - 13500) * 0.043 * ti / (ti + 4000))
+  assert.equal(both.lines['5'], Math.min(alt, Math.round(ti * 0.038)))
 })

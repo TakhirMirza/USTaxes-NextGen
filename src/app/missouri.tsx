@@ -223,9 +223,19 @@ export function MissouriStep({ ret, set, result, preparer }: StepProps & { prepa
               <MoneyField label="Tax shown on your 2024 Missouri return" hint="Line 5; 0 if you did not file one" value={d.mo2210.priorTax} onChange={(n) => put({ mo2210: { ...d.mo2210, priorTax: n } })} />
               <MoneyField label="Days before April 15, 2026 the shortfall was paid" hint="Line 12; 0 if paid with the return" value={d.mo2210.earlyDays} onChange={(n) => put({ mo2210: { ...d.mo2210, earlyDays: n } })} />
             </div>
-            <Check label="Withholding and estimated payments were made equally through the year" hint="Needed for the short method" checked={d.mo2210.equalOnTime} onChange={(on) => put({ mo2210: { ...d.mo2210, equalOnTime: on } })} />
+            <Check label="Withholding and estimated payments were made equally through the year" hint="Short method (Part II); otherwise the regular method (Part III)" checked={d.mo2210.equalOnTime} onChange={(on) => put({ mo2210: { ...d.mo2210, equalOnTime: on } })} />
             <Check label="I am a qualified farmer" hint="66⅔% instead of 90% on line 2" checked={d.mo2210.farmer} onChange={(on) => put({ mo2210: { ...d.mo2210, farmer: on } })} />
-            {mo.m2210 && <p className="why">{mo.m2210['13'] ? `Required annual payment ${usd(mo.m2210['6'])}; penalty (line 55): ${usd(mo.m2210['13'])}.` : 'No underpayment penalty (see Things to look at).'}</p>}
+            {!d.mo2210.equalOnTime && (
+              <div className="grid">
+                <TextField label="Date the rest of the tax was paid" hint="MM/DD/YYYY; blank means April 15, 2026 (line 26)" autoComplete="off" value={d.mo2210.paidDate} onChange={(s) => put({ mo2210: { ...d.mo2210, paidDate: s } })} />
+                {(['By April 15, 2025', 'By June 15, 2025', 'By Sept. 15, 2025', 'By Jan. 15, 2026'] as const).map((label, i) => (
+                  <MoneyField key={label} label={`Estimated tax paid ${label.toLowerCase()}`} hint="Line 16; withholding is spread evenly" value={d.mo2210.quarterly?.[i] ?? 0} onChange={(n) => { const q = [...(d.mo2210.quarterly ?? [0, 0, 0, 0])] as [number, number, number, number]; q[i] = n; put({ mo2210: { ...d.mo2210, quarterly: q } }) }} />
+                ))}
+              </div>
+            )}
+            {mo.m2210 && <p className="why">{(mo.m2210['regular'] ? mo.m2210['29'] : mo.m2210['13'])
+              ? `Required annual payment ${usd(mo.m2210['6'])}; penalty (line 55): ${usd(mo.m2210['regular'] ? mo.m2210['29'] : mo.m2210['13'])}${mo.m2210['regular'] ? ' by the regular method (Part III)' : ''}.`
+              : 'No underpayment penalty (see Things to look at).'}</p>}
           </>
         )}
       </Section>

@@ -339,10 +339,26 @@ export function formPitUnd(ret: TaxReturnInput, de: DeResult): FormFill | null {
   v.tpName = (ret.filingStatus === 'mfj' ? `${t.firstName} & ${ret.spouse.firstName} ${t.lastName}` : `${t.firstName} ${t.lastName}`).trim().toUpperCase()
   v.tpID = t.ssn.replace(/\D/g, '')
   for (const k of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']) if (P[k] !== undefined) v[`ln${k}`] = String(Math.round(P[k]))
-  return { id: 'de-und', file: 'de-pitund.pdf', title: 'Delaware Form PIT-UND', values: v }
+  if (ret.de.und.farmer) v.farmerFisherman = true
+  if (!P['part3']) return { id: 'de-und', file: 'de-pitund.pdf', title: 'Delaware Form PIT-UND', values: v, pages: [0] }
+  if (P['annualized']) v.annualizedMethod = true
+  const n = (x: number | undefined): string => (x === undefined ? '' : String(Math.round(x)))
+  const two = (x: string): string => (x.length === 1 ? `0${x}` : x)
+  for (const k of 'abcd') {
+    for (const ln of ['2', '4', '5', '7', '8', '9', '10', '11', '12', '13']) v[`ln${two(ln)}${k}`] = n(P[`${ln}${k}`])
+    for (const ln of ['15', '17', '18', '20', '22', '23', '25', '27', '28', '29', '30', '31', '35', '37', '38']) v[`ln${ln}${k}`] = n(P[`${ln}${k}`])
+    if (k !== 'a') for (const ln of ['21', '24', '32', '33', '34']) v[`ln${ln}${k}`] = n(P[`${ln}${k}`])
+    if (k !== 'd') v[`ln26${k}`] = n(P[`26${k}`])
+    if (k === 'b' || k === 'c') v[`ln36${k}`] = n(P[`36${k}`])
+    if (P[`40${k}`] !== undefined) { v[`ln40${k}`] = String(P[`40${k}`]); v[`ln41${k}`] = P[`41${k}`].toFixed(4); v[`ln42${k}`] = P[`42${k}`].toFixed(2) }
+  }
+  v.ln43 = n(P['43'])
+  return { id: 'de-und', file: 'de-pitund.pdf', title: 'Delaware Form PIT-UND', values: v, pages: [0, 1, 2] }
 }
 
 export function buildDePacket(ret: TaxReturnInput, res: TaxReturnResult, de: DeResult, preparer?: PreparerInfo | null): FormPacket {
   const forms = [formPitRes(ret, res, de, preparer), formPitRss(ret, de), formPitRsa(ret, de), formPitCrs(ret, de), formPitUnd(ret, de)].filter((x): x is FormFill => x !== null)
-  return { forms, notIncluded: de.attach }
+  const notIncluded = [...de.attach]
+  if (de.und && 'abcd'.split('').some((k) => de.und![`split${k}`])) notIncluded.push('PIT-UND Part 5: an underpayment was paid in more than one payment; attach a sheet showing the penalty for each part (the total is on line 42)')
+  return { forms, notIncluded }
 }

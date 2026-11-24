@@ -170,3 +170,30 @@ test('MO-2210 short method penalty', async () => {
   const { bytes } = await buildPdf(lib, [f], load, '2025 MO-2210')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-MO2210.pdf`, bytes)
 })
+
+test('MO-2210 Part III regular method', async () => {
+  const r0 = emptyReturn()
+  const { mo, res, ret } = run(base({ w2s: [w2(70000)] }), { mo2210: { ...r0.mo.mo2210, priorTax: 2000, equalOnTime: false, quarterly: [0, 0, 1000, 0] } })
+  const P = mo.m2210!
+  assert.equal(P['6'], 2000)
+  assert.deepEqual(['a', 'b', 'c', 'd'].map((k) => P[`19d${k}`]), [500, 1000, 500, 1000])
+  assert.deepEqual(['a', 'b', 'c', 'd'].map((k) => P[`27a${k}`] ?? 0), [61, 92, 107, 0])
+  assert.deepEqual(['a', 'b', 'c', 'd'].map((k) => P[`27b${k}`] ?? 0), [0, 0, 14, 90])
+  assert.deepEqual(['a', 'b', 'c', 'd'].map((k) => P[`28c${k}`]), [6.68, 20.16, 11.73 + 1.34, 17.26])
+  assert.equal(P['29'], 57)
+  assert.equal(mo.lines['55'], 57)
+  assert.equal(P['13'], undefined)
+  // The prior-year exception: payments of at least 25/50/75/100% of the 2024 tax by each date.
+  const ok = run(base({ w2s: [w2(70000)] }), { mo2210: { ...r0.mo.mo2210, priorTax: 2000, equalOnTime: false, quarterly: [500, 500, 500, 500] } }).mo
+  assert.equal(ok.lines['55'], 0)
+  const packet = buildMoPacket(ret, res, mo)
+  const f = packet.forms.find((x) => x.id === 'mo2210')!
+  assert.deepEqual(f.pages, [0, 1])
+  assert.equal(f.values['Ln26c'], '01/15/26')
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const g of packet.forms) await fillForm(lib, await load(g.file), { ...g }, problems)
+  assert.deepEqual(problems, [])
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-MO2210R.pdf`, (await buildPdf(lib, [f], load, '2025 MO-2210')).bytes)
+})

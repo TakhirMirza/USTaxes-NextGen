@@ -295,7 +295,8 @@ export function formMoTc(ret: TaxReturnInput, mo: MoResult): FormFill | null {
 /** Form MO-2210 page 1: Part I and the short method (Part II). */
 export function formMo2210(ret: TaxReturnInput, mo: MoResult): FormFill | null {
   const P = mo.m2210
-  if (!P || !((P['13'] ?? 0) > 0) || !ret.mo.mo2210.equalOnTime) return null
+  const regular = P?.['regular'] === 1
+  if (!P || !((regular ? P['29'] : P['13']) ?? 0)) return null
   const v: Record<string, FieldValue> = {}
   const ssn3 = (s: string, a: string, b: string, c: string): void => { const d = digits(s); if (d.length === 9) { v[a] = d.slice(0, 3); v[b] = d.slice(3, 5); v[c] = d.slice(5) } }
   ssn3(ret.taxpayer.ssn, 'Social Security Number', 'undefined', 'undefined_2')
@@ -304,7 +305,35 @@ export function formMo2210(ret: TaxReturnInput, mo: MoResult): FormFill | null {
   const c = ret.contact
   v['Address City State and ZIP Code'] = upper([c.street, c.apt, c.city, c.state, c.zip].filter((x) => x && x.trim()).join(', '))
   for (let i = 1; i <= 13; i++) if (P[String(i)] !== undefined) v[`Ln${i}`] = String(Math.round(P[String(i)]))
-  return { id: 'mo2210', file: 'mo-2210.pdf', title: 'Missouri Form MO-2210', values: v, pages: [0] }
+  if (!regular) return { id: 'mo2210', file: 'mo-2210.pdf', title: 'Missouri Form MO-2210', values: v, pages: [0] }
+  // Part III: Section A by column, Section B line 20 (and line 21 with a 2024 tax), Section C where a penalty accrues.
+  const n = (x: number | undefined): string => (x === undefined ? '' : String(Math.round(x)))
+  const c2 = (x: number | undefined): string => (x === undefined ? '' : x.toFixed(2))
+  v.Ln14 = n(P['14'])
+  const F27A = { a: 'Ln27a', b: 'Ln27b', c: 'Ln27c' } as Record<string, string>
+  const F27B = { a: 'Ln2b', b: 'Ln27a2', c: 'Ln27a3', d: 'Ln27a4' } as Record<string, string>
+  const F28A = { a: 'Ln28a', b: 'Ln28b2', c: 'Ln28c' } as Record<string, string>
+  const F28B = { a: 'Ln28b', b: 'Ln28a2', c: 'Ln28a3', d: 'Ln28a4' } as Record<string, string>
+  const F28C = { a: 'Ln28c1', b: 'Ln28c2', c: 'Ln28c3', d: 'Ln28c4' } as Record<string, string>
+  for (const k of 'abcd') {
+    v[`Ln15${k}`] = n(P[`15${k}`]); v[`Ln16${k}`] = n(P[`16${k}`]); if (k !== 'a') v[`Ln17${k}`] = n(P[`17${k}`]); v[`Ln18${k}`] = n(P[`18${k}`])
+    if (P[`19${k}`]) v[`Ln19${k}`] = n(P[`19${k}`])
+    if (P[`19a${k}`]) v[`Ln19a${k}`] = n(P[`19a${k}`])
+    if (k !== 'a' && P[`19b${k}`]) v[`Ln19b${k}`] = n(P[`19b${k}`])
+    if (P[`19c${k}`]) v[`Ln19c${k}`] = n(P[`19c${k}`])
+    if (P[`19d${k}`]) v[`Ln19d${k}`] = n(P[`19d${k}`])
+    v[`Ln20${k}`] = n(P[`20${k}`])
+    if (P[`21${k}`] !== undefined) v[`Ln21${k}`] = n(P[`21${k}`])
+    if (P[`25${k}`] !== undefined) {
+      v[`Ln25${k}`] = n(P[`25${k}`])
+      const d = new Date(P[`26${k}`] * 86400000)
+      v[`Ln26${k}`] = `${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCFullYear()).slice(2)}`
+      if (F27A[k]) { v[F27A[k]] = String(P[`27a${k}`]); v[F28A[k]] = c2(P[`28a${k}`]) }
+      v[F27B[k]] = String(P[`27b${k}`]); v[F28B[k]] = c2(P[`28b${k}`]); v[F28C[k]] = c2(P[`28c${k}`])
+    }
+  }
+  v.Ln29 = n(P['29'])
+  return { id: 'mo2210', file: 'mo-2210.pdf', title: 'Missouri Form MO-2210', values: v, pages: [0, 1] }
 }
 
 export function buildMoPacket(ret: TaxReturnInput, res: TaxReturnResult, mo: MoResult, preparer?: PreparerInfo | null): FormPacket {
