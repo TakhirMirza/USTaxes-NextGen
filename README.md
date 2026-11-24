@@ -33,7 +33,7 @@ See the in-app page *Privacy* for live checks, and [SECURITY.md](SECURITY.md) fo
 | Adjustments (Schedule 1) | Half of SE tax, SE health insurance, HSA (Form 8889: prorated limits, catch-up, family split, taxable distributions and 20% tax), IRA, student loan interest (with phase-out), educator expenses |
 | New 2025 deductions (Schedule 1-A) | Tips, overtime, car loan interest, $6,000 senior deduction, with phase-outs |
 | Deductions | Standard (incl. 65+/blind and dependent rules) or itemized (Schedule A, $40,000 SALT cap with phase-down) |
-| QBI | Form 8995 below the threshold; Form 8995-A above it (W-2 wage and UBIA limit, phase-in, specified service businesses), REIT dividends, loss netting and carryforwards |
+| QBI | Form 8995 below the threshold; Form 8995-A above it (W-2 wage and UBIA limit, phase-in, specified service businesses on Schedule A), REIT dividends, loss netting and carryforwards on Schedule C (Form 8995-A) |
 | Tax | IRS Tax Table (< $100,000), Tax Computation Worksheet, Qualified Dividends & Capital Gain worksheet |
 | Alternative minimum tax | Form 6251 with ISO, private activity bond and other adjustments, exemption phase-out, 26%/28% rates and Part III for capital gains |
 | Other taxes (Schedule 2) | Self-employment tax (Schedule SE), Additional Medicare Tax (8959), Net Investment Income Tax (8960), 10% tax on early retirement distributions with Form 5329 exceptions, 6% tax on excess HSA contributions (Form 5329 Part VII) |

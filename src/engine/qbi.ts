@@ -30,6 +30,8 @@ export interface QbiBusinessResult {
   line9: number; line10: number; line11: number; line12: number; line13: number; line15: number
   /** Part III, when the phase-in applies. */
   phase: { line17: number; line18: number; line19: number; line25: number; line26: number } | null
+  /** Amounts before the Schedule A percentage (Schedule A lines 2–4). */
+  original: { qbi: number; w2Wages: number; ubia: number }
 }
 
 export interface QbiResult {
@@ -47,6 +49,8 @@ export interface QbiResult {
   /** Losses carried to 2026 (positive numbers). */ lossCarryforward: number; reitLossCarryforward: number
   /** 8995-A Part III numbers shared by every business. */
   phaseIn: { line20: number; line21: number; line22: number; line23: number; pct: number } | null
+  /** Schedule C (Form 8995-A): losses netted against income (positive amounts; null when no loss to net). */
+  netting: { line2: number; line3: number; line4: number; line5: number; line6: number; rows: { id: string; a: number; b: number; c: number }[] } | null
 }
 
 export function qbiDeduction(args: {
@@ -67,14 +71,14 @@ export function qbiDeduction(args: {
     return {
       form: 'none', threshold, phaseInRange: range, taxableIncomeBeforeQbi: ti, netCapitalGain, businesses: [], totalQbi: 0,
       priorLoss: 0, qbiComponent: 0, reitPtp: 0, priorReitLoss: 0, reitComponent: 0, beforeIncomeLimit: 0, incomeLimit: 0,
-      deduction: 0, lossCarryforward: 0, reitLossCarryforward: 0, phaseIn: null
+      deduction: 0, lossCarryforward: 0, reitLossCarryforward: 0, phaseIn: null, netting: null
     }
   }
 
   // SSTB rules (Schedule A): fully excluded over the range, scaled down inside it.
   const scaled = args.businesses.filter((b) => b.qbi !== 0).map((b) => {
     const applicablePct = b.sstb && above ? (overRange ? 0 : 1 - phasePct) : 1
-    return { ...b, applicablePct, excluded: applicablePct === 0, qbi: r(b.qbi * applicablePct), w2Wages: r(b.w2Wages * applicablePct), ubia: r(b.ubia * applicablePct) }
+    return { ...b, applicablePct, excluded: applicablePct === 0, qbi: r(b.qbi * applicablePct), w2Wages: r(b.w2Wages * applicablePct), ubia: r(b.ubia * applicablePct), original: { qbi: b.qbi, w2Wages: b.w2Wages, ubia: b.ubia } }
   })
   const counted = scaled.filter((b) => !b.excluded)
   const totalQbi = r(sum(counted.map((b) => b.qbi)))
@@ -95,7 +99,7 @@ export function qbiDeduction(args: {
     return {
       form: '8995', threshold, phaseInRange: range, taxableIncomeBeforeQbi: ti, netCapitalGain, businesses, totalQbi, priorLoss,
       qbiComponent, reitPtp, priorReitLoss, reitComponent, beforeIncomeLimit, incomeLimit,
-      deduction: Math.min(beforeIncomeLimit, incomeLimit), lossCarryforward, reitLossCarryforward, phaseIn: null
+      deduction: Math.min(beforeIncomeLimit, incomeLimit), lossCarryforward, reitLossCarryforward, phaseIn: null, netting: null
     }
   }
 
@@ -132,7 +136,7 @@ export function qbiDeduction(args: {
     const line13 = Math.max(line11, line12)
     return {
       id: b.id, name: b.name, tin: b.tin, sstb: b.sstb, applicablePct: b.applicablePct, excluded: b.excluded, qbiBeforeNetting: b.qbi,
-      line2, line3, line4, line5, line6, line7, line8, line9, line10, line11, line12, line13, line15: line13, phase
+      line2, line3, line4, line5, line6, line7, line8, line9, line10, line11, line12, line13, line15: line13, phase, original: b.original
     }
   })
   const qbiComponent = sum(businesses.map((b) => b.line15))
@@ -141,14 +145,18 @@ export function qbiDeduction(args: {
     form: '8995a', threshold, phaseInRange: range, taxableIncomeBeforeQbi: ti, netCapitalGain, businesses, totalQbi, priorLoss,
     qbiComponent, reitPtp, priorReitLoss, reitComponent, beforeIncomeLimit, incomeLimit,
     deduction: Math.min(beforeIncomeLimit, incomeLimit), lossCarryforward, reitLossCarryforward,
-    phaseIn: overRange ? null : { line20: ti, line21: threshold, line22: ti - threshold, line23: range, pct: phasePct }
+    phaseIn: overRange ? null : { line20: ti, line21: threshold, line22: ti - threshold, line23: range, pct: phasePct },
+    netting: negTotal > 0 ? {
+      line2: priorLoss, line3: negTotal, line4: posTotal, line5: Math.min(negTotal, posTotal), line6: pos(negTotal - posTotal),
+      rows: counted.map((b) => { const c = afterNetting(b); return { id: b.id, a: b.qbi, b: b.qbi > 0 ? b.qbi - c : 0, c } })
+    } : null
   }
 }
 
-function blankBusiness(b: QbiBusinessInput & { applicablePct: number; excluded: boolean }, line2: number): QbiBusinessResult {
+function blankBusiness(b: QbiBusinessInput & { applicablePct: number; excluded: boolean; original: QbiBusinessResult['original'] }, line2: number): QbiBusinessResult {
   return {
     id: b.id, name: b.name, tin: b.tin, sstb: b.sstb, applicablePct: b.applicablePct, excluded: b.excluded, qbiBeforeNetting: b.qbi,
     line2, line3: r(line2 * R.QBI_RATE), line4: 0, line5: 0, line6: 0, line7: 0, line8: 0, line9: 0, line10: 0, line11: 0, line12: 0,
-    line13: 0, line15: 0, phase: null
+    line13: 0, line15: 0, phase: null, original: b.original
   }
 }

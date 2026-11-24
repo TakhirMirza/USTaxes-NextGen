@@ -227,7 +227,12 @@ test('Form 8995-A prints the wage limit, the phase-in, and a second sheet for a 
   const a = packet.forms.find((f) => f.id === '8995a')!
   assert.equal(a.values['f2_46[0]'], res.qbi.deduction.toLocaleString('en-US'))
   assert.equal(a.values['Table_PartI[0].RowB[0].c1_4[0]'], true)
-  assert.ok(packet.notIncluded.some((x) => x.startsWith('Schedule A (Form 8995-A)')))
+  assert.ok(ids.includes('8995aa'), ids.join(', '))
+  const sa = packet.forms.find((f) => f.id === '8995aa')!
+  const sstb = res.qbi.businesses.find((b) => b.sstb)!
+  assert.equal(sa.values['Table_PartI[0].Row1a[0].f1_3[0]'], 'Consulting')
+  assert.equal(sa.values['Table_PartI[0].Row11[0].f1_42[0]'], sstb.qbiBeforeNetting.toLocaleString('en-US'))
+  assert.equal(sa.values['Table_PartI[0].Row10[0].Ln10[0].f1_38[0]'], ((1 - res.qbi.phaseIn!.pct) * 100).toFixed(2))
   assert.equal(res.f1040['13a'], res.qbi.deduction)
   const { bytes, problems } = await buildPdf(lib, packet.forms, load)
   assert.deepEqual(problems, [])
@@ -443,4 +448,28 @@ test('Schedule C Part III: inventory lines 33–42 set cost of goods sold on lin
   await fillForm(lib, await load(sc.file), { ...sc }, problems)
   assert.deepEqual(problems, [])
   if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-SCINV.pdf`, (await buildPdf(lib, [sc], load, '2025 Schedule C')).bytes)
+})
+
+test('Schedule C (Form 8995-A) nets a loss and the 2024 carryforward against the other businesses', async () => {
+  const biz = (name: string, receipts: number, supplies: number) => ({
+    ...emptyBusiness('spouse'), name, activity: 'Services', businessCode: '541990', required1099s: false, grossReceipts: receipts,
+    expenses: { ...emptyBusiness().expenses, supplies }, qbi: { w2Wages: 50000, ubia: 0, sstb: false }
+  })
+  const ret: TaxReturnInput = { ...busy(), w2s: [w2('taxpayer', 450000, 90000)], businesses: [biz('Studio', 80000, 0), biz('Gallery', 10000, 30000)], qbiCarryforward: { ...busy().qbiCarryforward, business: 5000 } }
+  const res = computeReturn(ret)
+  assert.equal(res.qbi.form, '8995a')
+  const n = res.qbi.netting!
+  assert.ok(n)
+  assert.equal(n.line2, res.qbi.priorLoss)
+  assert.equal(n.line3, -n.rows.filter((x) => x.a < 0).reduce((s, x) => s + x.a, 0) + n.line2)
+  assert.equal(n.line5, Math.min(n.line3, n.line4))
+  const studio = n.rows.find((x) => x.a > 0)!
+  assert.equal(studio.c, studio.a - studio.b)
+  const packet = buildPacket2025(ret, res)
+  const sc = packet.forms.find((f) => f.id === '8995ac')!
+  assert.equal(sc.values['Table_Line1[0].Row1[0].f1_03[0]'], 'Studio')
+  assert.ok(!packet.notIncluded.some((x) => x.startsWith('Schedule C (Form 8995-A)')))
+  const { bytes, problems } = await buildPdf(lib, packet.forms.filter((f) => f.id.startsWith('8995a')), load)
+  assert.deepEqual(problems, [])
+  if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-8995AC.pdf`, bytes)
 })

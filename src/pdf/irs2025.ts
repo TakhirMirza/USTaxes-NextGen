@@ -921,6 +921,63 @@ function form8995(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
 }
 
 /** Form 8995-A: three businesses per form; Part IV only on the first. */
+/** Schedule A (Form 8995-A): each SSTB inside the phase-in range, three per sheet. */
+function schedule8995aA(ret: TaxReturnInput, res: TaxReturnResult): FormFill[] {
+  const q = res.qbi
+  const p = q.phaseIn
+  const sstbs = q.businesses.filter((b) => b.sstb && !b.excluded && b.applicablePct < 1)
+  if (q.form !== '8995a' || !p || !sstbs.length) return []
+  const T = 'Table_PartI[0].'
+  const out: FormFill[] = []
+  for (let i = 0; i < sstbs.length; i += 3) {
+    const v: Record<string, FieldValue> = { ...header(ret, 'f1_1[0]', 'f1_2[0]') }
+    sstbs.slice(i, i + 3).forEach((b, col) => {
+      const f = (base: number): string => `f1_${base + col}[0]`
+      v[`${T}Row1a[0].${f(3)}`] = b.name
+      v[`${T}Row1b[0].${f(6)}`] = businessTin(ret, b.id)
+      v[`${T}Row2[0].${f(9)}`] = amt(b.original.qbi, true)
+      v[`${T}Row3[0].${f(12)}`] = amt(b.original.w2Wages, true)
+      v[`${T}Row4[0].${f(15)}`] = amt(b.original.ubia, true)
+      v[`${T}Row11[0].${f(42)}`] = amt(b.qbiBeforeNetting, true)
+      v[`${T}Row12[0].${f(45)}`] = amt(Math.round(b.original.w2Wages * b.applicablePct), true)
+      v[`${T}Row13[0].${f(48)}`] = amt(Math.round(b.original.ubia * b.applicablePct), true)
+      // Lines 5–10 are shared; the column copies are read-only mirrors.
+      const shared: [string, number, string][] = [['5', 18, amt(p.line20, true)], ['6', 22, amt(p.line21, true)], ['7', 26, amt(p.line22, true)], ['8', 30, amt(p.line23, true)], ['9', 34, p.pct.toFixed(4)], ['10', 38, ((1 - p.pct) * 100).toFixed(2)]]
+      for (const [ln, base, val] of shared) {
+        v[`${T}Row${ln}[0].Ln${ln}[0].f1_${base}[0]`] = val
+        v[`${T}Row${ln}[0].f1_${base + 1 + col}_RO[0]`] = val
+      }
+    })
+    out.push({ id: i === 0 ? '8995aa' : `8995aa-${i / 3 + 1}`, file: 'f8995aa.pdf', title: i === 0 ? 'Schedule A (Form 8995-A)' : `Schedule A (Form 8995-A) (sheet ${i / 3 + 1})`, values: v })
+  }
+  return out
+}
+
+/** Schedule C (Form 8995-A): loss netting and carryforward, three trades or businesses per sheet. */
+function schedule8995aC(ret: TaxReturnInput, res: TaxReturnResult): FormFill[] {
+  const q = res.qbi
+  const n = q.netting
+  if (q.form !== '8995a' || !n) return []
+  const names = new Map(q.businesses.map((b) => [b.id, b.name]))
+  const out: FormFill[] = []
+  const rows = n.rows.length ? n.rows : [null]
+  for (let i = 0; i < rows.length; i += 3) {
+    const v: Record<string, FieldValue> = { ...header(ret, 'f1_01[0]', 'f1_02[0]') }
+    rows.slice(i, i + 3).forEach((x, k) => {
+      if (!x) return
+      const base = 3 + 4 * k
+      const f = (j: number): string => `Table_Line1[0].Row${k + 1}[0].f1_${String(base + j).padStart(2, '0')}[0]`
+      v[f(0)] = names.get(x.id) ?? ''
+      v[f(1)] = x.a < 0 ? `(${amt(-x.a)})` : amt(x.a, true)
+      if (x.b > 0) v[f(2)] = amt(x.b)
+      v[f(3)] = amt(x.c, true)
+    })
+    if (i === 0) Object.assign(v, { 'f1_15[0]': amt(n.line2), 'f1_16[0]': amt(n.line3, true), 'f1_17[0]': amt(n.line4, true), 'f1_18[0]': amt(n.line5, true), 'f1_19[0]': amt(n.line6, true) })
+    out.push({ id: i === 0 ? '8995ac' : `8995ac-${i / 3 + 1}`, file: 'f8995ac.pdf', title: i === 0 ? 'Schedule C (Form 8995-A)' : `Schedule C (Form 8995-A) (sheet ${i / 3 + 1})`, values: v })
+  }
+  return out
+}
+
 function form8995a(ret: TaxReturnInput, res: TaxReturnResult): FormFill[] {
   const q = res.qbi
   const two = (n: number): string => String(n).padStart(2, '0')
@@ -1332,7 +1389,7 @@ export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult, prepa
   res.form8889.forEach((h) => forms.push(form8889(ret, res, h)))
   if (res.schedule3.saversCredit > 0) forms.push(form8880(ret, res))
   if (res.qbi.form === '8995' && (res.qbi.deduction > 0 || res.qbi.lossCarryforward > 0 || res.qbi.reitLossCarryforward > 0)) forms.push(form8995(ret, res))
-  if (res.qbi.form === '8995a') forms.push(...form8995a(ret, res))
+  if (res.qbi.form === '8995a') forms.push(...form8995a(ret, res), ...schedule8995aA(ret, res), ...schedule8995aC(ret, res))
   if (res.schedule2.additionalMedicareTax > 0 || f['25c'] > 0) forms.push(form8959(ret, res))
   if (res.schedule2.netInvestmentIncomeTax > 0) forms.push(form8960(ret, res))
   forms.push(...forms4562(ret, res))
@@ -1341,8 +1398,6 @@ export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult, prepa
   if (f['37'] > 0) forms.push(form1040V(ret, res))
 
   const notIncluded: string[] = []
-  if (res.qbi.form === '8995a' && res.qbi.businesses.some((b) => b.sstb)) notIncluded.push('Schedule A (Form 8995-A), Specified Service Trades or Businesses — the reduced amounts are already on Form 8995-A')
-  if (res.qbi.form === '8995a' && (res.qbi.priorLoss > 0 || res.qbi.businesses.some((b) => b.qbiBeforeNetting < 0))) notIncluded.push('Schedule C (Form 8995-A), Loss Netting and Carryforward — the netted amounts are on Form 8995-A line 2')
   if (ret.dependents.length > 4) notIncluded.push('A statement listing dependents after the fourth')
   if (ret.businesses.some((b) => b.homeOffice.method === 'amount' && b.homeOffice.amount > 0)) notIncluded.push('Your own Form 8829 or simplified-method worksheet for the home office amount you entered')
   if (res.form4562.some((f) => f.rows.filter((x) => x.propertyClass === '27.5').length > 2 || f.rows.filter((x) => x.propertyClass === '39').length + (f.home ? 1 : 0) > 2)) notIncluded.push('A statement listing buildings placed in service in 2025 beyond the two lines on Form 4562 lines 19i/19j')
