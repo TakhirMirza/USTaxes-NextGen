@@ -125,11 +125,14 @@ test('UT: another TC-40W page after four W-2s', async () => {
 })
 
 test('CT: withholding statements after the fifth on a statement', async () => {
-  const ret = many('ct', 6)
+  const ret = many('ct', 6, { spouse: { ...emptyReturn().spouse, firstName: 'Sam J', lastName: 'Doe', ssn: '987654321', age: 40 }, filingStatus: 'mfj' })
   const res = computeReturn(ret)
   const ct = computeConnecticut(ret, res)
   const p = buildCtPacket(ret, res, ct)
-  assert.ok(ids(p.forms).some((x) => x.startsWith('st-ct-wh')))
+  const wh = p.forms.find((f) => f.id === 'ct1040wh')!
+  assert.ok(wh.draw!.some((d) => d.text === '150'))
+  assert.equal(ct.lines['18f'], 150)
+  assert.equal(ct.lines['18'], 900)
   assert.ok(!ct.attach.some((x) => x.includes('CT-1040WH')))
   await fillsClean(p.forms, 'CT')
 })

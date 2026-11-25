@@ -231,6 +231,8 @@ export function computeConnecticut(ret: TaxReturnInput, res: TaxReturnResult): C
   }).filter((x) => x.tax > 0)
   if (d.other1099.tax > 0) withholding.push({ ein: d.other1099.ein, wages: r(pos(d.other1099.income)), tax: r(d.other1099.tax) })
   L['18'] = withholding.reduce((s, x) => s + x.tax, 0)
+  // Line 18f: Supplemental Schedule CT-1040WH, line 3 (statements after the fifth).
+  L['18f'] = withholding.slice(5).reduce((s, x) => s + x.tax, 0)
   L['19'] = r(pos(d.estimatedPayments))
   L['20'] = r(pos(d.extensionPayment))
   // Schedule CT-EITC.

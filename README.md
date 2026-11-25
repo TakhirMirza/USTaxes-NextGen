@@ -90,8 +90,8 @@ print-ready file: Form 1040, Schedules 1, 1-A, 2, 3, A, B, C, D, E, SE, EIC, 881
 Form 4797 sales, Form 4562 lines 6 and 19i–19j, Form 8582 activities, and the dependents on state returns) a supporting
 statement page is added. State forms do the same: another copy of the official page where the state asks for one
 (Minnesota M1W, Utah TC-40W, Mississippi 80-107, Ohio Schedule of Withholding, New Jersey NJ-HCC, Oregon OR-ADD-DEP,
-Montana Schedule III, South Carolina SC1040TC), and a statement page otherwise (Alabama Schedules W-2, B, D and E,
-Georgia income statements, Connecticut withholding and CT-EITC rows, Colorado DR 0347 providers, Virginia Schedule ADJ
+Montana Schedule III, South Carolina SC1040TC, Connecticut Supplemental Schedule CT-1040WH), and a statement page otherwise (Alabama Schedules W-2, B, D and E,
+Georgia income statements, Connecticut CT-EITC rows, Colorado DR 0347 providers, Virginia Schedule ADJ
 line 10). The blank forms live in `public/forms/2025` (official IRS PDFs).
 
 ## Tax years

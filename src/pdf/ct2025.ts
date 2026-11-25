@@ -224,19 +224,46 @@ export function formCtDependent(ret: TaxReturnInput): FormFill | null {
   return { id: 'ctdep', file: 'ct-dependent.pdf', title: 'Connecticut Schedule CT-Dependent', values: {}, draw }
 }
 
+/**
+ * Supplemental Schedule CT-1040WH (Rev. 12/25), flat PDF: withholding statements after the fifth, seven rows per sheet.
+ * Line 1 (number of statements with Connecticut withholding) is on the first sheet; line 3 is each sheet's column C total,
+ * and together they make Form CT-1040 line 18f.
+ */
+export function formsCt1040wh(ret: TaxReturnInput, ct1: CtResult): FormFill[] {
+  const rest = ct1.withholding.slice(5)
+  const out: FormFill[] = []
+  const tp = ret.taxpayer
+  const sp = ret.filingStatus === 'mfj' ? ret.spouse : null
+  const ssnCells = [59.5, 76, 92, 110.5, 126.5, 148.5, 165, 181.5, 197]
+  const ssn = (x0: number, v: string): Draw[] => digits(v).slice(0, 9).split('').map((ch, i) => ei(0, x0 + ssnCells[i] - 59.5 - 3, 143, ch, { size: 10 }))
+  for (let k = 0; k * 7 < rest.length; k++) {
+    const rows = rest.slice(k * 7, k * 7 + 7)
+    const draw: Draw[] = [...ssn(59.5, tp.ssn)]
+    const [tf, tmi] = firstAndInitial(tp.firstName)
+    draw.push(ei(0, 56, 172, tf, { size: 10 }), ei(0, 231, 172, tmi, { size: 10 }), ei(0, 272, 172, upper(tp.lastName), { size: 10 }))
+    if (sp) {
+      draw.push(...ssn(325.5, sp.ssn))
+      const [sf, smi] = firstAndInitial(sp.firstName)
+      draw.push(ei(0, 56, 201, sf, { size: 10 }), ei(0, 231, 201, smi, { size: 10 }), ei(0, 272, 201, upper(sp.lastName), { size: 10 }))
+    }
+    if (k === 0) draw.push(ei(0, 548, 230, String(ct1.withholding.length), { size: 10, right: true }))
+    rows.forEach((w, i) => {
+      const base = 298 + 19.29 * i
+      digits(w.ein).slice(0, 9).split('').forEach((ch, j) => draw.push(ei(0, 70 + 18.8 * j, base, ch, { size: 10 })))
+      draw.push(ei(0, 360, base, money0(w.wages), { size: 10, right: true }), ei(0, 556, base, String(w.tax), { size: 10, right: true }))
+    })
+    draw.push(ei(0, 556, 475, String(rows.reduce((s, w) => s + w.tax, 0)), { size: 10, right: true }))
+    out.push({ id: k ? `ct1040wh-${k + 1}` : 'ct1040wh', file: 'ct-1040wh.pdf', title: k ? `Connecticut Supplemental Schedule CT-1040WH (sheet ${k + 1})` : 'Connecticut Supplemental Schedule CT-1040WH', values: {}, draw })
+  }
+  return out
+}
+
 const eitcKids = (ret: TaxReturnInput) => ret.dependents.filter((x) => x.childRelationship && x.monthsLivedWithYou > 6 && (x.age < 19 || (x.student && x.age < 24) || x.disabled))
 
 /** Statements for rows that do not fit on CT-1040 and Schedule CT-EITC. */
 function ctStatements(ret: TaxReturnInput, res: TaxReturnResult, ct1: CtResult): FormFill[] {
   const out: FormFill[] = []
-  const wh = ct1.withholding.slice(5)
-  if (wh.length) out.push(...statementForms(ret, {
-    id: 'st-ct-wh', attachTo: 'Form CT-1040, Section 5 (Supplemental Schedule CT-1040WH)', title: 'Connecticut withholding statements after the fifth',
-    columns: [{ label: 'Employer / payer FEIN', width: 160 }, { label: 'Connecticut wages, tips, etc.', width: 160, right: true }, { label: 'Connecticut income tax withheld', width: 170, right: true }],
-    rows: wh.map((w) => [w.ein, money0(w.wages), money0(w.tax)]),
-    total: ['Total', money0(wh.reduce((s, w) => s + w.wages, 0)), money0(wh.reduce((s, w) => s + w.tax, 0))],
-    note: 'Form CT-1040 line 21 includes these amounts.',
-  }))
+  out.push(...formsCt1040wh(ret, ct1))
   if (ct1.eitc['16'] > 0) {
     const kids = ct1.eitcChildren > 0 ? eitcKids(ret).slice(3) : []
     if (kids.length) out.push(...statementForms(ret, {
