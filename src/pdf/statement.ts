@@ -102,3 +102,28 @@ export function dependentsStatement(ret: TaxReturnInput, from: number, attachTo:
     rows: rest.map((x) => [x.name, ssn(x.ssn), x.relationship, birth ? birth(x.id) : String(x.age), String(x.monthsLivedWithYou)])
   })
 }
+
+/** Child and dependent care providers after the first `from`, for state care-credit forms that have fewer rows. */
+export function careProvidersStatement(ret: TaxReturnInput, from: number, attachTo: string, id: string): FormFill[] {
+  const rest = ret.dependentCare.providers.slice(from)
+  if (!rest.length) return []
+  return statementForms(ret, {
+    id, attachTo, title: `Care providers ${from + 1} and up`,
+    columns: [{ label: 'Care provider', width: 150 }, { label: 'Address', width: 200 }, { label: 'SSN or EIN', width: 80 }, { label: 'Amount paid', width: 82, right: true }],
+    rows: rest.map((x) => [x.name, x.address, x.tin, money0(x.amountPaid)]),
+    total: ['Total', '', '', money0(rest.reduce((s, x) => s + x.amountPaid, 0))]
+  })
+}
+
+/** People listed by name and SSN after the first `from` (qualifying persons, children, individuals). */
+export function peopleStatement(ret: TaxReturnInput, people: { name: string; ssn: string; extra?: string }[], from: number, o: { id: string; attachTo: string; title: string; extraLabel?: string; note?: string }): FormFill[] {
+  const rest = people.slice(from)
+  if (!rest.length) return []
+  const ssn = (s: string): string => { const d = s.replace(/\D/g, ''); return d.length === 9 ? `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}` : d }
+  return statementForms(ret, {
+    id: o.id, attachTo: o.attachTo, title: o.title,
+    columns: [{ label: 'Name', width: 230 }, { label: 'SSN or ITIN', width: 110 }, ...(o.extraLabel ? [{ label: o.extraLabel, width: 150 }] : [])],
+    rows: rest.map((x) => [x.name, ssn(x.ssn), ...(o.extraLabel ? [x.extra ?? ''] : [])]),
+    ...(o.note ? { note: o.note } : {})
+  })
+}

@@ -10,7 +10,7 @@ import type { CaResult } from '../engine/ca2025.ts'
 import { careQualifyingPerson } from '../engine/compute.ts'
 import { parseBirthDate } from '../engine/va2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
-import { dependentsStatement } from './statement.ts'
+import { careProvidersStatement, dependentsStatement, peopleStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const amt = (n: number | undefined, keepZero = false): string => {
@@ -297,5 +297,10 @@ export function buildCaPacket(ret: TaxReturnInput, res: TaxReturnResult, ca: CaR
   if (ca.deduction.method === 'itemized' && ret.ca.itemizedAdjustment) notIncluded.push('A statement explaining the other itemized deduction adjustments (Schedule CA, Part II, line 27)')
   if (ret.ca.otherSubtractions || ret.ca.otherAdditions) notIncluded.push('A statement explaining the other Schedule CA adjustments (line 8z)')
   forms.push(...dependentsStatement(ret, 3, 'Form 540, Dependents (continued)', 'st-ca-deps'))
+  if (forms.some((f) => f.id === 'ca3514')) forms.push(...peopleStatement(ret, ret.dependents.filter(caQualifyingChild).map((k) => ({ name: k.name, ssn: k.ssn, extra: ret.ca.dependentBirthDates[k.id] ?? '' })), 3, { id: 'st-ca-3514', attachTo: 'FTB 3514, Part III qualifying children (continued)', title: 'Qualifying children after the third', extraLabel: 'Date of birth' }))
+  if (forms.some((f) => f.id === 'ca3506')) {
+    forms.push(...careProvidersStatement(ret, 2, 'FTB 3506, Part II (continued)', 'st-ca-3506-prov'))
+    forms.push(...peopleStatement(ret, ret.dependents.filter(careQualifyingPerson).map((k) => ({ name: k.name, ssn: k.ssn, extra: ret.ca.dependentBirthDates[k.id] ?? '' })), 3, { id: 'st-ca-3506-persons', attachTo: 'FTB 3506, Part III (continued)', title: 'Qualifying persons after the third', extraLabel: 'Date of birth' }))
+  }
   return { forms, notIncluded }
 }

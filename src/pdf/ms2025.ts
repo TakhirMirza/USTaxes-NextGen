@@ -144,24 +144,25 @@ const msName = (ret: TaxReturnInput): string => upper(ret.filingStatus === 'mfj'
 const n0 = (n: number): string => String(Math.round(n))
 
 /** Form 80-160, page 1. */
-export function formMs160(ret: TaxReturnInput, ms: MsResult): FormFill | null {
+export function formMs160(ret: TaxReturnInput, ms: MsResult, copy = 0): FormFill | null {
   const f = ms.f160
   if (!f) return null
   const L = ms.lines
   const joint = ret.filingStatus === 'mfj'
   const v: Record<string, FieldValue> = { TaxpayerName: msName(ret), SSN: digits(ret.taxpayer.ssn) }
   const cols: ['A' | 'B', string][] = joint ? [['A', '1'], ['B', '2']] : [['A', '1']]
-  for (const [c, n] of cols) {
+  if (!copy) for (const [c, n] of cols) {
     v[`${n}-1`] = n0(L[`13${c}`]); v[`${n}-2`] = n0(L[`14${c}`]); v[`${n}-3`] = n0(L[`15${c}`]); v[`${n}-4`] = n0(L[`16${c}`])
   }
-  const states = ret.ms.otherStates.filter((o) => o.state.trim() && o.tax > 0).slice(0, 3)
-  f.cols.forEach((c, i) => {
+  const states = ret.ms.otherStates.filter((o) => o.state.trim() && o.tax > 0).slice(copy * 3, copy * 3 + 3)
+  f.cols.slice(copy * 3, copy * 3 + 3).forEach((c, i) => {
     const col = String(i + 3)
     v[`State${i + 1}`] = upper(states[i].state).slice(0, 2)
     v[`${col}-1`] = n0(c['1']); v[`${col}-2`] = n0(c['2']); v[`${col}-3`] = n0(c['3']); v[`${col}-4`] = n0(c['4'])
     v[`${col}-5`] = c['5'].toFixed(2)
     v[`${col}-7`] = n0(c['7']); v[`${col}-8`] = n0(c['8']); v[`${col}-9`] = n0(c['9']); v[`${col}-10`] = n0(c['10'])
   })
+  if (copy) return { id: `ms80160-${copy + 1}`, file: 'ms-80160.pdf', title: `Mississippi Form 80-160 (states ${copy * 3 + 1}–${copy * 3 + 3})`, values: v, pages: [0] }
   v['6-4'] = n0(f.total4)
   v['A-6'] = n0(f.a6); v['A-7'] = n0(f.a7); v['B-7'] = n0(f.b7)
   v['6-10'] = n0(f.line10); v['6-13'] = n0(f.line11); v['6-14'] = n0(f.line12)
@@ -169,14 +170,15 @@ export function formMs160(ret: TaxReturnInput, ms: MsResult): FormFill | null {
 }
 
 /** Form 80-401 tax credit summary schedule. */
-export function formMs401(ret: TaxReturnInput, ms: MsResult): FormFill | null {
+export function formMs401(ret: TaxReturnInput, ms: MsResult, copy = 0): FormFill | null {
   if (!ms.f401.length) return null
   const v: Record<string, FieldValue> = { SSN: digits(ret.taxpayer.ssn) }
-  ms.f401.forEach((c, i) => {
+  ms.f401.slice(copy * 4, copy * 4 + 4).forEach((c, i) => {
     const n = i + 1
     v[`Code${n}`] = c.code
     for (const k of ['B', 'C', 'D', 'E', 'F', 'G'] as const) if (c[k] || k === 'E' || k === 'G') v[`${k}${n}`] = n0(c[k])
   })
+  if (copy) return { id: `ms80401-${copy + 1}`, file: 'ms-80401.pdf', title: `Mississippi Form 80-401 (credits ${copy * 4 + 1}–${copy * 4 + 4})`, values: v, pages: [0] }
   v.Line1 = n0(ms.f401.reduce((s, c) => s + c.E, 0))
   v.Line2 = n0(ms.f401.reduce((s, c) => s + c.G, 0))
   const ssns = ret.ms.adopteeSsns.split(/[,;\s]+/).map(digits).filter((x) => x.length === 9)
@@ -193,6 +195,8 @@ export function buildMsPacket(ret: TaxReturnInput, res: TaxReturnResult, ms: MsR
   const needs108 = !!ms.itemized || ms.interest['1'] + ms.interest['4'] > 0 || L['33'] > 0 || (L['41A'] ?? 0) + (L['41B'] ?? 0) !== 0 || (L['48A'] ?? 0) + (L['48B'] ?? 0) !== 0
   if (needs108) forms.push(formMs80108(ret, ms))
   for (const x of [formMs160(ret, ms), formMs401(ret, ms)]) if (x) forms.push(x)
+  if (ms.f160) for (let k = 1; k * 3 < ms.f160.cols.length; k++) forms.push(formMs160(ret, ms, k)!)
+  for (let k = 1; k * 4 < ms.f401.length; k++) forms.push(formMs401(ret, ms, k)!)
   const notIncluded = ms.attach.filter((x) => !x.startsWith('Form 80-107') && !x.startsWith('Form 80-108'))
   notIncluded.push('Your W-2s and 1099s and a copy of your federal return')
   if (ms.statements.length === 0) notIncluded.push('Form 80-107 must be filed even with no Mississippi withholding: list any income statements on it')

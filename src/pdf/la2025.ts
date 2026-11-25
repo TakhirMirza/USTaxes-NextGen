@@ -7,7 +7,7 @@ import type { Owner, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { LaResult } from '../engine/la2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
-import { dependentsStatement } from './statement.ts'
+import { dependentsStatement, money0, statementForms } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const upper = (s: string): string => s.trim().toUpperCase()
@@ -284,5 +284,14 @@ export function buildLaPacket(ret: TaxReturnInput, res: TaxReturnResult, la: LaR
   if (la.lines['26'] > 0 && !ret.la.schI.some((x) => x.amount > 0)) notIncluded.push('Schedule I: list each credit in the Louisiana section to fill it in (only the line 26 total is entered)')
   if (la.lines['14'] > 0) notIncluded.push('Refundable child care worksheet: check the expenses split between children in column H')
   forms.push(...dependentsStatement(ret, 8, 'IT-540, Dependents (continued)', 'st-la-deps'))
+  if (la.usesScheduleE && la.exempt.length > 7) {
+    const rest = la.exempt.slice(6)
+    forms.push(...statementForms(ret, {
+      id: 'st-la-sche', attachTo: 'Schedule E, line 4G (continued)', title: 'Exempt income combined on line 4G',
+      columns: [{ label: 'Code', width: 50 }, { label: 'Description', width: 340 }, { label: 'Amount', width: 110, right: true }],
+      rows: rest.map((x) => [x.code, x.description, money0(x.amount)]),
+      total: ['Total (line 4G)', '', money0(rest.reduce((s, x) => s + x.amount, 0))]
+    }))
+  }
   return { forms, notIncluded }
 }

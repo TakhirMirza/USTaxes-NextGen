@@ -27,11 +27,13 @@ import { buildUtPacket } from './ut2025.ts'
 import { buildCtPacket } from './ct2025.ts'
 import { buildOrPacket } from './or2025.ts'
 import { buildCoPacket } from './co2025.ts'
+import { computeMissouri } from '../engine/mo2025.ts'
+import { buildMoPacket } from './mo2025.ts'
 import { buildPdf, fillForm } from './fill.ts'
 import type { FillProblem } from './fill.ts'
 import type { FormFill } from './irs2025.ts'
 
-type St = 'al' | 'ga' | 'mn' | 'oh' | 'ms' | 'ut' | 'ct' | 'or' | 'co'
+type St = 'al' | 'ga' | 'mn' | 'oh' | 'ms' | 'ut' | 'ct' | 'or' | 'co' | 'mo'
 
 /** A single filer with `n` W-2s, each with state withholding. */
 const many = (st: St, n: number, patch: Partial<TaxReturnInput> = {}): TaxReturnInput => {
@@ -163,4 +165,41 @@ test('CO: DR 0347 care providers after the second on a statement', async () => {
   assert.ok(st.draw!.some((d) => d.text === 'Daycare 3'))
   assert.ok(!p.notIncluded.some((x) => x.includes('more than two care providers')))
   await fillsClean(p.forms, 'CO')
+})
+
+test('UT: another TC-40S for states after the third', async () => {
+  const base = many('ut', 1, { w2s: [{ ...emptyW2('taxpayer'), employer: 'Big Co', wages: 120000, socialSecurityWages: 120000, medicareWages: 120000 }] })
+  const ret = { ...base, ut: { ...base.ut, otherStates: ['ID', 'CO', 'AZ', 'OR'].map((st) => ({ state: st, income: 5000, tax: 200 })) } }
+  const res = computeReturn(ret)
+  const ut = computeUtah(ret, res)
+  assert.equal(ut.tc40s.length, 4)
+  const p = buildUtPacket(ret, res, ut)
+  assert.equal(p.forms.find((f) => f.id === 'uttc40s-2')!.values['40S One State'], 'OR')
+  assert.ok(!ut.issues.some((x) => x.includes('three states')))
+  await fillsClean(p.forms, 'UT40S')
+})
+
+test('MO: another MO-TC for credits after the tenth', async () => {
+  const base = many('mo', 1)
+  const moTc = Array.from({ length: 11 }, (_, i) => ({ owner: 'taxpayer' as const, benefit: `10000${i}`, code: 'ABC', name: `Credit ${i + 1}`, amount: 10, refundable: false }))
+  const ret = { ...base, mo: { ...base.mo, moTc } }
+  const res = computeReturn(ret)
+  const mo = computeMissouri(ret, res)
+  assert.equal(mo.moTc.rows.length, 11)
+  const p = buildMoPacket(ret, res, mo)
+  const second = p.forms.find((f) => f.id === 'motc-2')!
+  assert.equal(second.values['Credit Name Each credit will apply in the order they appear below1'], 'Credit 11')
+  assert.equal(second.values['13'], undefined)
+  await fillsClean(p.forms, 'MO')
+})
+
+test('MS: another Form 80-401 for credits after the fourth', async () => {
+  const base = many('ms', 1)
+  const credits401 = ['01', '02', '03', '04', '05'].map((code) => ({ code, earned: 10, passThrough: 0, carryover: 0, expired: 0 }))
+  const ret = { ...base, ms: { ...base.ms, credits401 } }
+  const res = computeReturn(ret)
+  const ms = computeMississippi(ret, res)
+  const p = buildMsPacket(ret, res, ms)
+  assert.equal(p.forms.find((f) => f.id === 'ms80401-2')!.values['Code1'], '05')
+  await fillsClean(p.forms, 'MS401')
 })

@@ -175,7 +175,6 @@ export function computeUtah(ret: TaxReturnInput, res: TaxReturnResult): UtResult
   if (L['33'] > 0) attach.push('TC-40W (withholding schedule); keep your W-2s and 1099s')
   if (L['5'] + L['8'] + L['24'] + L['26'] > 0) attach.push('TC-40A, page 1 (supplemental schedule)')
   if (tc40s.length) attach.push('A copy of each other state’s return (TC-40S)')
-  if (tc40s.length > 3) issues.push('TC-40S has room for three states; use another TC-40S for the rest.')
   if (exempt) issues.push('Federal AGI is not more than the federal standard deduction: you are a qualified exempt taxpayer and owe no Utah income tax.')
   if (apportionable.some((x) => x.code === '18')) issues.push('Retirement credit (code 18): enter your birthdate on TC-40A, Part 3; it cannot be combined with the Social Security or military retirement credit.')
   if (ret.retirement.some((x) => owners.includes(x.owner)) && Object.keys(d.retirementKind).length === 0) issues.push('Mark military or railroad retirement among your 1099-Rs: military retirement gets a 4.5% credit and railroad retirement is subtracted.')

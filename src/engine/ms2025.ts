@@ -151,7 +151,7 @@ export function computeMississippi(ret: TaxReturnInput, res: TaxReturnResult): M
   if (joint && (L['16A'] < 0 || L['16B'] < 0)) L['17'] = msTax(L['16A'] + L['16B'])
   else L['17'] = msTax(L['16A']) + (joint ? msTax(L['16B']) : 0)
   // ── Form 80-160 (up to three states) ──
-  const states = d.otherStates.filter((o) => o.state.trim() && pos(o.tax) > 0).slice(0, 3)
+  const states = d.otherStates.filter((o) => o.state.trim() && pos(o.tax) > 0)
   let f160: { cols: Record<string, number>[]; total4: number; a6: number; a7: number; b7: number; line10: number; line11: number; line12: number } | null = null
   if (states.length) {
     const cols = states.map((o) => {
@@ -176,7 +176,7 @@ export function computeMississippi(ret: TaxReturnInput, res: TaxReturnResult): M
   L['18'] = f160?.line12 ?? 0
   // ── Form 80-401: credits used in order up to the tax left ──
   let room = L['17'] - L['18']
-  const f401 = d.credits401.filter((c) => c.code.trim()).slice(0, 4).map((c) => {
+  const f401 = d.credits401.filter((c) => c.code.trim()).map((c) => {
     const B = r(pos(c.earned)); const C = r(pos(c.passThrough)); const D = r(pos(c.carryover)); const F = r(pos(c.expired))
     const E = Math.min(pos(B + C + D - F), room); room -= E
     const code = c.code.trim().padStart(2, '0')
@@ -217,8 +217,6 @@ export function computeMississippi(ret: TaxReturnInput, res: TaxReturnResult): M
   if (L['39A'] + L['39B'] !== 0) attach.push('Federal Schedule C')
   if (L['40A'] !== 0) attach.push('Federal Schedule D')
   if (f160) attach.push('A copy of each other state’s return and proof of payment (Form 80-160; W-2 withholding is not proof)')
-  if (d.otherStates.filter((o) => o.state.trim() && pos(o.tax) > 0).length > 3) issues.push('Form 80-160 has room for three states; attach another for the rest.')
-  if (d.credits401.filter((c) => c.code.trim()).length > 4) issues.push('Form 80-401 has room for four credits; attach another for the rest.')
   if (f401.length) attach.push('The certificate, approval letter or statement required for each Form 80-401 credit')
   if (f401.some((c) => c.code === '25') && !d.adopteeSsns.trim()) issues.push('Form 80-401 code 25 (child adoption): enter the adoptee’s SSN.')
   if (f401.some((c) => ['34', '35', '36', '39', '42', '43', '45'].includes(c.code)) && !d.charities.trim()) issues.push('Form 80-401 charitable credits: enter the name of the charitable organization.')

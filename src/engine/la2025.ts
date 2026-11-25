@@ -177,7 +177,6 @@ export function computeLouisiana(ret: TaxReturnInput, res: TaxReturnResult): LaR
   if (d.schoolTuition + d.homeSchool + d.publicSchool > 0) attach.push('The School Expense Deduction Worksheet (Schedule E codes 17E–19E)')
   if (d.startContributions > 0) attach.push('START contribution records (code 09E)')
   if (L['14'] > 0) issues.push('Refundable child care credit: the worksheet lists each care provider; check the provider names and ID numbers on it.')
-  if (rows.length > 7) issues.push('Schedule E has room for seven exempt income lines; the remaining amounts are combined on line 4G. Attach a list.')
   if (J['carryToNext'] > 0) issues.push(`${J['carryToNext'].toLocaleString('en-US')} of the nonrefundable child care credit carries forward to 2026; keep the worksheet.`)
   if (owners.some((o) => is65(o) && retirementIncome(o) > 0)) issues.push('The $12,000 retirement income exemption at 65 (code 06E) covers pensions, annuities and IRAs on Form 1040 lines 4b and 5b; enter exempt Louisiana or federal retirement under codes 02E–05E instead.')
   if (d.otherCredit.amount > 0 && !/^\d{3}$/.test(d.otherCredit.code.trim())) issues.push('Enter the three-digit Schedule J credit code for the other credit.')

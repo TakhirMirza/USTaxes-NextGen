@@ -161,7 +161,8 @@ test('Form 760C is filled when an addition to tax is figured', async () => {
   }
   const { va, packet, problems } = await filled(ret)
   assert.deepEqual(problems, [])
-  assert.deepEqual(packet.forms.map((f) => f.id), ['va760', 'va760adj', 'va760c'])
+  assert.deepEqual(packet.forms.map((f) => f.id).slice(0, 3), ['va760', 'va760adj', 'va760c'])
+  if (va.form760c.columns.some((col) => col.pieces.length > 1)) assert.ok(packet.forms.some((f) => f.id.startsWith('st-va-760c')))
   const c = packet.forms[2].values
   assert.equal(c['Line  14 A'], String(Math.round(va.form760c.columns[0].underpayment)))
   assert.equal(packet.forms[0].values['Fill in oval if 760C or 760F is enclosed'], true)

@@ -58,6 +58,8 @@ type Col = Record<string, number>
 export interface DeResult {
   /** PIT-UND Parts 1–2 (null without the 2024 tax balance). */
   und: Record<string, number> | null
+  /** PIT-UND Part 5 pieces when an underpayment was paid off by more than one payment. */
+  undPieces: { period: string; amount: number; due: string; paid: string; days: number; penalty: number }[]
   status: DeStatus
   /** Column A (spouse, status 4 only) and column B. */
   A: Col
@@ -317,6 +319,7 @@ function computeStatus(ret: TaxReturnInput, res: TaxReturnResult, status: DeStat
   // ── PIT-UND Part 1 and Part 2 (short method) ──
   const u = d.und
   let und: Record<string, number> | null = null
+  const undPieces: DeResult['undPieces'] = []
   let undNote = ''
   if (u.priorTax !== null && !u.farmer) {
     const P: Record<string, number> = {}
@@ -393,6 +396,7 @@ function computeStatus(ret: TaxReturnInput, res: TaxReturnResult, status: DeStat
         const day = (s: string): number => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)) / 86400000
         const open: { col: number; amt: number }[] = []
         const pen = [0, 0, 0, 0]; const paidOn = ['', '', '', '']; const pieces = [0, 0, 0, 0]
+        const log: { col: number; amount: number; paid: string; days: number; penalty: number }[] = []
         for (let i = 0; i < 4; i++) {
           // Payments of this period first pay earlier underpayments (Part 4 line 34).
           if (i > 0) {
@@ -401,6 +405,7 @@ function computeStatus(ret: TaxReturnInput, res: TaxReturnResult, status: DeStat
               const o = open[0]; const t = Math.min(pay, o.amt)
               const dd = Math.max(0, day(due[i]) - day(due[o.col]))
               pen[o.col] += t * Math.round(dd * 0.0005 * 10000) / 10000; paidOn[o.col] = due[i]; pieces[o.col]++
+              log.push({ col: o.col, amount: t, paid: due[i], days: dd, penalty: t * Math.round(dd * 0.0005 * 10000) / 10000 })
               o.amt -= t; pay -= t
               if (o.amt === 0) open.shift()
             }
@@ -410,6 +415,7 @@ function computeStatus(ret: TaxReturnInput, res: TaxReturnResult, status: DeStat
         for (const o of open) {
           const dd = Math.max(0, day(last) - day(due[o.col]))
           pen[o.col] += o.amt * Math.round(dd * 0.0005 * 10000) / 10000; paidOn[o.col] = last; pieces[o.col]++
+          log.push({ col: o.col, amount: o.amt, paid: last, days: dd, penalty: o.amt * Math.round(dd * 0.0005 * 10000) / 10000 })
         }
         for (let i = 0; i < 4; i++) {
           const k = col[i]
@@ -417,7 +423,10 @@ function computeStatus(ret: TaxReturnInput, res: TaxReturnResult, status: DeStat
           const dd = Math.max(0, day(paidOn[i]) - day(due[i]))
           P[`40${k}`] = dd; P[`41${k}`] = Math.round(dd * 0.0005 * 10000) / 10000
           P[`42${k}`] = Math.round(pen[i] * 100) / 100
-          if (pieces[i] > 1) P[`split${k}`] = 1
+          if (pieces[i] > 1) {
+            P[`split${k}`] = 1
+            for (const x of log.filter((y) => y.col === i)) undPieces.push({ period: k, amount: x.amount, due: due[i], paid: x.paid, days: x.days, penalty: Math.round(x.penalty * 100) / 100 })
+          }
         }
         P['43'] = r(sum([0, 1, 2, 3].map((i) => P[`42${col[i]}`] ?? 0)))
         P['part3'] = 1
@@ -454,7 +463,7 @@ function computeStatus(ret: TaxReturnInput, res: TaxReturnResult, status: DeStat
   if (L['45'] > 0) attach.push('Form PIT-UND (check the “Form PIT-UND attached” box)')
   if (undNote) issues.push(undNote)
   if (u.priorTax === null && !u.farmer && L['46'] > 800) issues.push('The balance due is over $800: you may owe an estimated tax penalty. Enter your 2024 Delaware tax balance in the PIT-UND section to figure it.')
-  return { und, status, A: two ? A : {}, B, lines: L, alternative: null, itemize, rsa: S, rsaA, eitc, crs: K, owners, exemptions, issues, attach }
+  return { und, undPieces, status, A: two ? A : {}, B, lines: L, alternative: null, itemize, rsa: S, rsaA, eitc, crs: K, owners, exemptions, issues, attach }
 }
 
 const byOwnerTotal = (rec: Record<Owner, number>): number => pos(rec.taxpayer ?? 0) + pos(rec.spouse ?? 0)

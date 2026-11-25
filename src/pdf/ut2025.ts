@@ -129,10 +129,10 @@ export function formsUtTc40wMore(ret: TaxReturnInput, ut: UtResult): FormFill[] 
 }
 
 /** TC-40S, up to three states. */
-export function formUtTc40s(ret: TaxReturnInput, ut: UtResult): FormFill | null {
+export function formUtTc40s(ret: TaxReturnInput, ut: UtResult, copy = 0): FormFill | null {
   if (!ut.tc40s.length) return null
   const v: Record<string, FieldValue> = { '40S SSN': digits(ret.taxpayer.ssn), "40S Taxpayer's name": upper(ret.taxpayer.lastName) }
-  ut.tc40s.slice(0, 3).forEach((x, i) => {
+  ut.tc40s.slice(copy * 3, copy * 3 + 3).forEach((x, i) => {
     const w = WORDS[i]
     v[`40S ${w} State`] = x.state
     v[`40S ${w} PT1 Line1 amount`] = keep0(x.lines['1'])
@@ -140,7 +140,7 @@ export function formUtTc40s(ret: TaxReturnInput, ut: UtResult): FormFill | null 
     v[`40S ${w} PT1 Line 3 percent`] = x.lines['3'].toFixed(4)
     for (const k of ['4', '5', '6', '7']) v[`40S ${w} PT1 Line ${k} amount`] = keep0(x.lines[k])
   })
-  return { id: 'uttc40s', file: 'ut-tc40s.pdf', title: 'Utah TC-40S', values: v }
+  return { id: copy ? `uttc40s-${copy + 1}` : 'uttc40s', file: 'ut-tc40s.pdf', title: copy ? `Utah TC-40S (states ${copy * 3 + 1}–${copy * 3 + 3})` : 'Utah TC-40S', values: v }
 }
 
 export function buildUtPacket(ret: TaxReturnInput, res: TaxReturnResult, ut: UtResult, preparer?: PreparerInfo | null): FormPacket {
@@ -150,5 +150,6 @@ export function buildUtPacket(ret: TaxReturnInput, res: TaxReturnResult, ut: UtR
   const forms = [formUtTc40(ret, res, ut, preparer), ...(ut.lines['33'] > 0 ? formsUtTc40wMore(ret, ut) : [])]
   const s = formUtTc40s(ret, ut)
   if (s) forms.push(s)
+  for (let k = 1; k * 3 < ut.tc40s.length; k++) forms.push(formUtTc40s(ret, ut, k)!)
   return { forms, notIncluded }
 }

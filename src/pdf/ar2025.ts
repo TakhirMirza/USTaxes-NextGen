@@ -9,7 +9,7 @@ import type { TaxReturnResult } from '../engine/compute.ts'
 import { careQualifyingPerson } from '../engine/compute.ts'
 import type { ArResult } from '../engine/ar2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
-import { dependentsStatement } from './statement.ts'
+import { careProvidersStatement, dependentsStatement, peopleStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const upper = (s: string): string => s.trim().toUpperCase()
@@ -233,5 +233,10 @@ export function formAr1000tc(ret: TaxReturnInput, ar: ArResult): FormFill | null
 export function buildArPacket(ret: TaxReturnInput, res: TaxReturnResult, ar: ArResult, preparer?: PreparerInfo | null): FormPacket {
   const forms = [formArAr1000f(ret, res, ar, preparer), formAr1000adj(ret, ar), formAr3(ret, ar), formAr1000d(ret, ar), formAr2441(ret, res, ar), formAr1000tc(ret, ar)]
   forms.push(...dependentsStatement(ret, 6, 'AR1000F, Dependents (continued)', 'st-ar-deps'))
+  if (forms.some((f) => f?.id === 'ar1000tc')) forms.push(...peopleStatement(ret, ret.ar.tc.developmental.filter((x) => x.name.trim()), 6, { id: 'st-ar-dd', attachTo: 'AR1000TC, line 5 (continued)', title: 'Individuals with developmental disabilities after the sixth', note: 'Line 5 counts these individuals.' }))
+  if (forms.some((f) => f?.file === 'ar-2441.pdf')) {
+    forms.push(...careProvidersStatement(ret, 2, 'AR2441, Part I (continued)', 'st-ar-care'))
+    forms.push(...peopleStatement(ret, ret.dependents.filter(careQualifyingPerson), 2, { id: 'st-ar-care-persons', attachTo: 'AR2441, Part II (continued)', title: 'Qualifying persons after the second' }))
+  }
   return { forms: forms.filter((x): x is FormFill => x !== null), notIncluded: [...ar.attach, 'Your W-2s (attach to the front of page 1)'] }
 }

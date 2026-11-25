@@ -270,7 +270,6 @@ export function computeArkansas(ret: TaxReturnInput, res: TaxReturnResult): ArRe
   if (pos(fa.educatorExpenses ?? 0) > 0) issues.push('Arkansas does not allow the federal educator expense deduction; a qualifying teacher can claim the classroom investment expense on AR1000ADJ line 17 (Form AR1000CE).')
   if (pos(fa.deductibleHalfOfSeTax ?? 0) > 0) issues.push('Arkansas does not allow the deduction for one-half of self-employment tax; it is not on AR1000ADJ.')
   if (pos(tc.political) > (joint ? 100 : 50)) issues.push(`The political contribution credit is limited to $${joint ? 100 : 50}.`)
-  if (tc.developmental.length > 6) issues.push('AR1000TC has room for six individuals with developmental disabilities; attach a list for the rest.')
   for (const o of ['taxpayer', 'spouse'] as Owner[]) if (tc.business.filter((b) => b.owner === o).length > 3) issues.push('AR1000TC has room for three business incentive credits each for the primary and the spouse.')
   if (L['37'] > L['33'] && L['33'] > 0) issues.push('Your credits are more than your tax; the unused part of nonrefundable credits is lost unless the credit allows a carryover.')
   if (L['51'] > 1000 && L['40'] === 0) issues.push('Tax due over $1,000 may mean an underpayment penalty (AR2210).')

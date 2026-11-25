@@ -171,7 +171,6 @@ export function buildOhPacket(ret: TaxReturnInput, res: TaxReturnResult, oh: OhR
   const notIncluded = oh.attach.filter((a) => !/^Ohio Schedule of|^Schedule of Ohio Withholding/.test(a))
   if (oh.lines['14'] > 0) notIncluded.push('State copies of your W-2s and 1099s with Ohio withholding (place them after the last page)')
   if (ret.oh.otherWithholding > 0) notIncluded.push('Schedule of Ohio Withholding Parts D–F: list your W-2G, 1099-NEC and 1099-G statements (their tax is in the Part A total)')
-  if (oh.withholding.w2.filter((x) => x.tax > 0).length > 7 || oh.withholding.r1099.filter((x) => x.tax > 0).length > 4) notIncluded.push('An additional Schedule of Ohio Withholding page for the statements that did not fit')
   forms.push(...dependentsStatement(ret, 15, 'Schedule of Dependents (continued)', 'st-oh-deps'))
   return { forms, notIncluded }
 }

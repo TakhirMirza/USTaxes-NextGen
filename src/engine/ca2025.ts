@@ -310,7 +310,6 @@ export function computeCalifornia(ret: TaxReturnInput, res: TaxReturnResult): Ca
   if (eitc > 0 || yctc > 0) attach.push('FTB 3514, California Earned Income Tax Credit')
   if ((eitc > 0 || yctc > 0) && (!d.birthDate.taxpayer || (joint && !d.birthDate.spouse))) issues.push('The California EITC requires your date of birth (and your spouse’s, if joint) on Form 540.')
   if (eitc > 0 && qualifying.some((x) => !d.dependentBirthDates[x.id])) issues.push('FTB 3514 asks for each qualifying child’s date of birth.')
-  if (qualifying.length > 3 && eitc > 0) issues.push('FTB 3514 has room for three children; list the rest on an attachment.')
   if (d.useTax === 0) issues.push('Line 91 (use tax) is 0. If you bought taxable items from out-of-state sellers that did not charge California tax, see the use tax worksheet in the booklet.')
   if (L['100'] > 0 && L['72'] === 0 && L['100'] > 500) issues.push('If you owe more than $500, the FTB may charge an underpayment penalty (FTB 5805); it figures it if you leave line 113 blank.')
 

@@ -271,7 +271,7 @@ export function computeMissouri(ret: TaxReturnInput, res: TaxReturnResult): MoRe
   L['38'] = r(pos(d.estimatedPayments))
   L['41'] = r(pos(d.extensionPayment))
   // ── MO-TC: column 1 yourself (or the return), column 2 your spouse on a combined return; each limited to that tax unless refundable ──
-  const tcRows = d.moTc.filter((c) => c.code.trim() && pos(c.amount) > 0).slice(0, 10).map((c) => ({ ...c, col: (two && c.owner === 'spouse' ? 2 : 1) as 1 | 2, amount: r(pos(c.amount)) }))
+  const tcRows = d.moTc.filter((c) => c.code.trim() && pos(c.amount) > 0).map((c) => ({ ...c, col: (two && c.owner === 'spouse' ? 2 : 1) as 1 | 2, amount: r(pos(c.amount)) }))
   const tc12: Record<1 | 2, number> = { 1: Y['35'], 2: two ? S['35'] : 0 }
   const tc11: Record<1 | 2, number> = { 1: 0, 2: 0 }
   for (const c of tcRows) tc11[c.col] += c.amount
@@ -425,7 +425,6 @@ export function computeMissouri(ret: TaxReturnInput, res: TaxReturnResult): MoRe
   if (pts) attach.push('Form SSA-1099 or the disability / VA letter for MO-PTS; paid property tax receipts or Form 5674 (verification of rent paid)')
   if (wftc) attach.push('Federal Schedule EIC (Form MO-WFTC)')
   if (tcRows.length) attach.push('The documents listed on Form MO-TC for each credit (certificates, Form ATC with federal Form 8839, etc.)')
-  if (d.moTc.filter((c) => c.code.trim() && c.amount > 0).length > 10) issues.push('Form MO-TC has room for 10 credits; attach another MO-TC for the rest.')
   if (tcRows.some((c) => !c.refundable) && (tc11[1] > tc12[1] || tc11[2] > tc12[2])) issues.push('Some MO-TC credits are more than the tax they apply to; the excess is not used this year (it may carry forward under the credit’s own rules).')
   if (A.Y['13'] + (A.S['13'] ?? 0) > 0) attach.push('Form 5695 (qualified health insurance premiums worksheet)')
   if (two) issues.push(`Combined return: federal AGI split ${'$'}${Y['1'].toLocaleString('en-US')} (you) / ${'$'}${S['1'].toLocaleString('en-US')} (spouse). Shared income (interest, dividends, gains) is split evenly; change the spouse’s share if it isn’t.`)

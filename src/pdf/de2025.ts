@@ -7,6 +7,7 @@ import type { Owner, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { DeResult } from '../engine/de2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { statementForms } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const upper = (s: string): string => s.trim().toUpperCase()
@@ -359,6 +360,15 @@ export function formPitUnd(ret: TaxReturnInput, de: DeResult): FormFill | null {
 export function buildDePacket(ret: TaxReturnInput, res: TaxReturnResult, de: DeResult, preparer?: PreparerInfo | null): FormPacket {
   const forms = [formPitRes(ret, res, de, preparer), formPitRss(ret, de), formPitRsa(ret, de), formPitCrs(ret, de), formPitUnd(ret, de)].filter((x): x is FormFill => x !== null)
   const notIncluded = [...de.attach]
-  if (de.und && 'abcd'.split('').some((k) => de.und![`split${k}`])) notIncluded.push('PIT-UND Part 5: an underpayment was paid in more than one payment; attach a sheet showing the penalty for each part (the total is on line 42)')
+  if (de.undPieces.length && forms.some((f) => f.file === 'de-pitund.pdf')) {
+    const us = (iso: string): string => `${iso.slice(5, 7)}/${iso.slice(8, 10)}/${iso.slice(0, 4)}`
+    const c2 = (n: number): string => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    forms.push(...statementForms(ret, {
+      id: 'st-de-und', attachTo: 'Form PIT-UND, Part 5 (lines 39–42)', title: 'Underpayments paid off by more than one payment',
+      columns: [{ label: 'Column', width: 50 }, { label: 'Due date', width: 70 }, { label: 'Part of underpayment', width: 100, right: true }, { label: 'Paid on', width: 70 }, { label: 'Days', width: 50, right: true }, { label: 'Rate (0.05% a day)', width: 80, right: true }, { label: 'Penalty', width: 80, right: true }],
+      rows: de.undPieces.map((x) => [`(${x.period})`, us(x.due), c2(x.amount), us(x.paid), String(x.days), (Math.round(x.days * 0.0005 * 10000) / 10000).toFixed(4), c2(x.penalty)]),
+      note: 'Line 42 of each column is the sum of its parts. Payments are applied first to the earliest unpaid installment.'
+    }))
+  }
   return { forms, notIncluded }
 }
