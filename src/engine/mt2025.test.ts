@@ -153,3 +153,19 @@ test('MT Schedule III Part II: credit for tax paid to another state, ordinary an
   // Only an amount: used as entered.
   assert.equal(run(base({ w2s: [w2(30000)] }), { otherStateCredit: { ...oc, income: 0, stateIncome: 0, tax: 0, ltcgIncome: 0, ltcgTax: 0, amount: 120 } }).mt.lines['9'], 120)
 })
+
+test('MT Schedule III Part II: a page for each further state, all on Part I line 1', async () => {
+  const oc = { state: 'ID', amount: 0, income: 12000, stateIncome: 15000, expenses: 0, tax: 500, ltcgIncome: 0, ltcgTax: 0 }
+  const { mt, res, ret } = run(base({ w2s: [w2(60000)] }), { otherStateCredit: oc, moreStates: [{ ...oc, state: 'ND', income: 5000, stateIncome: 5000, tax: 100 }] })
+  assert.equal(mt.s3p2More.length, 1)
+  assert.equal(mt.s3['1'], mt.s3p2!['21'] + mt.s3p2More[0].lines['21'])
+  const packet = buildMtPacket(ret, res, mt)
+  const p2 = packet.forms.find((f) => f.id === 'mt2-p2-2')!
+  assert.deepEqual(p2.pages, [6])
+  assert.equal(p2.values['Schedule III, Part II, Line 2, State'], 'ND')
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+})

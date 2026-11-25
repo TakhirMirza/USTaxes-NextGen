@@ -7,6 +7,7 @@ import type { TaxReturnResult } from '../engine/compute.ts'
 import type { DcResult } from '../engine/dc2025.ts'
 import { parseBirthDate } from '../engine/va2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const amt = (n: number | undefined, keepZero = false): string => {
@@ -168,6 +169,6 @@ export function buildDcPacket(ret: TaxReturnInput, res: TaxReturnResult, dc: DcR
   if (dc.lines['6'] > 0 || dc.lines['14'] > 0) forms.push(scheduleI(ret, dc))
   if (dc.lines['28'] > 0) forms.push(scheduleH(ret, res, dc))
   const notIncluded = [...dc.attach]
-  if (ret.dependents.length > 8) notIncluded.push('Dependents after the eighth on Schedule S')
+  forms.push(...dependentsStatement(ret, 8, 'Schedule S, Dependents (continued)', 'st-dc-deps'))
   return { forms, notIncluded }
 }

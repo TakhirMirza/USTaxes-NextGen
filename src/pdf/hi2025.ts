@@ -8,6 +8,7 @@ import type { TaxReturnResult } from '../engine/compute.ts'
 import { careQualifyingPerson } from '../engine/compute.ts'
 import type { HiResult } from '../engine/hi2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const upper = (s: string): string => s.trim().toUpperCase()
@@ -259,5 +260,5 @@ export function formHiN11(ret: TaxReturnInput, res: TaxReturnResult, hi: HiResul
 
 export function buildHiPacket(ret: TaxReturnInput, res: TaxReturnResult, hi: HiResult, preparer?: PreparerInfo | null): FormPacket {
   const notIncluded = hi.attach.filter((x) => !x.startsWith('Schedule X') && !x.startsWith('Schedule CR'))
-  return { forms: [formHiN11(ret, res, hi, preparer)], notIncluded }
+  return { forms: [formHiN11(ret, res, hi, preparer), ...dependentsStatement(ret, 6, 'Form N-11, Dependents (continued)', 'st-hi-deps')], notIncluded }
 }

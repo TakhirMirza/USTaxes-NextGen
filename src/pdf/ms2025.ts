@@ -7,6 +7,7 @@ import type { TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { MsResult } from '../engine/ms2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const upper = (s: string): string => s.trim().toUpperCase()
@@ -193,5 +194,6 @@ export function buildMsPacket(ret: TaxReturnInput, res: TaxReturnResult, ms: MsR
   const notIncluded = ms.attach.filter((x) => !x.startsWith('Form 80-107') && !x.startsWith('Form 80-108'))
   notIncluded.push('Your W-2s and 1099s and a copy of your federal return')
   if (ms.statements.length === 0) notIncluded.push('Form 80-107 must be filed even with no Mississippi withholding: list any income statements on it')
+  forms.push(...dependentsStatement(ret, 4, 'Form 80-491, Dependents (continued)', 'st-ms-deps'))
   return { forms, notIncluded }
 }

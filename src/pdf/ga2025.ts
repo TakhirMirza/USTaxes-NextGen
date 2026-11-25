@@ -9,6 +9,7 @@ import type { GaResult } from '../engine/ga2025.ts'
 import { GA_DONATION_LINES } from '../engine/ga2025.ts'
 import { STATES } from '../engine/states.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const FILE = 'ga500.pdf'
 const digits = (v: string): string => v.replace(/\D/g, '')
@@ -154,9 +155,9 @@ export function buildGaPacket(ret: TaxReturnInput, res: TaxReturnResult, ga: GaR
   if (ga.indCr.care > 0) forms.push(formGaIndCr(ret, res, ga))
   const notIncluded = ga.attach.filter((a) => !a.startsWith('Form 500 Schedule 1') && !a.startsWith('Schedule 1 page') && !a.startsWith('Form IND-CR 202'))
   if (ga.indCr.other > 0) notIncluded.push('The IND-CR schedules for your other Georgia credits (the summary line 13 total is on Form 500 line 20)')
-  if (ret.dependents.length > 4) notIncluded.push('A list of dependents beyond the first four (line 7d)')
   if (ga.statements.filter((x) => x.tax > 0).length > 6) notIncluded.push('More than six income statements: list the rest on an extra page')
   if (ret.ga.withholding1099 > 0 || ret.ga.otherWithholding > 0) notIncluded.push('Income statements for 1099s and G2 forms with Georgia withholding (only W-2s are filled in)')
   if (S['5'] > 0 || S['12'] > 0) notIncluded.push('A statement listing your other Schedule 1 additions or subtractions')
+  forms.push(...dependentsStatement(ret, 4, 'Form 500, line 7d (continued)', 'st-ga-deps'))
   return { forms, notIncluded }
 }

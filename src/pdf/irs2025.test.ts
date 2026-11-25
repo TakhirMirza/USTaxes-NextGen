@@ -490,3 +490,21 @@ test('a rental counted as a trade or business joins the QBI deduction', () => {
   assert.ok(Object.values(f.values).includes('9 Elm St'))
   assert.ok(Object.values(f.values).includes('123-45-6789'))
 })
+
+test('statements print the dependents, K-1s and Form 4797 sales the forms have no room for', async () => {
+  const kids = Array.from({ length: 6 }, (_, i) => ({ ...emptyDependent(), name: `Kid ${i + 1} Rivera`, relationship: 'Son', age: 5 + i, ssn: `11122${3330 + i}`, monthsLivedWithYou: 12 }))
+  const k1s = Array.from({ length: 6 }, (_, i) => ({ ...emptyK1(), entityName: `Fund ${i + 1} LP`, ein: `12345678${i}`, ordinary: 1000 * (i + 1) }))
+  const sales = Array.from({ length: 6 }, (_, i) => ({ ...emptySale(), description: `Machine ${i + 1}`, kind: '1245' as const, usedIn: 'business' as const, dateAcquired: '01/05/2020', dateSold: '06/01/2025', salesPrice: 5000, costBasis: 8000, depreciation: 1000 }))
+  const ret: TaxReturnInput = { ...busy(), dependents: kids, k1s, propertySales: sales }
+  const res = computeReturn(ret)
+  const packet = buildPacket2025(ret, res)
+  const ids = packet.forms.map((f) => f.id)
+  assert.ok(ids.includes('st-1040-deps'), ids.join(', '))
+  assert.ok(ids.includes('st-sche-k1') && ids.includes('st-4797-I'), ids.join(', '))
+  const deps = packet.forms.find((f) => f.id === 'st-1040-deps')!
+  assert.ok(deps.draw!.some((d) => d.text === 'Kid 5 Rivera') && !deps.draw!.some((d) => d.text === 'Kid 4 Rivera'))
+  assert.ok(!packet.notIncluded.some((x) => x.includes('dependents after the fourth') || x.includes('continuation')))
+  const { problems } = await buildPdf(lib, packet.forms.filter((f) => f.file === 'statement.pdf'), load)
+  assert.deepEqual(problems, [])
+  if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-STMT.pdf`, (await buildPdf(lib, packet.forms.filter((f) => f.file === 'statement.pdf'), load)).bytes)
+})

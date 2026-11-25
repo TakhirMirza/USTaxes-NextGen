@@ -229,7 +229,6 @@ export function computeGeorgia(ret: TaxReturnInput, res: TaxReturnResult): GaRes
     }
   }
   if (joint && (tp.exclusion > 0 || sp.exclusion > 0) && (f['2b'] + f['3b'] + f['7a'] !== 0)) issues.push('Interest, dividends, capital gains and rents are split 50/50 between spouses for the retirement exclusion. If an item belongs to one spouse only, adjust Schedule 1 page 2.')
-  if ((ret.dependents.length > 4)) issues.push('More than four dependents: attach a list of the additional dependents.')
   if (lowIncomeOk && fs === 'mfs') issues.push('Married filing separately: the Low Income Credit is limited to what a joint return would allow.')
   if (ret.dependents.length > 0 && L['7b'] === 0) issues.push('Unborn dependents (a detectable heartbeat by December 31) count on line 7b; a child born in 2025 is on line 7a.')
   if (statements.some((x) => !x.ein)) issues.push('Enter each W-2’s federal employer ID and Georgia withholding ID for the income statement section.')

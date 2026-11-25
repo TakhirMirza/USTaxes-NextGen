@@ -122,3 +122,15 @@ test('SC1040TC: worksheets for taxes paid to other states, listed credits and th
   assert.deepEqual(problems, [])
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-SCTC.pdf`, (await buildPdf(lib, packet.forms, load, '2025 SC')).bytes)
 })
+
+test('SC1040TC: a third state gets another worksheet page', () => {
+  const w = w2(90000)
+  const tc = { otherStates: [{ state: 'NC', income: 10000, tax: 300 }, { state: 'GA', income: 5000, tax: 100 }, { state: 'TN', income: 4000, tax: 50 }], lines: {}, other: [] }
+  const { sc: r, res, ret } = sc(base({ w2s: [w] }), { tc })
+  assert.equal(r.tc!.worksheets.length, 3)
+  assert.equal(r.tc!.lines['1'], r.tc!.worksheets.reduce((s, x) => s + x.l7, 0))
+  const forms = buildScPacket(ret, res, r).forms
+  const extra = forms.find((f) => f.id === 'sc1040tc-ws2')!
+  assert.deepEqual(extra.pages, [1])
+  assert.ok(extra.draw!.some((d) => d.text === 'TN'))
+})

@@ -7,6 +7,7 @@
  */
 import type { Owner, Person, TaxReturnInput } from '../engine/model.ts'
 import { inventoryLines, scheduleCCogs } from '../engine/model.ts'
+import { dependentsStatement, money0, statementForms } from './statement.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import { careQualifyingPerson, ctcChild, eicChild } from '../engine/compute.ts'
 import * as R from '../engine/rules.ts'
@@ -1400,14 +1401,46 @@ export function buildPacket2025(ret: TaxReturnInput, res: TaxReturnResult, prepa
   if (f['37'] > 0) forms.push(form1040V(ret, res))
 
   const notIncluded: string[] = []
-  if (ret.dependents.length > 4) notIncluded.push('A statement listing dependents after the fourth')
+  // Statements for rows the official forms have no room for.
+  forms.push(...dependentsStatement(ret, 4, 'Form 1040, Dependents (continued)', 'st-1040-deps'))
+  res.form4562.forEach((f, fi) => {
+    const r275 = f.rows.filter((x) => x.propertyClass === '27.5').slice(2)
+    const r39 = [...f.rows.filter((x) => x.propertyClass === '39'), ...(f.home ? [null] : [])].slice(2)
+    const bldg = [...r275.map((x) => ['19i', x]), ...r39.map((x) => ['19j', x])] as [string, typeof f.rows[number] | null][]
+    if (bldg.length) forms.push(...statementForms(ret, {
+      id: `st-4562-bldg-${fi + 1}`, attachTo: `Form 4562 (${f.name}), lines 19i–19j`, title: 'Residential and nonresidential real property placed in service in 2025 (continued)',
+      columns: [{ label: 'Line', width: 40 }, { label: 'Month/year placed in service', width: 120 }, { label: 'Basis for depreciation', width: 100, right: true }, { label: 'Recovery period', width: 70 }, { label: 'Convention', width: 60 }, { label: 'Method', width: 50 }, { label: 'Deduction', width: 90, right: true }],
+      rows: bldg.map(([ln, x]) => x ? [ln, x.placed, money0(x.basis), x.period, x.convention, x.method, money0(x.deduction)] : [ln, f.home!.placed, money0(f.home!.basis), '39 yrs', 'MM', 'S/L', money0(f.home!.deduction)])
+    }))
+    if (f.elected.length > 2) forms.push(...statementForms(ret, {
+      id: `st-4562-179-${fi + 1}`, attachTo: `Form 4562 (${f.name}), line 6`, title: 'Section 179 property (continued)',
+      columns: [{ label: '(a) Description of property', width: 280 }, { label: '(b) Cost (business use only)', width: 126, right: true }, { label: '(c) Elected cost', width: 126, right: true }],
+      rows: f.elected.slice(2).map((x) => [x.description, money0(x.cost), money0(x.elected)])
+    }))
+  })
+  for (const part of ['I', 'II'] as const) {
+    const extra = res.form4797.sales.filter((x) => x.part === part).slice(4)
+    if (extra.length) forms.push(...statementForms(ret, {
+      id: `st-4797-${part}`, attachTo: `Form 4797, line ${part === 'I' ? '2' : '10'}`, title: `Form 4797 Part ${part} sales (continued)`,
+      columns: [{ label: '(a) Description', width: 130 }, { label: '(b) Acquired', width: 62 }, { label: '(c) Sold', width: 62 }, { label: '(d) Sales price', width: 70, right: true }, { label: '(e) Depreciation', width: 66, right: true }, { label: '(f) Cost or basis', width: 70, right: true }, { label: '(g) Gain or (loss)', width: 72, right: true }],
+      rows: extra.map((x) => [x.description, x.dateAcquired, x.dateSold, money0(x.salesPrice), money0(x.depreciation), money0(x.costBasis), money0(x.gain)])
+    }))
+  }
+  if (res.k1.rows.length > 4) forms.push(...statementForms(ret, {
+    id: 'st-sche-k1', attachTo: 'Schedule E, Part II, line 28 (continued)', title: 'Partnerships and S corporations after the first four',
+    note: 'The totals on Schedule E lines 29–32 include these rows.',
+    columns: [{ label: '(a) Name', width: 150 }, { label: '(b) P or S', width: 40 }, { label: '(d) EIN', width: 70 }, { label: '(g) Passive loss', width: 66, right: true }, { label: '(h) Passive income', width: 70, right: true }, { label: '(i) Nonpassive loss', width: 70, right: true }, { label: '(k) Nonpassive income', width: 66, right: true }],
+    rows: res.k1.rows.slice(4).map((x) => [x.name, x.kind === 'scorp' ? 'S' : 'P', ((d) => (d.length === 9 ? `${d.slice(0, 2)}-${d.slice(2)}` : d))(digits(x.ein)), x.g ? money0(x.g) : '', x.h ? money0(x.h) : '', x.i ? money0(x.i) : '', x.k ? money0(x.k) : ''])
+  }))
+  for (const [group, part] of [['rental', 'IV'], ['other', 'V']] as const) {
+    const extra = res.form8582.required ? res.form8582.activities.filter((x) => x.group === group).slice(5) : []
+    if (extra.length) forms.push(...statementForms(ret, {
+      id: `st-8582-${part}`, attachTo: `Form 8582, Part ${part} (continued)`, title: group === 'rental' ? 'Rental real estate activities with active participation (continued)' : 'All other passive activities (continued)',
+      columns: [{ label: 'Name of activity', width: 170 }, { label: '(a) Net income', width: 72, right: true }, { label: '(b) Net loss', width: 72, right: true }, { label: '(c) Unallowed loss', width: 72, right: true }, { label: '(d) Gain', width: 72, right: true }, { label: '(e) Loss', width: 72, right: true }],
+      rows: extra.map((x) => [x.name, x.a ? money0(x.a) : '', x.b ? money0(x.b) : '', x.c ? money0(x.c) : '', x.d ? money0(x.d) : '', x.e ? money0(x.e) : ''])
+    }))
+  }
   if (ret.businesses.some((b) => b.homeOffice.method === 'amount' && b.homeOffice.amount > 0)) notIncluded.push('Your own Form 8829 or simplified-method worksheet for the home office amount you entered')
-  if (res.form4562.some((f) => f.rows.filter((x) => x.propertyClass === '27.5').length > 2 || f.rows.filter((x) => x.propertyClass === '39').length + (f.home ? 1 : 0) > 2)) notIncluded.push('A statement listing buildings placed in service in 2025 beyond the two lines on Form 4562 lines 19i/19j')
-  if (res.form4562.some((f) => f.elected.length > 2)) notIncluded.push('A statement listing section 179 property beyond the two lines on Form 4562 line 6')
-  if (res.form4797.sales.filter((x) => x.part === 'I').length > 4 || res.form4797.sales.filter((x) => x.part === 'II').length > 4) notIncluded.push('A statement listing Form 4797 line 2 or line 10 sales beyond the first four')
   if (res.scheduleD19 > 0) notIncluded.push('Unrecaptured Section 1250 Gain Worksheet and Schedule D Tax Worksheet (keep with your records; the tax on line 16 uses them)')
-  if (res.k1.rows.length > 4) notIncluded.push('Schedule E page 2 continuation for K-1s beyond the first four (the totals include them)')
-  if (res.form8582.required && res.form8582.activities.filter((x) => x.group === 'rental').length > 5) notIncluded.push('Form 8582 Part IV continuation for more than five activities')
-  if (res.form8582.required && res.form8582.activities.filter((x) => x.group === 'other').length > 5) notIncluded.push('Form 8582 Part V continuation for more than five activities')
   return { forms, notIncluded }
 }

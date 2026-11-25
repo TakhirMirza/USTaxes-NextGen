@@ -7,6 +7,7 @@ import type { IaFuelRow, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { IaResult } from '../engine/ia2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const upper = (s: string): string => s.trim().toUpperCase()
@@ -276,5 +277,6 @@ export function buildIaPacket(ret: TaxReturnInput, res: TaxReturnResult, ia: IaR
   const notIncluded = [...ia.attach]
   if (ret.filingStatus === 'mfs' && ret.ia.spouseNet === null) notIncluded.push('Step 2: your spouse’s net income (enter it in the Iowa section)')
   const forms = [formIa1040(ret, res, ia, preparer), formIa130(ret, ia), formIa148(ret, ia), formIa4136(ret, ia)]
+  forms.push(...dependentsStatement(ret, 4, 'IA 1040, Dependents (continued)', 'st-ia-deps'))
   return { forms: forms.filter((x): x is FormFill => x !== null), notIncluded }
 }

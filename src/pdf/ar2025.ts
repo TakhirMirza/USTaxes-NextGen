@@ -9,6 +9,7 @@ import type { TaxReturnResult } from '../engine/compute.ts'
 import { careQualifyingPerson } from '../engine/compute.ts'
 import type { ArResult } from '../engine/ar2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const upper = (s: string): string => s.trim().toUpperCase()
@@ -231,5 +232,6 @@ export function formAr1000tc(ret: TaxReturnInput, ar: ArResult): FormFill | null
 
 export function buildArPacket(ret: TaxReturnInput, res: TaxReturnResult, ar: ArResult, preparer?: PreparerInfo | null): FormPacket {
   const forms = [formArAr1000f(ret, res, ar, preparer), formAr1000adj(ret, ar), formAr3(ret, ar), formAr1000d(ret, ar), formAr2441(ret, res, ar), formAr1000tc(ret, ar)]
+  forms.push(...dependentsStatement(ret, 6, 'AR1000F, Dependents (continued)', 'st-ar-deps'))
   return { forms: forms.filter((x): x is FormFill => x !== null), notIncluded: [...ar.attach, 'Your W-2s (attach to the front of page 1)'] }
 }

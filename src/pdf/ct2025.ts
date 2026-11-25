@@ -8,6 +8,7 @@ import type { TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { CtResult } from '../engine/ct2025.ts'
 import type { FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 type Draw = NonNullable<FormFill['draw']>[number]
 const digits = (v: string): string => v.replace(/\D/g, '')
@@ -232,5 +233,6 @@ export function buildCtPacket(ret: TaxReturnInput, res: TaxReturnResult, ct1: Ct
   if (ct1.eitc['16'] > 0 && ret.w2s.filter((w) => !(ret.ct.w2[w.id]?.stateTax) && w.wages > 0).length > 3) notIncluded.push('Schedule CT-EITC line 6: more than three W-2s without Connecticut withholding; list the rest on a separate sheet')
   if (ct1.eitc['16'] > 0 && res.scheduleC.length) notIncluded.push('Schedule CT-EITC line 7: enter each business’s Connecticut Tax Registration Number in column B if it has one')
   if (ct1.eitcChildren > 3) notIncluded.push('Schedule CT-EITC: children after the third on an attached list')
+  forms.push(...dependentsStatement(ret, 4, 'Schedule CT-Dependent (continued)', 'st-ct-deps'))
   return { forms, notIncluded }
 }

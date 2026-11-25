@@ -10,7 +10,7 @@
  *    gains: 3% up to the first bracket, 4.1% above.
  *  - Montana EITC 10% of the federal credit (refundable); Schedule 2EC elderly homeowner/renter credit up to $1,150.
  */
-import type { Owner, TaxReturnInput } from './model.ts'
+import type { MtOtherState, Owner, TaxReturnInput } from './model.ts'
 import type { TaxReturnResult } from './compute.ts'
 
 const r = (n: number): number => Math.round(n)
@@ -58,6 +58,8 @@ export function mtElderlyMultiplier(gross: number): number {
 export interface MtResult {
   /** Schedule III Part II lines (null when only the credit amount was entered). */
   s3p2: Record<string, number> | null
+  /** Part II pages for the second and later states or countries. */
+  s3p2More: { state: string; lines: Record<string, number> }[]
   lines: Record<string, number>
   /** Page 2 worksheet. */
   p2: Record<string, number>
@@ -134,9 +136,8 @@ export function computeMontana(ret: TaxReturnInput, res: TaxReturnResult): MtRes
   // ── Schedule III ──
   const S3: Record<string, number> = {}
   // Part II: credit for income tax paid to another state or country (full-year resident).
-  const oc = d.otherStateCredit
-  let s3p2: Record<string, number> | null = null
-  if (oc.income > 0 || oc.ltcgIncome > 0 || oc.tax > 0 || oc.ltcgTax > 0) {
+  const used = (oc: MtOtherState): boolean => oc.income > 0 || oc.ltcgIncome > 0 || oc.tax > 0 || oc.ltcgTax > 0
+  const partII = (oc: MtOtherState): Record<string, number> => {
     const Q: Record<string, number> = {}
     const ratio = (a: number, b: number): number => (b > 0 ? Math.min(1, Math.round(a / b * 1e6) / 1e6) : 0)
     Q['1'] = r(pos(oc.income)); Q['2'] = r(pos(oc.stateIncome))
@@ -153,9 +154,12 @@ export function computeMontana(ret: TaxReturnInput, res: TaxReturnResult): MtRes
       Q['20'] = Math.min(Q['14'], Q['17'], Q['19'])
     } else Q['20'] = 0
     Q['21'] = Q['10'] + Q['20']
-    s3p2 = Q
+    return Q
   }
-  S3['1'] = s3p2 ? s3p2['21'] : r(pos(oc.amount))
+  const oc = d.otherStateCredit
+  const s3p2: Record<string, number> | null = used(oc) ? partII(oc) : null
+  const s3p2More = d.moreStates.filter((x) => used(x)).map((x) => ({ state: x.state, lines: partII(x) }))
+  S3['1'] = (s3p2 ? s3p2['21'] : r(pos(oc.amount))) + s3p2More.reduce((s, x) => s + x.lines['21'], 0)
   S3['13'] = r(pos(d.otherNonrefundableCredits))
   S3['14'] = S3['1'] + S3['13']
   S3['17'] = r(pos(d.refundableCredits))
@@ -236,5 +240,5 @@ export function computeMontana(ret: TaxReturnInput, res: TaxReturnResult): MtRes
   if (S1['6'] > 0 && !d.otherAdditionsCode.trim()) issues.push('Schedule I line 6 needs an addition code (see the instructions).')
   if (S1['21'] > 0 && !d.otherSubtractionsCode.trim()) issues.push('Schedule I line 21 needs a subtraction code (see the instructions).')
   if (L['26'] > 0 && !ret.refundDeposit.accountNumber.trim()) issues.push('Direct deposit isn’t available on a first Montana return; you’ll get a check.')
-  return { s3p2, lines: L, p2: P, s1: S1, s3: S3, s4: S4, ec, issues, attach }
+  return { s3p2, s3p2More, lines: L, p2: P, s1: S1, s3: S3, s4: S4, ec, issues, attach }
 }

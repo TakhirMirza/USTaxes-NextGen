@@ -130,22 +130,7 @@ export function formMt2(ret: TaxReturnInput, mt: MtResult, preparer?: PreparerIn
     money('Schedule III Part I Line 14', S3['14'], true)
     money('Schedule III Part I Line 17', S3['17'])
   }
-  const Q = mt.s3p2
-  if (Q) {
-    pages.push(6)
-    const st = upper(d.otherStateCredit.state).replace(/[^A-Z]/g, '').slice(0, 2)
-    for (const k of ['1', '2', '3a', '3b', '3', '4', '5', '7', '9', '10']) money(`Schedule III Part II Line ${k}`, Q[k], ['3', '10'].includes(k))
-    v['Schedule III Part II Line 6'] = Q['6'].toFixed(6)
-    v['Schedule III Part II Line 8'] = Q['8'].toFixed(6)
-    if (st) v['Schedule III, Part II, Line 2, State'] = st
-    if (Q['11'] > 0) {
-      for (const k of ['11', '12', '13', '14', '15', '17', '19', '20']) money(`Schedule III Part II Line ${k}`, Q[k], k === '20')
-      v['Schedule III Part II Line 16'] = Q['16'].toFixed(6)
-      v['Schedule III Part II Line 18'] = Q['18'].toFixed(6)
-      if (st) v['Schedule III, Part II, Line 12, State'] = st
-    }
-    money('Schedule III Part II Line 21', Q['21'], true)
-  }
+  if (mt.s3p2) { pages.push(6); Object.assign(v, partIIValues(mt.s3p2, d.otherStateCredit.state)) }
   // ── Schedule IV ──
   const S4 = mt.s4
   if (S4['8'] > 0) {
@@ -189,7 +174,38 @@ export function formMt2(ret: TaxReturnInput, mt: MtResult, preparer?: PreparerIn
   return { id: 'mt2', file: 'mt-form2.pdf', title: 'Montana Form 2', values: v, pages }
 }
 
+/** Schedule III Part II values for one state or country. */
+function partIIValues(Q: Record<string, number>, state: string): Record<string, FieldValue> {
+  const v: Record<string, FieldValue> = {}
+  const money = (name: string, n: number | undefined, always = false): void => {
+    const x = Math.round(n ?? 0)
+    if (x === 0 && !always) return
+    v[name] = x < 0 ? `-${-x}` : String(x)
+  }
+  const st = upper(state).replace(/[^A-Z]/g, '').slice(0, 2)
+  for (const k of ['1', '2', '3a', '3b', '3', '4', '5', '7', '9', '10']) money(`Schedule III Part II Line ${k}`, Q[k], ['3', '10'].includes(k))
+  v['Schedule III Part II Line 6'] = Q['6'].toFixed(6)
+  v['Schedule III Part II Line 8'] = Q['8'].toFixed(6)
+  if (st) v['Schedule III, Part II, Line 2, State'] = st
+  if (Q['11'] > 0) {
+    for (const k of ['11', '12', '13', '14', '15', '17', '19', '20']) money(`Schedule III Part II Line ${k}`, Q[k], k === '20')
+    v['Schedule III Part II Line 16'] = Q['16'].toFixed(6)
+    v['Schedule III Part II Line 18'] = Q['18'].toFixed(6)
+    if (st) v['Schedule III, Part II, Line 12, State'] = st
+  }
+  money('Schedule III Part II Line 21', Q['21'], true)
+  return v
+}
+
 export function buildMtPacket(ret: TaxReturnInput, res: TaxReturnResult, mt: MtResult, preparer?: PreparerInfo | null): FormPacket {
   void res
-  return { forms: [formMt2(ret, mt, preparer)], notIncluded: mt.attach }
+  const main = formMt2(ret, mt, preparer)
+  // Schedule III Part II for each further state: another copy of page 7 with that state's figures.
+  const isPartII = (k: string): boolean => k.startsWith('Schedule III Part II') || k.startsWith('Schedule III, Part II')
+  const extra = mt.s3p2More.map((x, i): FormFill => {
+    const values: Record<string, FieldValue> = Object.fromEntries(Object.entries(main.values).filter(([k]) => !isPartII(k)))
+    Object.assign(values, partIIValues(x.lines, x.state))
+    return { id: `mt2-p2-${i + 2}`, file: 'mt-form2.pdf', title: `Montana Schedule III Part II (${x.state.toUpperCase() || `state ${i + 2}`})`, values, pages: [6] }
+  })
+  return { forms: [main, ...extra], notIncluded: mt.attach }
 }

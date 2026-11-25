@@ -9,6 +9,7 @@ import type { TaxReturnResult } from '../engine/compute.ts'
 import type { OhResult } from '../engine/oh2025.ts'
 import { OH_DONATION_LETTERS } from '../engine/oh2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const FILE = 'oh1040.pdf'
 const digits = (v: string): string => v.replace(/\D/g, '')
@@ -166,6 +167,6 @@ export function buildOhPacket(ret: TaxReturnInput, res: TaxReturnResult, oh: OhR
   if (oh.lines['14'] > 0) notIncluded.push('State copies of your W-2s and 1099s with Ohio withholding (place them after the last page)')
   if (ret.oh.otherWithholding > 0) notIncluded.push('Schedule of Ohio Withholding Parts D–F: list your W-2G, 1099-NEC and 1099-G statements (their tax is in the Part A total)')
   if (oh.withholding.w2.filter((x) => x.tax > 0).length > 7 || oh.withholding.r1099.filter((x) => x.tax > 0).length > 4) notIncluded.push('An additional Schedule of Ohio Withholding page for the statements that did not fit')
-  if (ret.dependents.length > 15) notIncluded.push('An additional Schedule of Dependents page')
+  forms.push(...dependentsStatement(ret, 15, 'Schedule of Dependents (continued)', 'st-oh-deps'))
   return { forms, notIncluded }
 }

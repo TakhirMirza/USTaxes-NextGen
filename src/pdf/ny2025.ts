@@ -9,6 +9,7 @@ import { careQualifyingPerson, eicChild } from '../engine/compute.ts'
 import type { NyResult } from '../engine/ny2025.ts'
 import { parseBirthDate } from '../engine/va2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const amt = (n: number | undefined, keepZero = false): string => {
@@ -236,10 +237,10 @@ export function buildNyPacket(ret: TaxReturnInput, res: TaxReturnResult, ny: NyR
   const filled = new Set(['Form IT-213, Empire State child credit', 'Form IT-215, earned income credit', 'Form IT-216, child and dependent care credit', 'Form IT-270, NYC income tax elimination credit', 'Form IT-196, New York itemized deductions'])
   const notIncluded = ny.attach.filter((a) => !filled.has(a))
   notIncluded.push('Item D1 on page 1: mark whether you had a financial account in a foreign country')
-  if (ret.dependents.length > 7) notIncluded.push('Form IT-201 item H continued: dependents after the seventh')
   if (ny.lines['64'] > 0) {
     notIncluded.push('Form IT-216 line 2: each care provider’s city, state and ZIP code')
     if (ret.dependents.filter(careQualifyingPerson).length > 1) notIncluded.push('Form IT-216 line 3 column C: split the care expenses among the qualifying persons')
   }
+  forms.push(...dependentsStatement(ret, 7, 'IT-201, item H (continued)', 'st-ny-deps'))
   return { forms, notIncluded }
 }

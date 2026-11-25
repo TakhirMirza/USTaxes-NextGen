@@ -99,8 +99,8 @@ export function SouthCarolinaStep({ ret, set, result, preparer }: StepProps & { 
       </Section>
 
       <Section title="Tax credits (SC1040TC)" intro="Line 13 of the SC1040. Attach each credit’s schedule; for the credit for taxes paid to another state, attach that state’s return.">
-        <h3>Credit for taxes paid to another state (up to two worksheets)</h3>
-        <OtherStatesList rows={d.tc.otherStates} max={2} empty={() => ({ state: '', income: 0, tax: 0 })} onChange={(rows) => putTc({ otherStates: rows })}
+        <h3>Credit for taxes paid to another state (one worksheet per state)</h3>
+        <OtherStatesList rows={d.tc.otherStates} max={8} empty={() => ({ state: '', income: 0, tax: 0 })} onChange={(rows) => putTc({ otherStates: rows })}
           fields={[['income', 'Part of your South Carolina gross income taxed by that state', 'Worksheet line 2'], ['tax', 'Net tax due that state on that income', 'Worksheet line 6; the tax on its return, not the amount withheld']]} />
         <div className="grid">
           <MoneyField label="Solar energy, small hydropower or geothermal credit (038)" hint="Line 2" value={d.tc.lines['2'] ?? 0} onChange={(n) => putTc({ lines: { ...d.tc.lines, '2': n } })} />

@@ -9,6 +9,7 @@ import { eicChild } from '../engine/compute.ts'
 import type { IlResult } from '../engine/il2025.ts'
 import { parseBirthDate } from '../engine/va2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const amt = (n: number | undefined, keepZero = false): string => {
@@ -145,6 +146,6 @@ export function buildIlPacket(ret: TaxReturnInput, res: TaxReturnResult, il: IlR
   const filled = new Set(['Schedule M, other additions and subtractions', 'Schedule IL-E/EITC, exemptions and earned income credit'])
   const notIncluded = il.attach.filter((a) => !filled.has(a))
   if (il.scheduleM.collegeSavings > 0) notIncluded.push('Schedule M line 13a: list each college savings account number and contribution')
-  if (ret.dependents.length > 10) notIncluded.push('Schedule IL-E/EITC: dependents after the tenth')
+  forms.push(...dependentsStatement(ret, 10, 'Schedule IL-E/EITC (continued)', 'st-il-deps'))
   return { forms, notIncluded }
 }

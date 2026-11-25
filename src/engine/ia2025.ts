@@ -282,7 +282,6 @@ export function computeIowa(ret: TaxReturnInput, res: TaxReturnResult): IaResult
   if (L['18'] > 0 && !d.surtaxRate && !d.schoolDistrictNo) issues.push('Enter your school district number and its surtax rate (table 41-027); most districts levy a surtax on line 19.')
   if (mine.some((x) => kind(x.id) === 'standard' && !eligible(x.owner) && x.taxableAmount > 0)) issues.push('Retirement income of someone under 55 is taxed unless they are disabled or a surviving spouse.')
   if (L['34'] > 0 && L['34'] > L['22'] * 0.1 && L['29'] === 0) issues.push('A balance due may mean an underpayment penalty (IA 2210).')
-  if (ret.dependents.length > 4) issues.push('More than four dependents: attach a page listing the rest.')
 
   return { partV: { A: vA, B: vB, liabilityA: L['16'], liabilityB: L['18'] }, lines: L, step3, schedule1: { A, B, lines: S }, netIncome, threshold, lowIncomeExempt, alternateTax, taxReduction, careCredit, oos, part1, part2, fuel: { rows: fuelRows, line7: fuel7, line8: fuel8, line9: fuel7 + fuel8 }, issues, attach }
 }

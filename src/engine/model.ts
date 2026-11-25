@@ -2285,6 +2285,8 @@ export const emptyMe = (): MeInput => ({
   occupation: { taxpayer: '', spouse: '' }
 })
 
+export interface MtOtherState { state: string; amount: number; income: number; stateIncome: number; expenses: number; tax: number; ltcgIncome: number; ltcgTax: number }
+
 export interface MtInput {
   w2: Record<string, StateStatement>
   /** Line 11b: Montana tax withheld on 1099s; 11c / 11d: pass-through entity credit and K-1 withholding. */
@@ -2310,7 +2312,9 @@ export interface MtInput {
   otherSubtractions: number
   otherSubtractionsCode: string
   /** Schedule III. Part II (one other state or country): line 1 ordinary income sourced there and taxed in Montana (no net long-term gains), line 2 all income taxed by that state, line 3b expenses related to line 3a, line 4 the other state's tax on that income, lines 11 and 14 the net long-term capital gain sourced there and that state's tax on it. With none of these, amount is the Part I line 1 credit as entered. */
-  otherStateCredit: { state: string; amount: number; income: number; stateIncome: number; expenses: number; tax: number; ltcgIncome: number; ltcgTax: number }
+  otherStateCredit: MtOtherState
+  /** Schedule III Part II for a second or later state or country (a separate page each). */
+  moreStates: MtOtherState[]
   otherNonrefundableCredits: number
   refundableCredits: number
   /** Schedule 2EC: elderly homeowner/renter credit (62 or older). */
@@ -2325,7 +2329,7 @@ export const emptyMt = (): MtInput => ({
   w2: {}, withholding1099: 0, passThroughCredit: 0, k1Withholding: 0, estimatedPayments: 0, priorYearApplied: 0, extensionPayment: 0,
   otherStateBondInterest: 0, otherAdditions: 0, otherAdditionsCode: '', stateRefund: 0, usObligationInterest: 0, activeDutyPay: 0, workingMilitaryRetirement: 0,
   tuition529: 0, ableDeposits: 0, tier1Railroad: 0, tier2Railroad: 0, otherSubtractions: 0, otherSubtractionsCode: '',
-  otherStateCredit: { state: '', amount: 0, income: 0, stateIncome: 0, expenses: 0, tax: 0, ltcgIncome: 0, ltcgTax: 0 }, otherNonrefundableCredits: 0, refundableCredits: 0,
+  otherStateCredit: { state: '', amount: 0, income: 0, stateIncome: 0, expenses: 0, tax: 0, ltcgIncome: 0, ltcgTax: 0 }, moreStates: [], otherNonrefundableCredits: 0, refundableCredits: 0,
   elderly: { claim: false, householdSize: 1, otherHouseholdIncome: 0, governmentAssistance: 0, propertyTaxBilled: 0, rentPaid: 0, physicalAddress: '' },
   contributions: {}, birthDates: { taxpayer: '', spouse: '' }, creditForward: 0
 })
@@ -3273,7 +3277,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     mt: (() => {
       const e = emptyMt(); const x: Partial<MtInput> = r.mt ?? {}
       return {
-        ...e, ...x, w2: normalizeStatements(x.w2), otherStateCredit: { ...e.otherStateCredit, ...(x.otherStateCredit ?? {}) }, elderly: { ...e.elderly, ...(x.elderly ?? {}) },
+        ...e, ...x, w2: normalizeStatements(x.w2), otherStateCredit: { ...e.otherStateCredit, ...(x.otherStateCredit ?? {}) }, moreStates: Array.isArray(x.moreStates) ? x.moreStates.map((o: Partial<MtOtherState>) => ({ ...e.otherStateCredit, ...o })) : [], elderly: { ...e.elderly, ...(x.elderly ?? {}) },
         contributions: { ...(x.contributions ?? {}) }, birthDates: { ...e.birthDates, ...(x.birthDates ?? {}) }
       }
     })(),

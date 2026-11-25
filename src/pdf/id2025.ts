@@ -6,6 +6,7 @@ import type { TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { IdResult } from '../engine/id2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const upper = (s: string): string => s.trim().toUpperCase()
@@ -198,6 +199,6 @@ export function buildIdPacket(ret: TaxReturnInput, res: TaxReturnResult, id: IdR
   const forms = [formId40(ret, res, id, preparer)]
   if (id.attach.some((x) => x.startsWith('Form 39R'))) forms.push(formId39R(ret, id))
   const notIncluded = id.attach.filter((x) => !x.startsWith('Form 39R'))
-  if (ret.dependents.length > 7) notIncluded.push('Dependents beyond seven: list them on an extra sheet')
+  forms.push(...dependentsStatement(ret, 7, 'Form 40, Dependents (continued)', 'st-id-deps'))
   return { forms, notIncluded }
 }

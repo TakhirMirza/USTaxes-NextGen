@@ -267,7 +267,6 @@ export function computeArkansas(ret: TaxReturnInput, res: TaxReturnResult): ArRe
   if (fs === 'mfs') issues.push('Married filing separately: this return uses filing status 5 (separate returns). Filing status 4 (separately on the same return) may lower your tax if you both had income.')
   if (joint && ret.w2s.some((w) => w.owner === 'spouse' && w.wages > 0) && ret.w2s.some((w) => w.owner === 'taxpayer' && w.wages > 0)) issues.push('Married couples where both have income may pay less with filing status 4 (separately on the same return); that comparison is not made here.')
   if (mine.some((x) => early(x.code) && kind(x.id) !== 'military')) issues.push('Early distributions (code 1) do not qualify for the $6,000 exemption and are reported on line 16.')
-  if (ret.dependents.length > 6) issues.push('More than six dependents: attach a schedule.')
   if (pos(fa.educatorExpenses ?? 0) > 0) issues.push('Arkansas does not allow the federal educator expense deduction; a qualifying teacher can claim the classroom investment expense on AR1000ADJ line 17 (Form AR1000CE).')
   if (pos(fa.deductibleHalfOfSeTax ?? 0) > 0) issues.push('Arkansas does not allow the deduction for one-half of self-employment tax; it is not on AR1000ADJ.')
   if (pos(tc.political) > (joint ? 100 : 50)) issues.push(`The political contribution credit is limited to $${joint ? 100 : 50}.`)

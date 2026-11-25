@@ -457,7 +457,6 @@ export function computeNewYork(ret: TaxReturnInput, res: TaxReturnResult): NyRes
   if (ret.dependentCare.employerBenefits > 0 && care.line14 > 0) issues.push('You received dependent care benefits: check Form IT-216 line 3b (Worksheet 1) against your federal Form 2441 Part III.')
   if (care.nycCredit === 0 && nyc && fagi <= 30000 && carePersons.some((x) => x.age < 4) && carePersons.some((x) => x.age >= 4) && d.careExpensesUnder4 === null) issues.push('For the NYC child care credit, enter how much of your care expenses was for children under 4.')
   if (s1.businessIncome > 50000 && (nyc || ['Nassau', 'Suffolk', 'Westchester', 'Rockland', 'Orange', 'Putnam', 'Dutchess'].includes(d.county))) issues.push('Self-employment earnings over $50,000 in the Metropolitan Commuter Transportation District may owe the MCTMT (lines 54a–54e); it is not figured here.')
-  if (ret.dependents.length > 7) issues.push('Form IT-201 lists seven dependents; mark the box and attach the rest.')
 
   return {
     lines: L,

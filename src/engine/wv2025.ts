@@ -211,7 +211,6 @@ export function computeWestVirginia(ret: TaxReturnInput, res: TaxReturnResult): 
   if (ret1099.some((x) => x.taxableAmount > 0) && Object.keys(d.retirementKind).length === 0) issues.push('Mark military, railroad, WV police / fire, WV teachers’ / PERS or federal retirement among your 1099-Rs: each is fully or partly exempt in West Virginia.')
   if (owners.some((o) => m47[o] && !m47[o]!.year)) issues.push('Schedule M line 47: enter the year of birth for the senior citizen deduction.')
   if (ret.dependents.some((x) => !(d.dependentBirthDate[x.id] ?? '').trim())) issues.push('Enter each dependent’s date of birth; the IT-140 asks for it.')
-  if (ret.dependents.length > 4) issues.push('More than four dependents: list the rest on Schedule DP.')
   if (L['24'] > 600 && L['16'] === 0) issues.push('A balance due over $600 may mean an underpayment penalty (Form IT-210).')
 
   return { schE, lines: L, m: M, m33, m34, m47, exemptions: ex, usedTable: tax.table, ftc, recap, issues, attach }

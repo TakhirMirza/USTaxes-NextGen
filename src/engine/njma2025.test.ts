@@ -8,6 +8,7 @@ import { empty1099Div, empty1099Int, empty1099R, emptyDependent, emptyReturn, em
 import type { MaInput, NjInput, TaxReturnInput } from './model.ts'
 import { computeNewJersey, njChildCreditPer, njTax } from './nj2025.ts'
 import { computeMassachusetts, maTax } from './ma2025.ts'
+import { buildNjPacket } from '../pdf/nj2025.ts'
 
 const person = { ...emptyReturn().taxpayer, firstName: 'Test', lastName: 'Payer', age: 40 }
 const w2 = (wages: number, owner: 'taxpayer' | 'spouse' = 'taxpayer') =>
@@ -218,4 +219,13 @@ test('NJ Worksheet L: shared responsibility payment, Parts II and III', () => {
   assert.equal(ok.hcc!.allYear, true)
   assert.equal(ok.lines['53c'], 0)
   assert.equal(nj({ w2s: [w2(9000)] }).hcc, null)
+})
+
+test('NJ: dependents after the fourth go on a statement page', () => {
+  const ret = base('NJ', { w2s: [w2(60000)], dependents: Array.from({ length: 6 }, (_, i) => ({ ...kid(3 + i), name: `Kid ${i + 1}` })) })
+  const res = computeReturn(ret)
+  const packet = buildNjPacket(ret, res, computeNewJersey(ret, res))
+  const st = packet.forms.find((f) => f.id === 'st-nj-deps')!
+  assert.ok(st.draw!.some((d) => d.text === 'Kid 5') && st.draw!.some((d) => d.text === 'Kid 6'))
+  assert.ok(!packet.notIncluded.some((x) => x.includes('beyond the first four')))
 })

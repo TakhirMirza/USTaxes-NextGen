@@ -117,7 +117,7 @@ export function computeSouthCarolina(ret: TaxReturnInput, res: TaxReturnResult):
   } else L['12'] = 0
   // ── SC1040TC ──
   const tcIn = d.tc
-  const states = tcIn.otherStates.filter((o) => o.state.trim() && (o.income > 0 || o.tax > 0)).slice(0, 2)
+  const states = tcIn.otherStates.filter((o) => o.state.trim() && (o.income > 0 || o.tax > 0))
   const others = tcIn.other.filter((o) => o.amount > 0).slice(0, 10)
   const tcUsed = states.length > 0 || others.length > 0 || ['2', '3', '4', '5'].some((k) => (tcIn.lines[k] ?? 0) > 0)
   let tc: ScTc | null = null

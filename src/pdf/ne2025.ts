@@ -9,6 +9,7 @@ import { careQualifyingPerson } from '../engine/compute.ts'
 import type { NeResult } from '../engine/ne2025.ts'
 import { neCarePercent, neFederalCareDecimal } from '../engine/ne2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const upper = (s: string): string => s.trim().toUpperCase()
@@ -189,5 +190,6 @@ export function buildNePacket(ret: TaxReturnInput, res: TaxReturnResult, ne: NeR
   const forms = [formNe1040n(ret, res, ne, preparer)]
   if (ne.lines['12'] + ne.lines['13'] > 0) forms.push(formNeScheduleI(ret, ne))
   for (const x of [formNeScheduleII(ret, ne), formNe2441n(ret, res, ne)]) if (x) forms.push(x)
+  forms.push(...dependentsStatement(ret, 3, 'Form 1040N, Dependents (continued)', 'st-ne-deps'))
   return { forms, notIncluded: [...ne.attach.filter((x) => x !== 'Nebraska Schedule I'), 'Page 1: answer the foreign adversarial company question (Yes / No)'] }
 }

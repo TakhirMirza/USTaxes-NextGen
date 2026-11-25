@@ -8,6 +8,7 @@ import type { TaxReturnResult } from '../engine/compute.ts'
 import type { AzResult } from '../engine/az2025.ts'
 import { AZ_DONATION_LINES } from '../engine/az2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const FILE = 'az140.pdf'
 const digits = (v: string): string => v.replace(/\D/g, '')
@@ -201,6 +202,6 @@ export function buildAzPacket(ret: TaxReturnInput, res: TaxReturnResult, az: AzR
   if (az.lines['36'] > 0) notIncluded.push('Page 6: the total is on line V (other adjustments); move amounts to their own lettered lines if they fit one')
   if (az.counts.parents > 0) notIncluded.push('Names, SSNs and details of the qualifying parents or grandparents (lines 11b–11c and page 4, Part 2)')
   if (az.counts.other > 0) notIncluded.push('Page 4, Part 3: the people you claim as other exemptions')
-  if (az.dependents.length > 14) notIncluded.push('More than 14 dependents: list the rest on an extra page')
+  forms.push(...dependentsStatement(ret, 14, 'Form 140, page 4, Dependents (continued)', 'st-az-deps'))
   return { forms, notIncluded }
 }

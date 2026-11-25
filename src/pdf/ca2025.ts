@@ -10,6 +10,7 @@ import type { CaResult } from '../engine/ca2025.ts'
 import { careQualifyingPerson } from '../engine/compute.ts'
 import { parseBirthDate } from '../engine/va2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const amt = (n: number | undefined, keepZero = false): string => {
@@ -288,7 +289,6 @@ export function buildCaPacket(ret: TaxReturnInput, res: TaxReturnResult, ca: CaR
   if (ca.lines['40'] > 0) forms.push(form3506(ret, res, ca))
   const filled = new Set(['Schedule CA (540), California adjustments', 'FTB 3514, California Earned Income Tax Credit', 'FTB 3506, Child and Dependent Care Expenses Credit'])
   const notIncluded = ca.attach.filter((a) => !filled.has(a))
-  if (ret.dependents.length > 3) notIncluded.push('A statement listing dependents after the third')
   if (ca.lines['75'] > 0 || ca.lines['76'] > 0) notIncluded.push('FTB 3514 line 1a and 1b: tick whether the IRS or the FTB ever disallowed your earned income credit')
   if (ca.lines['40'] > 0) {
     notIncluded.push('FTB 3506: the care provider’s phone number and the address where care was given (Part 2), and each person’s percentage of physical custody (Part 3)')
@@ -296,5 +296,6 @@ export function buildCaPacket(ret: TaxReturnInput, res: TaxReturnResult, ca: CaR
   }
   if (ca.deduction.method === 'itemized' && ret.ca.itemizedAdjustment) notIncluded.push('A statement explaining the other itemized deduction adjustments (Schedule CA, Part II, line 27)')
   if (ret.ca.otherSubtractions || ret.ca.otherAdditions) notIncluded.push('A statement explaining the other Schedule CA adjustments (line 8z)')
+  forms.push(...dependentsStatement(ret, 3, 'Form 540, Dependents (continued)', 'st-ca-deps'))
   return { forms, notIncluded }
 }

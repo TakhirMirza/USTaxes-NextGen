@@ -7,6 +7,7 @@ import type { Person, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { MdResult } from '../engine/md2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const amt = (n: number | undefined, keepZero = false): string => {
@@ -162,7 +163,7 @@ export function buildMarylandPacket(ret: TaxReturnInput, res: TaxReturnResult, m
   if (md.subtractions.length) forms.push(form502su(ret, md))
   const notIncluded = [...md.attach]
   if (md.subtractions.some((s) => !SU_FIELD[s.code])) notIncluded.push('Form 502SU lines for codes the app does not recognize')
-  if (ret.dependents.length > 12) notIncluded.push('Dependents after the twelfth on Form 502B')
   if (md.county?.rate === 'anne-arundel' || md.county?.rate === 'frederick') notIncluded.push(`Local tax: ${md.county.name} uses its own brackets; line 28 is figured with its 2025 rates (the rate box is left blank).`)
+  forms.push(...dependentsStatement(ret, 12, 'Form 502B (continued)', 'st-md-deps'))
   return { forms, notIncluded }
 }

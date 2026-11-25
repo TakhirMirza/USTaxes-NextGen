@@ -6,6 +6,7 @@ import type { TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { KsResult } from '../engine/ks2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const upper = (s: string): string => s.trim().toUpperCase()
@@ -177,5 +178,6 @@ export function buildKsPacket(ret: TaxReturnInput, res: TaxReturnResult, ks: KsR
   if (sa) forms.push(sa)
   const notIncluded = [...ks.attach.filter((x) => !x.startsWith('Schedule S'))]
   notIncluded.push('Dependents’ dates of birth on the K-40 front (MMDDYYYY)')
+  forms.push(...dependentsStatement(ret, 6, 'K-40, Dependents (continued)', 'st-ks-deps'))
   return { forms, notIncluded }
 }

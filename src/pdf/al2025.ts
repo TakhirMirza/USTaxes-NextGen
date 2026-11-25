@@ -7,6 +7,7 @@ import type { Owner, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { AlResult, AlRetirementRow } from '../engine/al2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const upper = (s: string): string => s.trim().toUpperCase()
@@ -354,9 +355,9 @@ export function buildAlPacket(ret: TaxReturnInput, res: TaxReturnResult, al: AlR
   if (de) forms.push(de)
   const notIncluded = [...al.attach]
   if (al.status === 'hof') notIncluded.push('Schedule HOF: answer whether you rent or own the home and the marriage question')
-  if (ret.dependents.length > 12) notIncluded.push('Schedule DS: dependents after the twelfth on an attached list')
   if (al.statements.length > 15) notIncluded.push('Schedule W-2: W-2s after the fifteenth on another Schedule W-2')
   if (al.interestRows.length > 9 || al.dividendRows.length > 9) notIncluded.push('Schedule B: payers after the ninth on an attached list')
   if (al.lines['12'] > 0) notIncluded.push('Keep the Federal Income Tax Deduction Worksheet (Form 40 instructions) with your records')
+  forms.push(...dependentsStatement(ret, 12, 'Schedule DS (continued)', 'st-al-deps'))
   return { forms, notIncluded }
 }

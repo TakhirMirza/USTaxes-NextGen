@@ -7,6 +7,7 @@ import type { TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { OkResult } from '../engine/ok2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const upper = (s: string): string => s.trim().toUpperCase()
@@ -194,7 +195,6 @@ export function formOk511(ret: TaxReturnInput, res: TaxReturnResult, ok: OkResul
 
 export function buildOkPacket(ret: TaxReturnInput, res: TaxReturnResult, ok: OkResult, preparer?: PreparerInfo | null): FormPacket {
   const notIncluded = [...ok.attach]
-  if (ret.dependents.length > 4) notIncluded.push('A statement listing the dependents after the fourth (name, SSN, date of birth, relationship)')
   if (ret.dependents.some((x) => !(ret.ok.dependentBirthDates[x.id] ?? '').replace(/\D/g, ''))) notIncluded.push('Page 1: dependents’ dates of birth that were not entered')
-  return { forms: [formOk511(ret, res, ok, preparer)], notIncluded }
+  return { forms: [formOk511(ret, res, ok, preparer), ...dependentsStatement(ret, 4, 'Form 511, Dependents (continued)', 'st-ok-deps')], notIncluded }
 }

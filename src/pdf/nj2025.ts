@@ -9,6 +9,7 @@ import type { NjResult } from '../engine/nj2025.ts'
 import { NJ_DONATION_LINES } from '../engine/nj2025.ts'
 import { NJ_BOXES } from './nj2025Boxes.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const upper = (s: string): string => s.trim().toUpperCase()
@@ -137,9 +138,9 @@ export function formNjHcc(ret: TaxReturnInput, nj: NjResult): FormFill | null {
 export function buildNjPacket(ret: TaxReturnInput, res: TaxReturnResult, nj: NjResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formNj1040(ret, res, nj, preparer), formNjHcc(ret, nj)].filter((x): x is FormFill => x !== null)
   const notIncluded = [...nj.attach]
-  if (ret.dependents.length > 4) notIncluded.push('A statement listing the dependents beyond the first four')
   if (ret.nj.collegeDependents > 0) notIncluded.push('Line 12: the names of the dependents attending college are not filled in; check the instructions')
   notIncluded.push('Driver’s license number (voluntary) and signatures on page 4')
   if (nj.hcc?.worksheet) notIncluded.push('Keep Worksheet L (shared responsibility payment) with your records; it is not filed')
+  forms.push(...dependentsStatement(ret, 4, 'NJ-1040, Dependents (continued)', 'st-nj-deps'))
   return { forms, notIncluded }
 }

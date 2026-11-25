@@ -182,7 +182,6 @@ export function computeNebraska(ret: TaxReturnInput, res: TaxReturnResult): NeRe
   if (federalTaxUsed) issues.push('Your Nebraska tax is limited to your federal tax (line 35, federal tax box checked).')
   if (d.collegeSavings > S['20']) issues.push('The Nebraska 529 subtraction is limited to $10,000 ($5,000 married filing separately).')
   if (L['42'] > 0) issues.push('The refundable child care credit follows Form 2441N: qualifying expenses × federal decimal × state decimal (AGI $29,000 or less).')
-  if (ret.dependents.length > 3) issues.push('More than three dependents: attach a list.')
   if (L['59'] > 500 && L['40'] === 0) issues.push('A balance due may mean an underpayment penalty (Form 2210N).')
 
   return { lines: L, scheduleI: S, sch2, care, boxes, exemptions, federalTaxUsed, qualifyingChildren, issues, attach }

@@ -7,6 +7,7 @@ import type { Owner, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { LaResult } from '../engine/la2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const upper = (s: string): string => s.trim().toUpperCase()
@@ -278,10 +279,10 @@ export function formIt540(ret: TaxReturnInput, res: TaxReturnResult, la: LaResul
 export function buildLaPacket(ret: TaxReturnInput, res: TaxReturnResult, la: LaResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formIt540(ret, res, la, preparer)]
   const notIncluded = [...la.attach]
-  if (ret.dependents.length > 8) notIncluded.push('Page 1: a statement listing the dependents after the eighth')
   if (ret.dependents.some((x) => !(ret.la.dependentBirthDates[x.id] ?? '').replace(/\D/g, ''))) notIncluded.push('Page 1: dependents’ dates of birth that were not entered')
   if (la.lines['17'] > 0 && !ret.la.schF.some((x) => x.amount > 0) && !ret.la.musical.some((x) => x.amount > 0)) notIncluded.push('Schedule F: list each credit in the Louisiana section to fill it in (only the line 17 total is entered)')
   if (la.lines['26'] > 0 && !ret.la.schI.some((x) => x.amount > 0)) notIncluded.push('Schedule I: list each credit in the Louisiana section to fill it in (only the line 26 total is entered)')
   if (la.lines['14'] > 0) notIncluded.push('Refundable child care worksheet: check the expenses split between children in column H')
+  forms.push(...dependentsStatement(ret, 8, 'IT-540, Dependents (continued)', 'st-la-deps'))
   return { forms, notIncluded }
 }

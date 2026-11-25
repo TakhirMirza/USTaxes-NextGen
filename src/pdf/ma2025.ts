@@ -7,6 +7,7 @@ import type { TaxReturnResult } from '../engine/compute.ts'
 import type { MaResult } from '../engine/ma2025.ts'
 import { MA_DONATION_LETTERS } from '../engine/ma2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const upper = (s: string): string => s.trim().toUpperCase()
@@ -344,8 +345,8 @@ export function buildMaPacket(ret: TaxReturnInput, res: TaxReturnResult, ma: MaR
   if (ma.lines['9'] > 0) forms.push(scheduleMaX(ret, ma))
   if (ma.lines['15'] > 0) forms.push(scheduleMaY(ret, ma))
   const notIncluded = [...ma.attach]
-  if (ret.dependents.length > 10) notIncluded.push('A statement listing the dependents beyond the first ten (Schedule DI)')
   if (ma.health.hc.taxpayer?.worksheet || ma.health.hc.spouse?.worksheet) notIncluded.push('Keep the Schedule HC worksheets and the Health Care Penalty Worksheet with your records (they are not filed)')
   notIncluded.push('Signatures on page 1')
+  forms.push(...dependentsStatement(ret, 10, 'Schedule DI (continued)', 'st-ma-deps'))
   return { forms, notIncluded }
 }

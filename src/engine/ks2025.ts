@@ -171,7 +171,6 @@ export function computeKansas(ret: TaxReturnInput, res: TaxReturnResult): KsResu
   if (ret.retirement.some((x) => owners.includes(x.owner) && x.taxableAmount > 0) && Object.keys(d.exemptRetirement).length === 0) issues.push('KPERS, federal civil service, military and railroad retirement are exempt in Kansas: mark them among your 1099-Rs.')
   if (d.qtp529 > (joint ? 6000 : 3000) * Math.max(1, ret.dependents.length)) issues.push('The 529 subtraction is limited to $3,000 per beneficiary ($6,000 if married filing jointly).')
   if (L['28'] > 500 && L['20'] === 0) issues.push('A balance due over $500 may mean an estimated tax penalty (Form K-210).')
-  if (ret.dependents.length > 6) issues.push('More than six dependents: enclose a separate list.')
 
   return { otherStates, schA: A, itemizedFederally, lines: L, exemptions: ex, scheduleS: S, itemize, itemized, standard, issues, attach }
 }

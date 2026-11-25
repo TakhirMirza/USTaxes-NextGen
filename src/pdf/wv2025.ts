@@ -8,6 +8,7 @@ import type { TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { WvResult } from '../engine/wv2025.ts'
 import type { FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { dependentsStatement } from './statement.ts'
 
 type Draw = NonNullable<FormFill['draw']>[number]
 const digits = (v: string): string => v.replace(/\D/g, '')
@@ -156,5 +157,5 @@ export function formsWvSchE(wv: WvResult): FormFill[] {
 export function buildWvPacket(ret: TaxReturnInput, res: TaxReturnResult, wv: WvResult, preparer?: PreparerInfo | null): FormPacket {
   const notIncluded = wv.attach.filter((x) => !['Schedule M', 'Tax Credit Recap Schedule (RECAP)', 'Schedule FTC-1 (Family Tax Credit)'].includes(x))
   notIncluded.push('Print in black ink on single-sided pages; do not staple the barcode area')
-  return { forms: [formWvIt140(ret, res, wv, preparer), ...formsWvSchE(wv)], notIncluded }
+  return { forms: [formWvIt140(ret, res, wv, preparer), ...formsWvSchE(wv), ...dependentsStatement(ret, 4, 'Schedule DP, Dependents (continued)', 'st-wv-deps')], notIncluded }
 }

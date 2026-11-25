@@ -226,7 +226,6 @@ export function computeMississippi(ret: TaxReturnInput, res: TaxReturnResult): M
   if (early.length) issues.push('Early distributions (code 1) are taxable in Mississippi and are reported on line 46.')
   if (joint && (L['40A'] || L['43A'] || L['44A'] || L['41A'])) issues.push('Interest, dividends, capital gains and rents are shown in the taxpayer column; move a spouse’s own share to column B if it applies.')
   if (w2s.length > 4) issues.push('Form 80-107 has room for four statements; attach another 80-107 for the rest.')
-  if (ret.dependents.length > 4) issues.push('More than four dependents: list the rest on Form 80-491.')
   if (itemize) issues.push(`Mississippi itemized deductions (${ia['8'].toLocaleString('en-US')}) are more than the standard deduction and are used.`)
 
   return { f160, f401, lines: L, itemized: itemize ? ia : null, interest, dependentsTotal, boxes, statements, issues, attach }

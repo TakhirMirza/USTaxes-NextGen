@@ -7,6 +7,7 @@ import { computeMontana } from '../engine/mt2025.ts'
 import { buildMtPacket } from '../pdf/mt2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { Check, MoneyField, NumberField, Section, TextField, usd } from './fields'
+import { RowList } from './creditrows'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -117,6 +118,10 @@ export function MontanaStep({ ret, set, result, preparer }: StepProps & { prepar
           {!mt.s3p2 && d.otherStateCredit.amount > 0 && <MoneyField label="Credit figured yourself" hint="Part I line 1; or enter the figures above" value={d.otherStateCredit.amount} onChange={(n) => put({ otherStateCredit: { ...d.otherStateCredit, amount: n } })} />}
         </div>
         {mt.s3p2 && <p className="why">Ordinary income part (line 10): {usd(mt.s3p2['10'])}; long-term gain part (line 20): {usd(mt.s3p2['20'])}; credit (line 21): {usd(mt.s3p2['21'])}.</p>}
+        <h3>More states or countries (a separate Part II page each)</h3>
+        <RowList rows={d.moreStates} max={5} noun="state" empty={() => ({ state: '', amount: 0, income: 0, stateIncome: 0, expenses: 0, tax: 0, ltcgIncome: 0, ltcgTax: 0 })} onChange={(rows) => put({ moreStates: rows })}
+          fields={[['state', 'State abbreviation or country', 'text'], ['income', 'Income sourced and taxed there, without net long-term gains', 'money', 'Line 1'], ['stateIncome', 'All income taxed by that state', 'money', 'Lines 2 and 12'], ['expenses', 'Expenses related to that income', 'money', 'Line 3b'], ['tax', 'That state’s tax on the ordinary income', 'money', 'Line 4'], ['ltcgIncome', 'Net long-term capital gain sourced there', 'money', 'Line 11'], ['ltcgTax', 'That state’s tax on the long-term gain', 'money', 'Line 14']]} />
+        {mt.s3p2More.length > 0 && <p className="why">{mt.s3p2More.map((x) => `${x.state.toUpperCase()}: ${usd(x.lines['21'])}`).join('; ')}. Part I line 1 (all states): {usd(mt.s3['1'])}.</p>}
       </Section>
 
       <Section title="Elderly homeowner/renter credit (Schedule 2EC)" intro="Up to $1,150 if you are 62 or older, lived in Montana at least nine months, and your household’s total income was under $45,000.">

@@ -269,7 +269,6 @@ export function computeHawaii(ret: TaxReturnInput, res: TaxReturnResult): HiResu
   if (L['34'] < 0) issues.push('Your refundable credits are more than your tax: the difference is refunded (line 34 is negative).')
   if (disabledOwners.length && ret.dependents.length) issues.push('With the $7,000 disability exemption you cannot also claim exemptions for dependents.')
   if ((res.scheduleC.length && !d.activity.businessGe.trim()) || (ret.rentals.length && !d.activity.rentalGe.trim())) issues.push('Lines 51–52: enter the Hawaii Tax I.D. (GE) number for your business or rental (general excise license) in the Hawaii section.')
-  if (ret.dependents.length > 6) issues.push('More than six dependents: attach a list.')
   if (L['48'] > 0 && L['38'] === 0 && L['48'] > L['36'] * 0.1) issues.push('A balance due may mean an estimated tax penalty (Form N-210).')
   issues.push('Hawaii’s fill-in N-11 prints a 2D barcode only from its own PDF viewer; this copy leaves that area blank. You can also file online at hitax.hawaii.gov.')
 
