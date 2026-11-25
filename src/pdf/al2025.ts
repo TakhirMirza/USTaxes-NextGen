@@ -7,7 +7,7 @@ import type { Owner, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { AlResult, AlRetirementRow } from '../engine/al2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
-import { dependentsStatement } from './statement.ts'
+import { dependentsStatement, money0, statementForms } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const upper = (s: string): string => s.trim().toUpperCase()
@@ -355,9 +355,67 @@ export function buildAlPacket(ret: TaxReturnInput, res: TaxReturnResult, al: AlR
   if (de) forms.push(de)
   const notIncluded = [...al.attach]
   if (al.status === 'hof') notIncluded.push('Schedule HOF: answer whether you rent or own the home and the marriage question')
-  if (al.statements.length > 15) notIncluded.push('Schedule W-2: W-2s after the fifteenth on another Schedule W-2')
-  if (al.interestRows.length > 9 || al.dividendRows.length > 9) notIncluded.push('Schedule B: payers after the ninth on an attached list')
   if (al.lines['12'] > 0) notIncluded.push('Keep the Federal Income Tax Deduction Worksheet (Form 40 instructions) with your records')
   forms.push(...dependentsStatement(ret, 12, 'Schedule DS (continued)', 'st-al-deps'))
+  forms.push(...alStatements(ret, al))
   return { forms, notIncluded }
+}
+
+/** Supporting statements for the rows that do not fit on the Alabama schedules. */
+function alStatements(ret: TaxReturnInput, al: AlResult): FormFill[] {
+  const out: FormFill[] = []
+  const w2 = al.statements.slice(15)
+  if (w2.length) {
+    out.push(...statementForms(ret, {
+      id: 'st-al-w2', attachTo: 'Schedule W-2 (continued)', title: 'Alabama withholding statements after the fifteenth',
+      columns: [{ label: 'Employee SSN', width: 70 }, { label: 'Employer / payer', width: 130 }, { label: 'EIN', width: 62 }, { label: 'Alabama ID', width: 64 },
+        { label: 'AL tax withheld', width: 68, right: true }, { label: 'Federal wages', width: 68, right: true }, { label: 'State wages', width: 70, right: true }],
+      rows: w2.map((x) => [x.ssn, x.employer, x.ein, x.stateId, money0(x.tax), money0(x.federal), money0(x.state)]),
+      total: ['Total', '', '', '', money0(w2.reduce((s, x) => s + x.tax, 0)), money0(w2.reduce((s, x) => s + x.federal, 0)), ''],
+      note: 'These amounts are included in the Schedule W-2 total and Form 40 line 22.',
+    }))
+  }
+  const ints = al.interestRows.slice(9)
+  const divs = al.dividendRows.slice(9)
+  if (ints.length || divs.length) {
+    out.push(...statementForms(ret, {
+      id: 'st-al-schb', attachTo: 'Schedule B (continued)', title: 'Interest and dividend payers after the ninth',
+      columns: [{ label: 'Kind', width: 70 }, { label: 'Payer', width: 250 }, { label: 'Exempt interest', width: 100, right: true }, { label: 'Taxable amount', width: 100, right: true }],
+      rows: [...ints.map((x) => ['Interest', x.payer, money0(x.exempt), money0(x.taxable)]), ...divs.map((x) => ['Dividends', x.payer, '', money0(x.amount)])],
+      total: ['Total', '', money0(ints.reduce((s, x) => s + x.exempt, 0)), money0(ints.reduce((s, x) => s + x.taxable, 0) + divs.reduce((s, x) => s + x.amount, 0))],
+      note: 'These payers are included in the Schedule B totals.',
+    }))
+  }
+  if (al.schD.length > 20) {
+    const rest = al.schD.slice(19)
+    out.push(...statementForms(ret, {
+      id: 'st-al-schd', attachTo: 'Schedule D, line 1 (continued)', title: 'Sales and exchanges after the nineteenth',
+      columns: [{ label: 'Kind of property', width: 140 }, { label: 'Acquired', width: 52 }, { label: 'Sold', width: 52 }, { label: 'Sale price', width: 60, right: true },
+        { label: 'Depreciation', width: 58, right: true }, { label: 'Basis', width: 56, right: true }, { label: 'Improvements', width: 54, right: true }, { label: 'Gain or loss', width: 60, right: true }],
+      rows: rest.map((x) => [x.kind, x.acquired, x.sold, money0(x.received), money0(x.depreciation), money0(x.basis), money0(x.improvements), money0(x.net)]),
+      total: ['Total (Schedule D line 1, last row)', '', '', '', '', '', '', money0(rest.reduce((s, x) => s + x.net, 0))],
+    }))
+  }
+  const props = al.schE.properties.slice(3)
+  if (props.length) {
+    out.push(...statementForms(ret, {
+      id: 'st-al-sche1', attachTo: 'Schedule E, Part I (continued)', title: 'Rental properties after the third',
+      columns: [{ label: 'Property', width: 200 }, { label: 'Rents (line 3)', width: 80, right: true }, { label: 'Royalties (4)', width: 70, right: true },
+        { label: 'Depreciation (20)', width: 80, right: true }, { label: 'Income or loss (22)', width: 90, right: true }],
+      rows: props.map((p) => [p.description, money0((p.lines['3'] ?? 0)), money0((p.lines['4'] ?? 0)), money0((p.lines['20'] ?? 0)), money0((p.lines['22'] ?? 0))]),
+      total: ['Total', money0(props.reduce((s, p) => s + (p.lines['3'] ?? 0), 0)), money0(props.reduce((s, p) => s + (p.lines['4'] ?? 0), 0)), money0(props.reduce((s, p) => s + (p.lines['20'] ?? 0), 0)), money0(props.reduce((s, p) => s + (p.lines['22'] ?? 0), 0))],
+      note: 'Line 23 of Schedule E includes these properties; lines 3, 4, 12, 19 and 20 in the Totals column show the first three only.',
+    }))
+  }
+  const ents = al.schE.entities.slice(4)
+  if (ents.length) {
+    out.push(...statementForms(ret, {
+      id: 'st-al-sche2', attachTo: 'Schedule E, Part II (continued)', title: 'Pass-through entities after the fourth',
+      columns: [{ label: 'Name', width: 240 }, { label: 'Type', width: 80 }, { label: 'EIN', width: 90 }, { label: 'Income or loss', width: 100, right: true }],
+      rows: ents.map((e) => [e.name, e.kind === 'partnership' ? 'Partnership' : 'S corporation', e.ein, money0(e.amount)]),
+      total: ['Total', '', '', money0(ents.reduce((s, e) => s + e.amount, 0))],
+      note: 'Line 24 of Schedule E includes these entities.',
+    }))
+  }
+  return out
 }

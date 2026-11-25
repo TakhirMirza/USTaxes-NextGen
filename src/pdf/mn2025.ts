@@ -88,7 +88,7 @@ export function formM1CWFC(ret: TaxReturnInput, mn: MnResult): FormFill {
   return { id: 'mnm1cwfc', file: 'mnm1cwfc.pdf', title: 'Minnesota Schedule M1CWFC', values, pages: [0, 1] }
 }
 
-export function formM1W(ret: TaxReturnInput, mn: MnResult): FormFill {
+export function formM1W(ret: TaxReturnInput, mn: MnResult, copy = 0): FormFill {
   const joint = mn.status === 'mfj'
   const values: Record<string, FieldValue> = {
     'Your First Name and Initial': upper(ret.taxpayer.firstName), 'Last Name': upper(ret.taxpayer.lastName), 'Your Social Security Number': digits(ret.taxpayer.ssn),
@@ -96,13 +96,14 @@ export function formM1W(ret: TaxReturnInput, mn: MnResult): FormFill {
     'Spouses Social Security Number': joint ? digits(ret.spouse.ssn) : ''
   }
   const rows = mn.statements.filter((x) => x.tax > 0)
-  rows.slice(0, 5).forEach((x, i) => {
+  rows.slice(copy * 5, copy * 5 + 5).forEach((x, i) => {
     const n = i + 1
     values[`a${n}`] = x.owner === 'spouse' ? '2' : '1'
     values[`b${n}`] = digits(x.stateId)
     values[`c${n}`] = amt(x.wages)
     values[`d${n}`] = amt(x.tax)
   })
+  if (copy > 0) return { id: `mnm1w-${copy + 1}`, file: 'mnm1w.pdf', title: `Minnesota Schedule M1W (continued, page ${copy + 1})`, values, pages: [0] }
   const w2Total = rows.reduce((s, x) => s + x.tax, 0)
   const other = Math.round(Math.max(0, ret.mn.withholding1099))
   values['1'] = amt(w2Total)
@@ -136,7 +137,10 @@ export function buildMnPacket(ret: TaxReturnInput, res: TaxReturnResult, mn: MnR
   if (mn.lines['22'] > 0) forms.push(formM1REF(ret, mn))
   if (mn.ref['2'] > 0) forms.push(formM1CWFC(ret, mn))
   if (mn.dqc.length > 0) forms.push(...formsM1DQC(ret, mn))
-  if (mn.lines['20'] > 0) forms.push(formM1W(ret, mn))
+  if (mn.lines['20'] > 0) {
+    const n = Math.max(1, Math.ceil(mn.statements.filter((x) => x.tax > 0).length / 5))
+    for (let k = 0; k < n; k++) forms.push(formM1W(ret, mn, k))
+  }
   const shown = ['Schedule M1M', 'Schedule M1REF', 'Schedule M1CWFC', 'Schedule M1DQC', 'Schedule M1W']
   const notIncluded = mn.attach.filter((a) => !shown.some((s) => a.startsWith(s)))
   if (mn.m['38'] > 0) notIncluded.push('Schedule M1M: put your other subtractions on their own lines (lines 16–39); only the line 40 total includes them')
@@ -145,7 +149,6 @@ export function buildMnPacket(ret: TaxReturnInput, res: TaxReturnResult, mn: MnR
   if (ret.mn.refundableCredits > 0) notIncluded.push('Schedule M1REF: put your other refundable credits on their own lines (only the line 14 total includes them)')
   if (mn.dqc.length > 0) notIncluded.push('Schedule M1DQC: write each dependent’s date of birth (row 4)')
   if (mn.lines['20'] > 0 && mn.statements.some((x) => x.tax > 0 && !x.stateId.trim())) notIncluded.push('Schedule M1W column B: the employer’s seven-digit Minnesota tax ID from W-2 box 15')
-  if (mn.statements.filter((x) => x.tax > 0).length > 5) notIncluded.push('Schedule M1W: list W-2s beyond the fifth on an attachment')
   if (ret.mn.withholding1099 > 0) notIncluded.push('Schedule M1W line 2: list each 1099 or W-2G with Minnesota withholding (only the total is filled in)')
   return { forms, notIncluded }
 }

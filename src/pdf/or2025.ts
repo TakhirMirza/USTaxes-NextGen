@@ -242,6 +242,33 @@ export function formOrWfhdc(ret: TaxReturnInput, res: TaxReturnResult, or: OrRes
   return { id: 'orwfhdc', file: 'or-wfhdc.pdf', title: 'Oregon Schedule OR-WFHDC', values: v }
 }
 
+/** Schedule OR-ADD-DEP: dependents 4 and up, youngest first, five per sheet. */
+export function formsOrAddDep(ret: TaxReturnInput): FormFill[] {
+  const d = ret.or
+  const deps = [...ret.dependents].sort((a, b) => a.age - b.age).slice(3)
+  const out: FormFill[] = []
+  for (let k = 0; k < deps.length; k += 5) {
+    const rows = deps.slice(k, k + 5)
+    const v: Record<string, FieldValue> = { 'or-add-dep-p1-1': upper(ret.taxpayer.lastName), 'or-add-dep-p1-2': ssn(ret.taxpayer.ssn) }
+    rows.forEach((x, i) => {
+      const base = 3 + i * 7
+      const [first, last] = splitName(x.name)
+      const [fn, mi] = firstAndInitial(first)
+      v[`or-add-dep-p1-${base}`] = fn
+      v[`or-add-dep-p1-${base + 1}`] = mi
+      v[`or-add-dep-p1-${base + 2}`] = upper(last)
+      v[`or-add-dep-p1-${base + 3}`] = date(d.dependentBirthDates[x.id] ?? '')
+      v[`or-add-dep-p1-${base + 4}`] = ssn(x.ssn)
+      v[`or-add-dep-p1-${base + 5}`] = upper(d.dependentCodes[x.id] || (x.childRelationship ? 'SD' : '')).slice(0, 2)
+      if (d.childDisability[x.id]) v[`or-add-dep-p1-${base + 6}`] = true
+    })
+    v['or-add-dep-p1-38'] = String(rows.length)
+    v['or-add-dep-p1-39'] = String(rows.filter((x) => d.childDisability[x.id]).length)
+    out.push({ id: k === 0 ? 'or-add-dep' : `or-add-dep-${k / 5 + 1}`, file: 'or-add-dep.pdf', title: k === 0 ? 'Oregon Schedule OR-ADD-DEP' : `Oregon Schedule OR-ADD-DEP (sheet ${k / 5 + 1})`, values: v })
+  }
+  return out
+}
+
 export function buildOrPacket(ret: TaxReturnInput, res: TaxReturnResult, or: OrResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formOr40(ret, res, or, preparer)]
   const asc = or.asc
@@ -250,11 +277,11 @@ export function buildOrPacket(ret: TaxReturnInput, res: TaxReturnResult, or: OrR
   const wf = formOrWfhdc(ret, res, or)
   if (wf && (or.wfhdc?.['29'] ?? 0) > 0) forms.push(wf)
   const notIncluded = [...or.attach]
-  if (ret.dependents.length > 3) notIncluded.push('Schedule OR-ADD-DEP for dependents after the third')
   if (ret.dependents.some((x) => !(ret.or.dependentBirthDates[x.id] ?? '').replace(/\D/g, ''))) notIncluded.push('Page 2: dependents’ dates of birth that were not entered')
   if (asc.subtractions.length > 3 || asc.standard.length > 5 || asc.refundable.length > 3 || asc.additions.length > 2) notIncluded.push('A second Schedule OR-ASC for the codes that did not fit')
   if (or.lines['38'] > 0) notIncluded.push('Keep the Oregon Kids Credit worksheet (OR-40 instructions) with your records')
   if (or.retirementCredit && or.retirementCredit['credit'] > 0) notIncluded.push('Keep the retirement income credit worksheet (Publication OR-17) with your records')
   if (or.wfhdc && or.wfhdc['29'] > 0) notIncluded.push('Schedule OR-WFHDC: check each provider’s SSN or FEIN, phone and relationship code, and the expenses split between children')
+  forms.push(...formsOrAddDep(ret))
   return { forms, notIncluded }
 }

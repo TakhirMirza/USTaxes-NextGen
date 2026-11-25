@@ -7,6 +7,7 @@ import type { Person, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { CoResult } from '../engine/co2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { money0, statementForms } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const amt = (n: number | undefined, keepZero = false): string => {
@@ -173,6 +174,12 @@ export function buildCoPacket(ret: TaxReturnInput, res: TaxReturnResult, co: CoR
   if (ret.co.refundableCredits > 0 && !Object.values(ret.co.cr.refundable).some((x) => x > 0)) notIncluded.push('DR 0104CR: enter your other refundable credits on their own lines (lines 7–25) in the Colorado section')
   if (co.lines['9'] > 0 || co.ad['20'] > 0) notIncluded.push('A statement explaining other additions (line 9) or other subtractions (DR 0104AD line 20)')
   if (co.cr['2'] > 0) notIncluded.push('A copy of federal Form 2441 (with DR 0347); on DR 0347 add each child’s care expenses (only the total on line 2(e) is filled in)')
-  if (ret.dependentCare.providers.length > 2) notIncluded.push('DR 0347: more than two care providers — list the rest on an extra page')
+  const moreProviders = ret.dependentCare.providers.slice(2)
+  if (moreProviders.length && forms.some((f) => f.id === 'co0347')) forms.push(...statementForms(ret, {
+    id: 'st-co-0347', attachTo: 'Form DR 0347, line 1 (continued)', title: 'Care providers after the second',
+    columns: [{ label: 'Care provider', width: 150 }, { label: 'SSN, ITIN or FEIN', width: 90 }, { label: 'Address', width: 190 }, { label: 'Amount paid', width: 72, right: true }],
+    rows: moreProviders.map((x) => [x.name, x.tin, x.address, money0(x.amountPaid)]),
+    total: ['Total', '', '', money0(moreProviders.reduce((s, x) => s + x.amountPaid, 0))],
+  }))
   return { forms, notIncluded }
 }

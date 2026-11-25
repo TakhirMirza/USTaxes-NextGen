@@ -102,3 +102,21 @@ test('NJ Schedule NJ-HCC Part II and line 53c', async () => {
   assert.deepEqual(problems, [])
   if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-NJHCC.pdf`, (await buildPdf(lib, packet.forms, load, '2025 NJ')).bytes)
 })
+
+test('NJ Schedule NJ-HCC: a second page for household members six and up', async () => {
+  const h = household('NJ')
+  const extra = Array.from({ length: 5 }, (_, i) => ({ ...h.dependents[0], id: `kid-extra-${i}`, name: `Extra${i} Doe`, ssn: `22233444${i}` }))
+  const deps = [...h.dependents, ...extra]
+  const ret: TaxReturnInput = { ...h, dependents: deps, nj: { ...h.nj, missingCoverage: true, hcc: { taxpayer: { months: Array.from({ length: 12 }, (_, i) => i < 8), exemption: '', moreExemptions: false } } } }
+  const res = computeReturn(ret)
+  const nj = computeNewJersey(ret, res)
+  assert.ok(nj.hcc && !nj.hcc.allYear)
+  assert.ok(nj.hcc!.members.length > 5)
+  const packet = buildNjPacket(ret, res, nj)
+  const second = packet.forms.find((f) => f.id === 'njhcc-2')
+  assert.ok(second)
+  assert.ok(!nj.issues.some((x) => x.includes('holds five people')))
+  const problems: FillProblem[] = []
+  for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+})

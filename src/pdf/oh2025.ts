@@ -129,10 +129,10 @@ export function scheduleOhDependents(ret: TaxReturnInput): FormFill {
   return { id: 'ohdep', file: FILE, title: 'Ohio Schedule of Dependents', values, pages: ret.dependents.length > 7 ? [8, 9] : [8] }
 }
 
-export function scheduleOhWithholding(ret: TaxReturnInput, oh: OhResult): FormFill {
-  const values: Record<string, FieldValue> = { ...ssnHeader(ret), SchedW_A: amt(oh.lines['14'], true) }
+export function scheduleOhWithholding(ret: TaxReturnInput, oh: OhResult, copy = 0): FormFill {
+  const values: Record<string, FieldValue> = { ...ssnHeader(ret), ...(copy ? {} : { SchedW_A: amt(oh.lines['14'], true) }) }
   const ps = (o: string): string => (o === 'spouse' ? 'S' : 'P')
-  oh.withholding.w2.filter((x) => x.tax > 0).slice(0, 7).forEach((x, i) => {
+  oh.withholding.w2.filter((x) => x.tax > 0).slice(copy * 7, copy * 7 + 7).forEach((x, i) => {
     const n = i + 1
     values[`SchedW_B_L${n}_PS`] = ps(x.owner)
     values[`SchedW_B_L${n}_EIN`] = digits(x.ein).slice(0, 9)
@@ -142,7 +142,7 @@ export function scheduleOhWithholding(ret: TaxReturnInput, oh: OhResult): FormFi
     values[`SchedW_B_L${n}_OHWAGE`] = amt(x.ohWages, true)
     values[`SchedW_B_L${n}_OHIT`] = amt(x.tax, true)
   })
-  const r = oh.withholding.r1099.filter((x) => x.tax > 0)
+  const r = oh.withholding.r1099.filter((x) => x.tax > 0).slice(copy * 4)
   r.slice(0, 4).forEach((x, i) => {
     const n = i + 1
     values[`SchedW_C_L${n}_PS`] = ps(x.owner)
@@ -153,7 +153,7 @@ export function scheduleOhWithholding(ret: TaxReturnInput, oh: OhResult): FormFi
     values[`SchedW_C_L${n}_FITW`] = amt(x.federal, true)
     values[`SchedW_C_L${n}_OHTW`] = amt(x.tax, true)
   })
-  return { id: 'ohwh', file: FILE, title: 'Schedule of Ohio Withholding', values, pages: r.length > 0 ? [10, 11] : [10] }
+  return { id: copy ? `ohwh-${copy + 1}` : 'ohwh', file: FILE, title: copy ? `Schedule of Ohio Withholding (additional page ${copy})` : 'Schedule of Ohio Withholding', values, pages: r.length > 0 ? [10, 11] : [10] }
 }
 
 export function buildOhPacket(ret: TaxReturnInput, res: TaxReturnResult, oh: OhResult, preparer?: PreparerInfo | null): FormPacket {
@@ -162,7 +162,12 @@ export function buildOhPacket(ret: TaxReturnInput, res: TaxReturnResult, oh: OhR
   if (oh.business['10'] !== 0) forms.push(scheduleOhBusiness(ret, res, oh))
   if (oh.credits['40'] > 0) forms.push(scheduleOhCredits(ret, oh))
   if (ret.dependents.length > 0) forms.push(scheduleOhDependents(ret))
-  if (oh.lines['14'] > 0) forms.push(scheduleOhWithholding(ret, oh))
+  if (oh.lines['14'] > 0) {
+    const w = oh.withholding.w2.filter((x) => x.tax > 0).length
+    const r = oh.withholding.r1099.filter((x) => x.tax > 0).length
+    const n = Math.max(1, Math.ceil(w / 7), Math.ceil(r / 4))
+    for (let k = 0; k < n; k++) forms.push(scheduleOhWithholding(ret, oh, k))
+  }
   const notIncluded = oh.attach.filter((a) => !/^Ohio Schedule of|^Schedule of Ohio Withholding/.test(a))
   if (oh.lines['14'] > 0) notIncluded.push('State copies of your W-2s and 1099s with Ohio withholding (place them after the last page)')
   if (ret.oh.otherWithholding > 0) notIncluded.push('Schedule of Ohio Withholding Parts D–F: list your W-2G, 1099-NEC and 1099-G statements (their tax is in the Part A total)')

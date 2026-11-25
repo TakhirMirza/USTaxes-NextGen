@@ -88,10 +88,10 @@ export function formMs80105(ret: TaxReturnInput, res: TaxReturnResult, ms: MsRes
   return { id: 'ms80105', file: 'ms-80105.pdf', title: 'Mississippi Form 80-105', values: v, pages: [0, 1, 2] }
 }
 
-export function formMs80107(ret: TaxReturnInput, ms: MsResult): FormFill {
+export function formMs80107(ret: TaxReturnInput, ms: MsResult, copy = 0): FormFill {
   const v: Record<string, FieldValue> = {}
   v['Taxpayer Name'] = upper(`${ret.taxpayer.firstName} ${ret.taxpayer.lastName}`)
-  ms.statements.slice(0, 4).forEach((x, i) => {
+  ms.statements.slice(copy * 4, copy * 4 + 4).forEach((x, i) => {
     const n = i + 1
     const ssnField = n === 1 ? '1Taxpayer Social Security Number' : `${n}Txpayer Social Security Number`
     const wageField = n === 1 ? '1Mississippi Taxable Income' : `${n}Mssissippi Taxable Income`
@@ -104,7 +104,8 @@ export function formMs80107(ret: TaxReturnInput, ms: MsResult): FormFill {
     v[whField] = amount(x.tax)
     v[`${n}Employer or payer name`] = upper(x.employer).slice(0, 25)
   })
-  return { id: 'ms80107', file: 'ms-80107.pdf', title: 'Mississippi Form 80-107', values: v, pages: [0] }
+  return copy ? { id: `ms80107-${copy + 1}`, file: 'ms-80107.pdf', title: `Mississippi Form 80-107 (page ${copy + 1})`, values: v, pages: [0] }
+    : { id: 'ms80107', file: 'ms-80107.pdf', title: 'Mississippi Form 80-107', values: v, pages: [0] }
 }
 
 export function formMs80108(ret: TaxReturnInput, ms: MsResult): FormFill {
@@ -187,6 +188,7 @@ export function formMs401(ret: TaxReturnInput, ms: MsResult): FormFill | null {
 
 export function buildMsPacket(ret: TaxReturnInput, res: TaxReturnResult, ms: MsResult, preparer?: PreparerInfo | null): FormPacket {
   const forms = [formMs80105(ret, res, ms, preparer), formMs80107(ret, ms)]
+  for (let k = 1; k * 4 < ms.statements.length; k++) forms.push(formMs80107(ret, ms, k))
   const L = ms.lines
   const needs108 = !!ms.itemized || ms.interest['1'] + ms.interest['4'] > 0 || L['33'] > 0 || (L['41A'] ?? 0) + (L['41B'] ?? 0) !== 0 || (L['48A'] ?? 0) + (L['48B'] ?? 0) !== 0
   if (needs108) forms.push(formMs80108(ret, ms))

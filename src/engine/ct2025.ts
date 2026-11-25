@@ -254,7 +254,6 @@ export function computeConnecticut(ret: TaxReturnInput, res: TaxReturnResult): C
   if (d.otherStates.filter((o) => (o.name.trim() || o.code.trim()) && o.tax > 0).length > 2) issues.push('Schedule 2 has two columns; attach a schedule for the other jurisdictions.')
   if (L['13'] > 0) attach.push('Schedule CT-IT Credit')
   if (ret.dependents.some((x) => !/^\d{2}\/\d{2}\/\d{4}$/.test((d.dependentBirthDates[x.id] ?? '').trim()))) issues.push('Schedule CT-Dependent: enter each dependent’s date of birth (MM/DD/YYYY).')
-  if (withholding.length > 5) attach.push('Supplemental Schedule CT-1040WH for withholding statements after the fifth')
   if (L['45'] > 0) attach.push('Your Connecticut Teachers’ Retirement Board 1099-R (line 45)')
   if (L['48b'] > 0 && pensionRate < 1) issues.push(`Federal AGI is over the pension and annuity limit: only ${pensionRate * 100}% of the subtraction is allowed.`)
   if (ret.retirement.some((x) => owners.includes(x.owner)) && Object.keys(d.retirementKind).length === 0) issues.push('Mark military, railroad, Connecticut teachers’ and Roth distributions among your 1099-Rs: they are subtracted differently.')

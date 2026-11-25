@@ -8,7 +8,7 @@ import type { TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { CtResult } from '../engine/ct2025.ts'
 import type { FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
-import { dependentsStatement } from './statement.ts'
+import { dependentsStatement, money0, statementForms } from './statement.ts'
 
 type Draw = NonNullable<FormFill['draw']>[number]
 const digits = (v: string): string => v.replace(/\D/g, '')
@@ -157,7 +157,7 @@ export function formCtEitc(ret: TaxReturnInput, ct1: CtResult, res?: TaxReturnRe
   const X = (page: number, x: number, base: number): Draw => ei(page, x, base, 'X', { size: 9 })
   draw.push(...comb(ei, 0, 366, 13.6, 78, '###-##-####', digits(ret.taxpayer.ssn)), ...comb(ei, 1, 369, 13.5, 50, '###-##-####', digits(ret.taxpayer.ssn)))
   draw.push(X(0, 305, 178), X(0, 468, 199), X(0, 460, 220))
-  const kids = ct1.eitcChildren > 0 ? ret.dependents.filter((x) => x.childRelationship && x.monthsLivedWithYou > 6 && (x.age < 19 || (x.student && x.age < 24) || x.disabled)).slice(0, 3) : []
+  const kids = ct1.eitcChildren > 0 ? eitcKids(ret).slice(0, 3) : []
   draw.push(X(0, kids.length ? 333 : 448, 251))
   kids.forEach((k, i) => {
     const dy = i * 127.5
@@ -224,15 +224,51 @@ export function formCtDependent(ret: TaxReturnInput): FormFill | null {
   return { id: 'ctdep', file: 'ct-dependent.pdf', title: 'Connecticut Schedule CT-Dependent', values: {}, draw }
 }
 
+const eitcKids = (ret: TaxReturnInput) => ret.dependents.filter((x) => x.childRelationship && x.monthsLivedWithYou > 6 && (x.age < 19 || (x.student && x.age < 24) || x.disabled))
+
+/** Statements for rows that do not fit on CT-1040 and Schedule CT-EITC. */
+function ctStatements(ret: TaxReturnInput, res: TaxReturnResult, ct1: CtResult): FormFill[] {
+  const out: FormFill[] = []
+  const wh = ct1.withholding.slice(5)
+  if (wh.length) out.push(...statementForms(ret, {
+    id: 'st-ct-wh', attachTo: 'Form CT-1040, Section 5 (Supplemental Schedule CT-1040WH)', title: 'Connecticut withholding statements after the fifth',
+    columns: [{ label: 'Employer / payer FEIN', width: 160 }, { label: 'Connecticut wages, tips, etc.', width: 160, right: true }, { label: 'Connecticut income tax withheld', width: 170, right: true }],
+    rows: wh.map((w) => [w.ein, money0(w.wages), money0(w.tax)]),
+    total: ['Total', money0(wh.reduce((s, w) => s + w.wages, 0)), money0(wh.reduce((s, w) => s + w.tax, 0))],
+    note: 'Form CT-1040 line 21 includes these amounts.',
+  }))
+  if (ct1.eitc['16'] > 0) {
+    const kids = ct1.eitcChildren > 0 ? eitcKids(ret).slice(3) : []
+    if (kids.length) out.push(...statementForms(ret, {
+      id: 'st-ct-eitc-kids', attachTo: 'Schedule CT-EITC, qualifying children (continued)', title: 'Qualifying children after the third',
+      columns: [{ label: 'Name', width: 170 }, { label: 'SSN', width: 80 }, { label: 'Year of birth', width: 70 }, { label: 'Relationship', width: 100 }, { label: 'Months lived with you', width: 110, right: true }],
+      rows: kids.map((k) => [k.name, k.ssn, String(2025 - Math.max(0, Math.floor(k.age))), k.relationship, String(Math.min(12, k.monthsLivedWithYou))]),
+    }))
+    const owners = ret.filingStatus === 'mfj' ? ['taxpayer', 'spouse'] : ['taxpayer']
+    const unw = ret.w2s.filter((w) => owners.includes(w.owner) && !(ret.ct.w2[w.id]?.stateTax) && w.wages > 0).slice(3)
+    if (unw.length) out.push(...statementForms(ret, {
+      id: 'st-ct-eitc-6', attachTo: 'Schedule CT-EITC, line 6 (continued)', title: 'W-2s without Connecticut withholding after the third',
+      columns: [{ label: 'Employer FEIN', width: 120 }, { label: 'Employer', width: 190 }, { label: 'State ID', width: 110 }, { label: 'Wages', width: 90, right: true }],
+      rows: unw.map((w) => { const st = ret.ct.w2[w.id]; return [st?.ein ?? '', w.employer ?? '', st?.stateId ?? '', money0(st?.stateIncome ?? w.wages)] }),
+    }))
+    const biz = (res.scheduleC ?? []).filter((b) => owners.includes(b.owner) && b.netProfit !== 0).slice(3)
+    if (biz.length) out.push(...statementForms(ret, {
+      id: 'st-ct-eitc-7', attachTo: 'Schedule CT-EITC, line 7 (continued)', title: 'Self-employment after the third business',
+      columns: [{ label: 'FEIN or SSN', width: 130 }, { label: 'Business', width: 250 }, { label: 'Net profit or loss', width: 110, right: true }],
+      rows: biz.map((b) => { const src = ret.businesses.find((x) => x.id === b.id); return [src?.ein ?? '', src?.name ?? '', money0(b.netProfit)] }),
+    }))
+  }
+  return out
+}
+
 export function buildCtPacket(ret: TaxReturnInput, res: TaxReturnResult, ct1: CtResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formCt1040(ret, res, ct1, preparer)]
   if (ct1.eitc['16'] > 0) forms.push(formCtEitc(ret, ct1, res))
   const dep = formCtDependent(ret)
   if (dep) forms.push(dep)
   const notIncluded = [...ct1.attach]
-  if (ct1.eitc['16'] > 0 && ret.w2s.filter((w) => !(ret.ct.w2[w.id]?.stateTax) && w.wages > 0).length > 3) notIncluded.push('Schedule CT-EITC line 6: more than three W-2s without Connecticut withholding; list the rest on a separate sheet')
   if (ct1.eitc['16'] > 0 && res.scheduleC.length) notIncluded.push('Schedule CT-EITC line 7: enter each business’s Connecticut Tax Registration Number in column B if it has one')
-  if (ct1.eitcChildren > 3) notIncluded.push('Schedule CT-EITC: children after the third on an attached list')
   forms.push(...dependentsStatement(ret, 4, 'Schedule CT-Dependent (continued)', 'st-ct-deps'))
+  forms.push(...ctStatements(ret, res, ct1))
   return { forms, notIncluded }
 }

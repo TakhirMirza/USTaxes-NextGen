@@ -9,7 +9,7 @@ import type { GaResult } from '../engine/ga2025.ts'
 import { GA_DONATION_LINES } from '../engine/ga2025.ts'
 import { STATES } from '../engine/states.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
-import { dependentsStatement } from './statement.ts'
+import { dependentsStatement, money0, statementForms } from './statement.ts'
 
 const FILE = 'ga500.pdf'
 const digits = (v: string): string => v.replace(/\D/g, '')
@@ -155,7 +155,14 @@ export function buildGaPacket(ret: TaxReturnInput, res: TaxReturnResult, ga: GaR
   if (ga.indCr.care > 0) forms.push(formGaIndCr(ret, res, ga))
   const notIncluded = ga.attach.filter((a) => !a.startsWith('Form 500 Schedule 1') && !a.startsWith('Schedule 1 page') && !a.startsWith('Form IND-CR 202'))
   if (ga.indCr.other > 0) notIncluded.push('The IND-CR schedules for your other Georgia credits (the summary line 13 total is on Form 500 line 20)')
-  if (ga.statements.filter((x) => x.tax > 0).length > 6) notIncluded.push('More than six income statements: list the rest on an extra page')
+  const gaMore = ga.statements.filter((x) => x.tax > 0).slice(6)
+  if (gaMore.length) forms.push(...statementForms(ret, {
+    id: 'st-ga-wh', attachTo: 'Form 500, income statements (continued)', title: 'Georgia income statements after F',
+    columns: [{ label: 'Type', width: 50 }, { label: 'Employer', width: 160 }, { label: 'FEIN', width: 80 }, { label: 'GA withholding ID', width: 90 }, { label: 'GA wages', width: 72, right: true }, { label: 'GA tax withheld', width: 72, right: true }],
+    rows: gaMore.map((x) => ['W-2', x.employer, x.ein, x.stateId, money0(x.wages), money0(x.tax)]),
+    total: ['Total', '', '', '', money0(gaMore.reduce((s, x) => s + x.wages, 0)), money0(gaMore.reduce((s, x) => s + x.tax, 0))],
+    note: 'These statements are included in the Georgia withholding on Form 500.',
+  }))
   if (ret.ga.withholding1099 > 0 || ret.ga.otherWithholding > 0) notIncluded.push('Income statements for 1099s and G2 forms with Georgia withholding (only W-2s are filled in)')
   if (S['5'] > 0 || S['12'] > 0) notIncluded.push('A statement listing your other Schedule 1 additions or subtractions')
   forms.push(...dependentsStatement(ret, 4, 'Form 500, line 7d (continued)', 'st-ga-deps'))

@@ -88,7 +88,11 @@ See the in-app page *Privacy* for live checks, and [SECURITY.md](SECURITY.md) fo
 print-ready file: Form 1040, Schedules 1, 1-A, 2, 3, A, B, C, D, E, SE, EIC, 8812, Forms 2441, 4562, 4797, 5329, 8582, 6251, 8829, 8863, 8880, 8889, 8949, 8995-A, 8959, 8960, 8995, and the
 1040-V payment voucher when tax is owed, plus Schedules A and C of Form 8995-A. Where a form runs out of rows (dependents, K-1s,
 Form 4797 sales, Form 4562 lines 6 and 19i–19j, Form 8582 activities, and the dependents on state returns) a supporting
-statement page is added. The blank forms live in `public/forms/2025` (official IRS PDFs).
+statement page is added. State forms do the same: another copy of the official page where the state asks for one
+(Minnesota M1W, Utah TC-40W, Mississippi 80-107, Ohio Schedule of Withholding, New Jersey NJ-HCC, Oregon OR-ADD-DEP,
+Montana Schedule III, South Carolina SC1040TC), and a statement page otherwise (Alabama Schedules W-2, B, D and E,
+Georgia income statements, Connecticut withholding and CT-EITC rows, Colorado DR 0347 providers, Virginia Schedule ADJ
+line 10). The blank forms live in `public/forms/2025` (official IRS PDFs).
 
 ## Tax years
 

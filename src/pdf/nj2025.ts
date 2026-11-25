@@ -113,7 +113,7 @@ const HCC_ROWS: { months: string[]; name: string; ssn: string; more: string; ex:
 ]
 
 /** Schedule NJ-HCC (2025): Part I, and Part II when anyone lacked coverage. */
-export function formNjHcc(ret: TaxReturnInput, nj: NjResult): FormFill | null {
+export function formNjHcc(ret: TaxReturnInput, nj: NjResult, copy = 0): FormFill | null {
   const h = nj.hcc
   if (!h) return null
   const tp = ret.taxpayer
@@ -123,7 +123,7 @@ export function formNjHcc(ret: TaxReturnInput, nj: NjResult): FormFill | null {
     Group1: h.allYear ? '#0' : '#1'
   }
   const draw: NonNullable<FormFill['draw']> = []
-  if (!h.allYear) h.members.slice(0, 5).forEach((m, i) => {
+  if (!h.allYear) h.members.slice(copy * 5, copy * 5 + 5).forEach((m, i) => {
     const row = HCC_ROWS[i]
     values[row.name] = upper(m.name)
     values[row.ssn] = digits(m.ssn)
@@ -132,11 +132,12 @@ export function formNjHcc(ret: TaxReturnInput, nj: NjResult): FormFill | null {
     ex.split('').forEach((ch, j) => { const f = row.ex[j]; if (f) values[f] = ch; else draw.push({ page: 0, x: 233, y: 44, text: ch, size: 10 }) })
     if (m.moreExemptions) values[row.more] = true
   })
-  return { id: 'njhcc', file: 'nj-hcc.pdf', title: 'New Jersey Schedule NJ-HCC', values, ...(draw.length ? { draw } : {}) }
+  return { id: copy ? `njhcc-${copy + 1}` : 'njhcc', file: 'nj-hcc.pdf', title: copy ? `New Jersey Schedule NJ-HCC (continued, page ${copy + 1})` : 'New Jersey Schedule NJ-HCC', values, ...(draw.length ? { draw } : {}) }
 }
 
 export function buildNjPacket(ret: TaxReturnInput, res: TaxReturnResult, nj: NjResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formNj1040(ret, res, nj, preparer), formNjHcc(ret, nj)].filter((x): x is FormFill => x !== null)
+  if (nj.hcc && !nj.hcc.allYear) for (let k = 1; k * 5 < nj.hcc.members.length; k++) forms.push(formNjHcc(ret, nj, k)!)
   const notIncluded = [...nj.attach]
   if (ret.nj.collegeDependents > 0) notIncluded.push('Line 12: the names of the dependents attending college are not filled in; check the instructions')
   notIncluded.push('Driver’s license number (voluntary) and signatures on page 4')

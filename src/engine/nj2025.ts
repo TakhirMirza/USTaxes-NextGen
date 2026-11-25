@@ -276,7 +276,6 @@ export function computeNewJersey(ret: TaxReturnInput, res: TaxReturnResult): NjR
   if (res.schedule1.unemployment > 0 || f['6b'] > 0) issues.push('Social Security and unemployment benefits are not taxed in New Jersey.')
   if (hcc?.worksheet) issues.push(`Line 53c: shared responsibility payment ${L['53c'].toLocaleString('en-US')} (Worksheet L, Part ${'II1' in hcc.worksheet ? 'II' : 'III'}). Keep the worksheet.`)
   if (L['29'] <= hccThreshold) issues.push('Line 53c: your income on line 29 is at or below the filing threshold, so no shared responsibility payment is due and Schedule NJ-HCC is not needed.')
-  if (members.length > 5 && hcc && !hcc.allYear) issues.push('Schedule NJ-HCC holds five people: enclose a statement listing the others.')
 
   return {
     hcc, lines: L, exemptions: ex,

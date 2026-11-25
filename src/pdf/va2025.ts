@@ -10,6 +10,7 @@ import type { TaxReturnResult } from '../engine/compute.ts'
 import type { VaResult } from '../engine/va2025.ts'
 import { parseBirthDate } from '../engine/va2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { statementForms } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const amt = (n: number | undefined, keepZero = false): string => {
@@ -308,6 +309,11 @@ export function buildVirginiaPacket(ret: TaxReturnInput, res: TaxReturnResult, v
   if (va.lines['32'] > 0 && !va.needs760c) notIncluded.push('Form 760C or 760F showing the addition to tax you entered (line 32)')
   if (va.needs760c && va.form760c.columns.some((c) => c.pieces.length > 1)) notIncluded.push('A statement for Form 760C lines 21–23: an underpayment was paid off in parts on different dates (each part, its date, days and amount are on the Virginia step)')
   if (va.status === 2 && va.lines['17'] > 0) notIncluded.push('Spouse Tax Adjustment worksheet (keep with your records)')
-  if (ret.dependents.length > 2 && va.lowIncome.eligible) notIncluded.push('Dependents after the second for the Schedule ADJ line 10 table')
+  if (ret.dependents.length > 2 && va.lowIncome.eligible) forms.push(...statementForms(ret, {
+    id: 'st-va-adj10', attachTo: 'Schedule ADJ, line 10 (continued)', title: 'Dependents after the second',
+    columns: [{ label: 'Dependent name', width: 260 }, { label: 'Social Security Number', width: 140 }],
+    rows: ret.dependents.slice(2).map((x) => [x.name, x.ssn]),
+    note: 'Line 10 Total Family Virginia Adjusted Gross Income includes these dependents.',
+  }))
   return { forms, notIncluded }
 }

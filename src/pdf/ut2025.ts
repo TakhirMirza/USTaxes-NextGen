@@ -109,6 +109,25 @@ export function formUtTc40(ret: TaxReturnInput, res: TaxReturnResult, ut: UtResu
   return { id: 'uttc40', file: 'ut-tc40.pdf', title: 'Utah TC-40', values: v, pages }
 }
 
+/** More TC-40W pages for W-2s after the fourth (four per page). */
+export function formsUtTc40wMore(ret: TaxReturnInput, ut: UtResult): FormFill[] {
+  const out: FormFill[] = []
+  for (let k = 1; k * 4 < ut.statements.length; k++) {
+    const v: Record<string, FieldValue> = { '40W Your SSN': digits(ret.taxpayer.ssn), '40W Your last name': upper(ret.taxpayer.lastName) }
+    ut.statements.slice(k * 4, k * 4 + 4).forEach((x, i) => {
+      const w = WORDS[i]
+      v[`40W ${w} Employer ID Line 1`] = digits(x.ein)
+      v[`40W ${w} UT withhold ID Line 2`] = upper(x.stateId)
+      v[`40W ${w} Employer name and address Line 3-1`] = upper(x.employer)
+      v[`40W ${w} Employee SSN line 5`] = digits(x.ssn)
+      v[`40W ${w} line 6`] = String(x.wages)
+      v[`40W ${w} line 7`] = String(x.tax)
+    })
+    out.push({ id: `uttc40w-${k + 1}`, file: 'ut-tc40.pdf', title: `Utah TC-40W (page ${k + 1})`, values: v, pages: [7] })
+  }
+  return out
+}
+
 /** TC-40S, up to three states. */
 export function formUtTc40s(ret: TaxReturnInput, ut: UtResult): FormFill | null {
   if (!ut.tc40s.length) return null
@@ -128,7 +147,7 @@ export function buildUtPacket(ret: TaxReturnInput, res: TaxReturnResult, ut: UtR
   const notIncluded = [...ut.attach]
   if (ut.apportionable.some((x) => x.code === '18')) notIncluded.push('TC-40A Part 3: write your (and your spouse’s) birthdate next to the retirement credit (code 18)')
   if (ut.lines['33'] > 0 && ret.ut.withholding1099 > 0) notIncluded.push('TC-40W: add the 1099s with Utah withholding (W-2 rows are filled in)')
-  const forms = [formUtTc40(ret, res, ut, preparer)]
+  const forms = [formUtTc40(ret, res, ut, preparer), ...(ut.lines['33'] > 0 ? formsUtTc40wMore(ret, ut) : [])]
   const s = formUtTc40s(ret, ut)
   if (s) forms.push(s)
   return { forms, notIncluded }
