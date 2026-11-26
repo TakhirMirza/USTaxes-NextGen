@@ -7,6 +7,8 @@ import { computePennsylvania } from '../engine/pa2025.ts'
 import { buildPaPacket } from '../pdf/pa2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { MoneyField, Section, TextField, usd } from './fields'
+import { RowList } from './creditrows'
+import type { RowField } from './creditrows'
 import type { StepProps } from './steps'
 
 const LINES: [line: string, label: string][] = [
@@ -80,6 +82,19 @@ export function PennsylvaniaStep({ ret, set, result, preparer }: StepProps & { p
             <MoneyField key={o} label={`${names[o]}: 529 plan contributions`} hint="Up to $19,000 per beneficiary (Schedule O)" value={d.tuitionContributions[o]} onChange={(n) => put({ tuitionContributions: { ...d.tuitionContributions, [o]: n } })} />
           ))}
         </div>
+        {(d.tuitionContributions.taxpayer + d.tuitionContributions.spouse > 0 || d.beneficiaries529.length > 0) && (
+          <details className="explain" open={d.beneficiaries529.length > 0}>
+            <summary>{d.beneficiaries529.length ? `Beneficiaries listed (${d.beneficiaries529.length}) — the 529 amounts are their totals, up to $19,000 each` : 'List each 529 beneficiary (Schedule O Part I)'}</summary>
+            <RowList
+              rows={d.beneficiaries529}
+              max={30}
+              noun="beneficiary"
+              empty={() => ({ name: '', ssn: '', taxpayer: 0, spouse: 0 })}
+              fields={[['name', 'Beneficiary name', 'text'], ['ssn', 'Beneficiary SSN', 'text'], ['taxpayer', `${names.taxpayer}: contributions`, 'money'], ...(owners.includes('spouse') ? [['spouse', `${names.spouse}: contributions`, 'money'] as RowField<{ name: string; ssn: string; taxpayer: number; spouse: number }>] : [])]}
+              onChange={(rows) => put({ beneficiaries529: rows, tuitionContributions: { taxpayer: rows.reduce((s, b) => s + b.taxpayer, 0), spouse: rows.reduce((s, b) => s + b.spouse, 0) } })}
+            />
+          </details>
+        )}
         {L['10'] > 0 && <p className="why">Schedule O deductions: {usd(L['10'])} (529 {usd(pa.scheduleO.tuition.taxpayer + pa.scheduleO.tuition.spouse)}, HSA {usd(pa.scheduleO.hsa)}, student loan interest {usd(pa.scheduleO.studentLoan)}).</p>}
       </Section>
 

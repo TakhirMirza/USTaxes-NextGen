@@ -103,7 +103,10 @@ with state withholding other than W-2s can be listed one by one: Minnesota Sched
 (1099s and G2 forms) and Ohio Schedule of Withholding Parts D–F (W-2G, 1099-NEC, 1099-G).
 Minnesota Schedule M1M other additions and Ohio Schedule of Adjustments other deductions go on their own lines;
 Oregon OR-ASC and Iowa IA 148 continue on extra sheets; the Ohio joint filing credit comes with each spouse’s
-qualifying income statement. The blank forms live in `public/forms/2025` (official IRS PDFs).
+qualifying income statement.
+North Carolina Schedule S other additions and deductions go on their own lines, and page 1 has the veteran and
+federal extension answers; Nebraska page 1 has the foreign adversarial company answer; Pennsylvania Schedule O Part I
+lists each 529 beneficiary (limited to $19,000 per beneficiary per contributor). The blank forms live in `public/forms/2025` (official IRS PDFs).
 
 ## Tax years
 

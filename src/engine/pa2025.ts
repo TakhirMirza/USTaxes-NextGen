@@ -66,7 +66,12 @@ export function computePennsylvania(ret: TaxReturnInput, res: TaxReturnResult): 
   L['9'] = L['1c'] + L['2'] + L['3'] + pos(L['4']) + pos(L['5']) + pos(L['6']) + L['7'] + L['8']
 
   // ── Schedule O ──
-  const tuition: Record<Owner, number> = { taxpayer: r(pos(d.tuitionContributions.taxpayer)), spouse: joint ? r(pos(d.tuitionContributions.spouse)) : 0 }
+  // With beneficiaries listed, each contributor's deduction is limited to $19,000 per beneficiary (Schedule O Section I).
+  const listed = d.beneficiaries529.filter((b) => b.name.trim() || b.taxpayer || b.spouse)
+  const perBeneficiary = (o: Owner): number => listed.reduce((s, b) => s + Math.min(PA_529_LIMIT, r(pos(b[o]))), 0)
+  const tuition: Record<Owner, number> = listed.length
+    ? { taxpayer: perBeneficiary('taxpayer'), spouse: joint ? perBeneficiary('spouse') : 0 }
+    : { taxpayer: r(pos(d.tuitionContributions.taxpayer)), spouse: joint ? r(pos(d.tuitionContributions.spouse)) : 0 }
   const hsa = r((s1.adjustments.hsaDeduction ?? 0))
   const studentLoan = Math.min(PA_STUDENT_LOAN_MAX, r(pos(ret.adjustments.studentLoanInterest)))
   const deductions = tuition.taxpayer + tuition.spouse + hsa + studentLoan

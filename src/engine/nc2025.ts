@@ -11,6 +11,39 @@ import type { TaxReturnInput } from './model.ts'
 import type { TaxReturnResult } from './compute.ts'
 import { vaBonusAddition } from './va2025.ts'
 
+/** Schedule S lines an "other addition" or "other deduction" item can go on (label → line). Schedule S has no catch-all line. */
+export const NC_ADDITION_LINES: [label: string, line: string][] = [
+  ['Line 2: Deferred gains reinvested into an Opportunity Fund', '2'],
+  ['Line 4: IRC section 179 expense', '4'],
+  ['Line 5: S corporation built-in gains tax', '5'],
+  ['Line 6: Federal basis over state basis for property disposed of', '6'],
+  ['Line 7: Federal net operating loss deduction', '7'],
+  ['Line 8: State, local or foreign income tax deducted by an S corporation or partnership', '8'],
+  ['Line 9: 529 plan withdrawals not used for permissible purposes', '9'],
+  ['Line 10: Discharge of qualified principal residence indebtedness', '10'],
+  ['Line 11: Qualified education loan payments paid by employer', '11'],
+  ['Line 12: Expenses allocable to exempt or excluded income', '12'],
+  ['Line 13: Discharge of certain student loan debt', '13'],
+  ['Line 14: Taxed pass-through entity loss', '14']
+]
+export const NC_DEDUCTION_LINES: [label: string, line: string][] = [
+  ['Line 22: Bonus asset basis', '22'],
+  ['Line 25: Recognized IRC section 1400Z-2 gain', '25'],
+  ['Line 26: Gain from disposition of exempt N.C. obligations', '26'],
+  ['Line 27: Exempt income of a federally recognized Indian tribe member', '27'],
+  ['Line 28: State basis over federal basis for property disposed of', '28'],
+  ['Line 29: Business expenses reduced or not allowed due to federal credits', '29'],
+  ['Line 30: Personal Education Student Account deposits', '30'],
+  ['Line 31: State emergency response and disaster relief reserve', '31'],
+  ['Line 32: Certain economic incentive payments', '32'],
+  ['Line 33: Certain N.C. grant payments', '33'],
+  ['Line 34: Certain net operating loss carrybacks', '34'],
+  ['Line 35: Excess net operating loss carryforward', '35'],
+  ['Line 36: Excess business loss', '36'],
+  ['Line 37: Business interest limitation', '37'],
+  ['Line 39: N.C. net operating loss', '39']
+]
+
 export const NC_RATE = 0.0425
 export const NC_STANDARD_DEDUCTION = { single: 12750, mfs: 12750, mfj: 25500, qss: 25500, hoh: 19125 } as const
 export const NC_MORTGAGE_TAX_CAP = 20000
