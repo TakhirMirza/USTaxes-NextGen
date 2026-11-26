@@ -84,6 +84,7 @@ import { buildNyPacket } from './ny2025.ts'
 import { buildCaPacket } from './ca2025.ts'
 import { buildDcPacket } from './dc2025.ts'
 import { buildPacket2025 } from './irs2025.ts'
+import { buildPacket2026 } from './irs2026.ts'
 import type { FormFill, PreparerInfo } from './irs2025.ts'
 import { buildVirginiaPacket } from './va2025.ts'
 import { buildPdf } from './fill.ts'
@@ -113,7 +114,7 @@ async function save(forms: FormFill[], title: string, fileName: string): Promise
 const slug = (ret: TaxReturnInput): string => (ret.taxpayer.lastName || 'return').replace(/[^A-Za-z0-9]+/g, '-')
 
 export function downloadIrsForms(ret: TaxReturnInput, res: TaxReturnResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
-  return save(buildPacket2025(ret, res, preparer).forms, `${TAX_YEAR} Form 1040 — USTaxes NextGen`, `${TAX_YEAR}-Form-1040-${slug(ret)}.pdf`)
+  return save((TAX_YEAR === 2026 ? buildPacket2026 : buildPacket2025)(ret, res, preparer).forms, `${TAX_YEAR} Form 1040 — USTaxes NextGen`, `${TAX_YEAR}-Form-1040-${slug(ret)}.pdf`)
 }
 
 export function downloadVirginiaForms(ret: TaxReturnInput, res: TaxReturnResult, va: VaResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {

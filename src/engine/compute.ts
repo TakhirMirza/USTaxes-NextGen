@@ -91,6 +91,8 @@ export interface TaxReturnResult {
   form8889: { owner: Owner; coverage: string; months: number; line2: number; line3: number; line7: number; line8: number; line9: number; line12: number; line13: number; line14: number; line15: number; line16: number; line17b: number; excess: number }[]
   form6251: Form6251Result
   schedule3: { dependentCare: number; education: number; saversCredit: number; excessSocialSecurity: number }
+  /** From 2026: Schedule 3-A lines when the EIC, ACTC or refundable AOTC is claimed. */
+  schedule3A: { line1a: number; line1b: number; line2: number; line3: number; line4: number; line5: number; line6: number; line32b: number } | null
   form2441: {
     qualifyingPersons: number; expensesUsed: number; rate: number; credit: number
     line3: number; line4: number; line5: number
@@ -1128,7 +1130,21 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
     return pos(sum(forms.map((w) => w.socialSecurityWithheld)) - maxSsTax)
   })))
   const line31 = excessSs
-  const line32 = line27 + line28 + line29 + line31
+  const line32a = line27 + line28 + line29 + line31
+  // From 2026, Schedule 3-A (Federal Public Benefit): the refunded part of the EIC, ACTC and refundable AOTC is
+  // a federal public benefit. It is kept off the refund (line 32b) if you don't want it or don't qualify for it.
+  let sch3A: { line1a: number; line1b: number; line2: number; line3: number; line4: number; line5: number; line6: number; line32b: number } | null = null
+  if (R.TAX_YEAR >= 2026 && line27 + line28 + line29 > 0) {
+    const l2 = line32a - line31
+    const l5 = line24 - 0
+    const l6 = pos(l2 - l5)
+    const keep = l6 > 0 && (!input.publicBenefit.want || input.publicBenefit.qualified === false)
+    sch3A = { line1a: line32a, line1b: line31, line2: l2, line3: line24, line4: 0, line5: l5, line6: l6, line32b: keep ? l6 : 0 }
+    if (l6 > 0 && input.publicBenefit.qualified === null) issues.push({ level: 'warning', step: 'review', message: `Schedule 3-A: $${l6.toLocaleString()} of your refundable credits is refunded. Answer the federal public benefit question (citizen, national or qualified alien) under About you.` })
+    if (keep) issues.push({ level: 'warning', step: 'review', message: `Schedule 3-A: $${l6.toLocaleString()} of the refundable credits is not paid (Form 1040 line 32b).` })
+  }
+  const line32b = sch3A ? sch3A.line32b : 0
+  const line32 = line32a - line32b
   const line33 = line25d + line26 + line32
 
   // Form 2210 — Underpayment of estimated tax (Part I and the Penalty Worksheet)
@@ -1167,7 +1183,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
       '7a': line7, '8': line8, '9': line9, '10': line10, '11a': line11, '11b': line11, '12e': line12, '13a': line13a, '13b': line13b,
       '14': line14, '15': line15, '16': line16, '17': line17, '18': line18, '19': line19, '20': line20,
       '21': line21, '22': line22, '23': line23, '24': line24, '25a': line25a, '25b': line25b, '25c': line25c,
-      '25d': line25d, '26': line26, '27a': line27, '28': line28, '29': line29, '31': line31, '32': line32, '33': line33,
+      '25d': line25d, '26': line26, '27a': line27, '28': line28, '29': line29, '31': line31, '32a': line32a, '32b': line32b, '32': line32, '33': line33,
       '34': line34, '37': line37, '38': line38
     },
     schedule1: { businessIncome: r(businessIncome), otherGains, rentalIncome: scheduleE41, unemployment, hsaTaxable, otherIncome, additionalIncome, adjustments, totalAdjustments: line10 },
@@ -1182,6 +1198,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
     scheduleD: { shortTerm, longTerm, net: netCapital, allowedLoss: line7 < 0 ? -line7 : 0, carryoverShort, carryoverLong, preferentialGain },
     scheduleSE,
     schedule2: { amt: line17, selfEmploymentTax: seTax, additionalMedicareTax: addlMedicare, netInvestmentIncomeTax: niit, earlyDistributionTax, hsaExcessTax, hsaAdditionalTax, total: schedule2Total },
+    schedule3A: sch3A,
     schedule3: { dependentCare: careAllowed, education: educationAllowed, saversCredit: saverAllowed, excessSocialSecurity: line31 },
     form2441: {
       qualifyingPersons: carePersons, expensesUsed: careExpensesUsed, rate: careRate, credit: careCredit,

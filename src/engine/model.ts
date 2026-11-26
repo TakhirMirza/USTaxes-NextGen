@@ -2765,6 +2765,13 @@ export interface TaxReturnInput {
   contact: Contact
   /** Form 1040 digital-asset question. null = not answered. */
   digitalAssets: boolean | null
+  /** From 2026, Form 1040 page 1: U.S. citizen, U.S. national or alien lawfully authorized to work (each spouse). null = not answered. */
+  workAuthorized: { taxpayer: boolean | null; spouse: boolean | null }
+  /**
+   * From 2026, Schedule 3-A: whether you or your spouse is a U.S. citizen, U.S. national or qualified alien (line 8,
+   * null = not answered) and whether you want the refunded part of the EIC/ACTC/AOTC treated as a federal public benefit (line 7).
+   */
+  publicBenefit: { qualified: boolean | null; want: boolean }
   /** Schedule B Part III: foreign financial account or foreign trust. */
   foreignAccounts: boolean
   refundDeposit: RefundDeposit
@@ -3034,6 +3041,8 @@ export const emptyReturn = (): TaxReturnInput => ({
   canBeClaimedAsDependent: false,
   contact: { street: '', apt: '', city: '', state: '', zip: '', phone: '', email: '', livedInUsHalfYear: true },
   digitalAssets: null,
+  workAuthorized: { taxpayer: null, spouse: null },
+  publicBenefit: { qualified: null, want: true },
   foreignAccounts: false,
   refundDeposit: { routingNumber: '', accountNumber: '', accountType: 'checking' },
   usePaidPreparer: false,
@@ -3176,6 +3185,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     refundDeposit: { ...base.refundDeposit, ...(r.refundDeposit ?? {}) },
     designee: { ...base.designee, ...(r.designee ?? {}) },
     digitalAssets: typeof r.digitalAssets === 'boolean' ? r.digitalAssets : null,
+    workAuthorized: { taxpayer: typeof r.workAuthorized?.taxpayer === 'boolean' ? r.workAuthorized.taxpayer : null, spouse: typeof r.workAuthorized?.spouse === 'boolean' ? r.workAuthorized.spouse : null },
+    publicBenefit: { qualified: typeof r.publicBenefit?.qualified === 'boolean' ? r.publicBenefit.qualified : null, want: r.publicBenefit?.want !== false },
     w2s: arr(r.w2s, emptyW2),
     interest: arr(r.interest, empty1099Int),
     dividends: arr(r.dividends, empty1099Div),

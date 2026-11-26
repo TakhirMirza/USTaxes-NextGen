@@ -42,7 +42,7 @@ export interface FormPacket {
   notIncluded: string[]
 }
 
-const amt = (n: number | undefined, keepZero = false): string => {
+export const amt = (n: number | undefined, keepZero = false): string => {
   if (n === undefined || !Number.isFinite(n)) return ''
   const v = Math.round(n)
   if (v === 0 && !keepZero) return ''
@@ -50,16 +50,16 @@ const amt = (n: number | undefined, keepZero = false): string => {
 }
 /** For lines printed inside parentheses: the form expects a positive number. */
 const paren = (n: number): string => amt(Math.abs(n))
-const digits = (v: string): string => v.replace(/\D/g, '')
+export const digits = (v: string): string => v.replace(/\D/g, '')
 const ssnDashed = (v: string): string => {
   const d = digits(v)
   return d.length === 9 ? `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}` : d
 }
-const zip = (v: string): string => {
+export const zip = (v: string): string => {
   const d = digits(v)
   return d.length === 9 ? `${d.slice(0, 5)}-${d.slice(5)}` : d
 }
-const fullName = (p: Person): string => `${p.firstName} ${p.lastName}`.trim()
+export const fullName = (p: Person): string => `${p.firstName} ${p.lastName}`.trim()
 
 export function namesOnReturn(ret: TaxReturnInput): string {
   if (ret.filingStatus !== 'mfj') return fullName(ret.taxpayer)
@@ -69,14 +69,14 @@ export function namesOnReturn(ret: TaxReturnInput): string {
   return `${fullName(t)} & ${fullName(s)}`
 }
 
-function splitName(name: string): [string, string] {
+export function splitName(name: string): [string, string] {
   const parts = name.trim().split(/\s+/)
   if (parts.length <= 1) return [parts[0] ?? '', '']
   return [parts.slice(0, -1).join(' '), parts[parts.length - 1]]
 }
 
 /** Header fields (name + SSN) that most schedules share. */
-const header = (ret: TaxReturnInput, nameKey: string, ssnKey: string): Record<string, FieldValue> => ({
+export const header = (ret: TaxReturnInput, nameKey: string, ssnKey: string): Record<string, FieldValue> => ({
   [nameKey]: namesOnReturn(ret),
   [ssnKey]: ssnDashed(ret.taxpayer.ssn)
 })

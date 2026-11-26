@@ -6,6 +6,7 @@
  */
 import type { TaxReturnInput } from '../engine/model.ts'
 import type { FormFill } from './irs2025.ts'
+import { TAX_YEAR } from '../engine/rules.ts'
 
 type Draw = NonNullable<FormFill['draw']>[number]
 
@@ -55,7 +56,7 @@ export function statementForms(ret: TaxReturnInput, spec: StatementSpec): FormFi
   for (let p = 0; p < pages; p++) {
     const draw: Draw[] = []
     const t = (x: number, y: number, text: string, size = SIZE, right = false): void => { if (text) draw.push({ page: 0, x, y, text, size, right }) }
-    t(40, 750, `Statement attached to your 2025 return — ${spec.attachTo}`, 10)
+    t(40, 750, `Statement attached to your ${TAX_YEAR} return — ${spec.attachTo}`, 10)
     t(40, 732, name.trim().toUpperCase(), 10)
     t(572, 732, ssn, 10, true)
     t(40, 708, spec.title + (pages > 1 ? ` (page ${p + 1} of ${pages})` : ''), 12)

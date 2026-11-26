@@ -3,9 +3,10 @@ import type { StepProps } from './steps'
 import type { Issue } from '../engine/compute.ts'
 import { normalizeReturn, emptyReturn } from '../engine/model.ts'
 import { buildPacket2025 } from '../pdf/irs2025.ts'
+import { buildPacket2026 } from '../pdf/irs2026.ts'
 import { groups8949 } from '../engine/capital.ts'
 import { explainLine } from '../engine/explain.ts'
-import { FILING_STATUS_LABELS, FEDERAL_FORMS_READY, TAX_YEAR } from '../engine/rules.ts'
+import { FEDERAL_FORMS_DRAFT, FEDERAL_FORMS_READY, FILING_STATUS_LABELS, TAX_YEAR } from '../engine/rules.ts'
 import { Check, DigitsField, Section, TextField, usd } from './fields'
 import { STATUS_LABELS, preparerReady } from './store.ts'
 import type { PreparerProfile, ReturnStatus } from './store.ts'
@@ -83,7 +84,7 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
   const [message, setMessage] = useState('')
   const [pdfState, setPdfState] = useState<{ busy: boolean; note: string }>({ busy: false, note: '' })
   const usePrep = ret.usePaidPreparer && preparerReady(preparer)
-  const packet = buildPacket2025(ret, result, usePrep ? preparer : null)
+  const packet = (ret.taxYear === 2026 ? buildPacket2026 : buildPacket2025)(ret, result, usePrep ? preparer : null)
   const blocking = result.issues.filter((i) => i.level === 'error' || (i.level === 'warning' && i.step === 'about'))
   const makePdf = (): void => {
     setPdfState({ busy: true, note: '' })
@@ -160,10 +161,11 @@ export function ReviewStep({ ret, set, result, onGo, preparer, status, onStatus 
           </div>
         )}
         {blocking.length > 0 && <p className="note is-warn">Some details are missing ({blocking.length}). You can still download, but finish them under “Things to look at” before you file.</p>}
+        {FEDERAL_FORMS_DRAFT[ret.taxYear] && <p className="note is-warn"><strong>{TAX_YEAR} PDF uses IRS draft forms.</strong> The IRS marks them “DRAFT — DO NOT FILE”. Use them to check your numbers, and file on the final forms when they come out (usually December–January). Forms without a {TAX_YEAR} draft in the app are listed below and left out.</p>}
         {!FEDERAL_FORMS_READY[ret.taxYear] && <p className="note is-warn"><strong>The {TAX_YEAR} IRS forms are not in the app yet.</strong> The IRS publishes final forms in December–January; until then the numbers above are a preview using {TAX_YEAR} rates and law, and the PDF can’t be made.</p>}
         <div className="actions">
           <button type="button" className="button" onClick={makePdf} disabled={pdfState.busy || !FEDERAL_FORMS_READY[ret.taxYear]}>{pdfState.busy ? 'Preparing PDF…' : 'Download IRS forms (PDF)'}</button>
-          {FEDERAL_FORMS_READY[ret.taxYear] && <a className="button is-quiet" href="#/letter">Letter with filing instructions</a>}
+          {FEDERAL_FORMS_READY[ret.taxYear] && !FEDERAL_FORMS_DRAFT[ret.taxYear] && <a className="button is-quiet" href="#/letter">Letter with filing instructions</a>}
         </div>
         {pdfState.note && <p className="note" role="status">{pdfState.note}</p>}
         <p className="why">Before mailing: sign and date page 2 of Form 1040, attach Copy B of your W-2s (and any 1099-R with tax withheld), and send to the IRS address for your state listed in the Form 1040 instructions.</p>

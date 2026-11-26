@@ -93,6 +93,23 @@ export function AboutStep({ ret, set }: StepProps): ReactElement {
       )}
       {married && ret.filingStatus === 'mfs' && <p className="note">On a separate return, enter only your own income and deductions.</p>}
 
+      {ret.taxYear >= 2026 && (
+        <Section title="U.S. status" intro="New on the 2026 Form 1040 (IRS draft). The second question is on Schedule 3-A, which applies only if you claim the earned income credit, additional child tax credit or refundable American opportunity credit.">
+          <Choice legend="Are you a U.S. citizen, U.S. national, or an alien lawfully authorized to work in the U.S.?" value={ret.workAuthorized.taxpayer === null ? '' : ret.workAuthorized.taxpayer ? 'yes' : 'no'}
+            onChange={(v) => set((r) => ({ ...r, workAuthorized: { ...r.workAuthorized, taxpayer: v === 'yes' } }))}
+            options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />
+          {ret.filingStatus === 'mfj' && (
+            <Choice legend="Is your spouse?" value={ret.workAuthorized.spouse === null ? '' : ret.workAuthorized.spouse ? 'yes' : 'no'}
+              onChange={(v) => set((r) => ({ ...r, workAuthorized: { ...r.workAuthorized, spouse: v === 'yes' } }))}
+              options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />
+          )}
+          <Choice legend="Schedule 3-A: are you or your spouse a U.S. citizen, U.S. national, or qualified alien?" value={ret.publicBenefit.qualified === null ? '' : ret.publicBenefit.qualified ? 'yes' : 'no'}
+            onChange={(v) => set((r) => ({ ...r, publicBenefit: { ...r.publicBenefit, qualified: v === 'yes' } }))}
+            options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No', hint: 'The refunded part of those credits is not paid (Form 1040 line 32b)' }]} />
+          <div className="checks"><Check label="I don’t want to receive the refunded part of those credits (Schedule 3-A line 7: No)" checked={!ret.publicBenefit.want} onChange={(on) => set((r) => ({ ...r, publicBenefit: { ...r.publicBenefit, want: !on } }))} /></div>
+        </Section>
+      )}
+
       <Section title="Home address" intro="Printed on Form 1040. Your information stays in this browser.">
         <div className="grid">
           <div className="span-2"><TextField label="Street address" value={ret.contact.street} onChange={(v) => contact({ street: v })} /></div>

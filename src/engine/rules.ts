@@ -20,11 +20,13 @@ export const TAX_YEARS: readonly TaxYear[] = [2026, 2025]
 export const DEFAULT_TAX_YEAR: TaxYear = 2025
 /** What each year covers today. */
 export const TAX_YEAR_STATUS: Record<TaxYear, string> = {
-  2026: 'Filed in 2027. Federal tax figured with 2026 rates; IRS and state forms are added as they are published.',
+  2026: 'Filed in 2027. Federal tax figured with 2026 rates; the PDF uses the IRS 2026 draft forms (not for filing). State forms are added as they are published.',
   2025: 'Filed in 2026 (due April 15, 2026; October 15 with an extension). Federal and state forms.'
 }
 /** Years whose federal IRS PDFs are in public/forms/<year>. */
-export const FEDERAL_FORMS_READY: Record<TaxYear, boolean> = { 2026: false, 2025: true }
+/** 2026: the IRS early-release drafts ("DO NOT FILE") for the main forms; the rest are added as the IRS posts them. */
+export const FEDERAL_FORMS_READY: Record<TaxYear, boolean> = { 2026: true, 2025: true }
+export const FEDERAL_FORMS_DRAFT: Record<TaxYear, boolean> = { 2026: true, 2025: false }
 /** Years whose full state returns (the *2025.ts state engines) apply. */
 export const STATE_RETURNS_READY: Record<TaxYear, boolean> = { 2026: false, 2025: true }
 export const isTaxYear = (y: unknown): y is TaxYear => typeof y === 'number' && y in BY_YEAR
