@@ -49,9 +49,9 @@ export const amt = (n: number | undefined, keepZero = false): string => {
   return v < 0 ? `-${Math.abs(v).toLocaleString('en-US')}` : v.toLocaleString('en-US')
 }
 /** For lines printed inside parentheses: the form expects a positive number. */
-const paren = (n: number): string => amt(Math.abs(n))
+export const paren = (n: number): string => amt(Math.abs(n))
 export const digits = (v: string): string => v.replace(/\D/g, '')
-const ssnDashed = (v: string): string => {
+export const ssnDashed = (v: string): string => {
   const d = digits(v)
   return d.length === 9 ? `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}` : d
 }

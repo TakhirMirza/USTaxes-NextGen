@@ -17,9 +17,178 @@ import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.t
 
 /** 2026 drafts in public/forms/2026 (file → form name). */
 export const FORMS_2026: Record<string, string> = {
-  'f1040.pdf': 'Form 1040', 'f1040s1.pdf': 'Schedule 1', 'f1040s3.pdf': 'Schedule 3', 'f1040s3a.pdf': 'Schedule 3-A',
-  'f1040sa.pdf': 'Schedule A', 'f1040sb.pdf': 'Schedule B', 'f1040sd.pdf': 'Schedule D', 'f1040s8.pdf': 'Schedule 8812',
-  'f8949.pdf': 'Form 8949', 'f8863.pdf': 'Form 8863', 'statement.pdf': 'Supporting statement'
+  'f1040.pdf': 'Form 1040', 'f1040s1.pdf': 'Schedule 1', 'f1040s1a.pdf': 'Schedule 1-A', 'f1040s2.pdf': 'Schedule 2', 'f1040s3.pdf': 'Schedule 3',
+  'f1040s3a.pdf': 'Schedule 3-A', 'f1040sa.pdf': 'Schedule A', 'f1040sb.pdf': 'Schedule B', 'f1040sc.pdf': 'Schedule C', 'f1040sd.pdf': 'Schedule D',
+  'f1040se.pdf': 'Schedule E', 'f1040sei.pdf': 'Schedule EIC', 'f1040sse.pdf': 'Schedule SE', 'f1040s8.pdf': 'Schedule 8812',
+  'f2441.pdf': 'Form 2441', 'f6251.pdf': 'Form 6251', 'f8582.pdf': 'Form 8582', 'f8829.pdf': 'Form 8829', 'f8863.pdf': 'Form 8863',
+  'f8880.pdf': 'Form 8880', 'f8889.pdf': 'Form 8889', 'f8949.pdf': 'Form 8949', 'f8995.pdf': 'Form 8995', 'statement.pdf': 'Supporting statement'
+}
+
+/** Form 8582 (2026): same layout; field numbers lost their leading zero (f1_01 → f1_1). */
+const UNPAD_2026 = (fill: FormFill): FormFill => {
+  const v: Record<string, FieldValue> = {}
+  for (const [k, x] of Object.entries(fill.values)) v[k.replace(/^(f\d_)0(\d\[0\])$/, '$1$2')] = x
+  return { ...fill, title: `${fill.title} (2026 draft)`, values: v }
+}
+
+/** Schedule C (2026): Part I/II fields renumbered (+3; 16b vehicle loan and the split address added). */
+const SCHEDULE_C_2026 = (fill: FormFill): FormFill => {
+  const m: Record<string, string> = {
+    'f1_6[0]': 'BoxD[0].f1_6[0]', 'f1_8[0]': 'f1_9[0]',
+    'f1_10[0]': 'f1_13[0]', 'f1_11[0]': 'f1_14[0]', 'f1_12[0]': 'f1_15[0]', 'f1_13[0]': 'f1_16[0]', 'f1_14[0]': 'f1_17[0]', 'f1_15[0]': 'f1_18[0]', 'f1_16[0]': 'f1_19[0]',
+    'f1_17[0]': 'f1_20[0]', 'f1_18[0]': 'f1_21[0]', 'f1_20[0]': 'f1_23[0]', 'f1_22[0]': 'f1_25[0]', 'f1_24[0]': 'f1_27[0]',
+    'f1_27[0]': 'f1_32[0]', 'f1_28[0]': 'f1_33[0]', 'f1_31[0]': 'f1_36[0]', 'f1_33[0]': 'f1_38[0]', 'f1_34[0]': 'f1_39[0]',
+    'f1_35[0]': 'f1_40[0]', 'f1_36[0]': 'f1_41[0]', 'f1_37[0]': 'f1_42[0]', 'f1_39[0]': 'f1_45[0]', 'f1_41[0]': 'f1_46[0]', 'f1_42[0]': 'f1_47[0]',
+    'Line30_ReadOrder[0].f1_43[0]': 'Line30_ReadOrder[0].f1_48[0]', 'Line30_ReadOrder[0].f1_44[0]': 'Line30_ReadOrder[0].f1_49[0]',
+    'f1_45[0]': 'f1_50[0]', 'f1_46[0]': 'f1_51[0]'
+  }
+  // Rename in one pass from the 2025 keys so a renamed key is never renamed again.
+  const v: Record<string, FieldValue> = {}
+  for (const [k, x] of Object.entries(fill.values)) v[m[k] ?? k] = x
+  return { ...fill, title: `${fill.title} (2026 draft)`, values: v }
+}
+
+/** Schedule E (2026): split address, lines 13/13a/13b, totals and Part II renumbered, line 41 on page 3. */
+const E25: Record<number, number> = { 3: 16, 4: 19, 5: 22, 6: 25, 7: 28, 8: 31, 9: 34, 10: 37, 11: 40, 12: 43, 13: 46, 14: 49, 15: 52, 16: 55, 17: 58, 18: 61, 19: 65, 20: 68, 21: 71, 22: 74 }
+const E26: Record<number, number> = { 3: 28, 4: 31, 5: 34, 6: 37, 7: 40, 8: 43, 9: 46, 10: 49, 11: 52, 12: 55, 13: 64, 14: 67, 15: 70, 16: 73, 17: 76, 18: 79, 19: 83, 20: 86, 21: 89, 22: 92 }
+const SCHEDULE_E_2026 = (fill: FormFill, ret: TaxReturnInput): FormFill => {
+  const m: Record<string, string> = { 'f1_64[0]': 'f1_82[0]' }
+  for (let c = 0; c < 3; c++) {
+    m[`f1_${3 + c}[0]`] = `f1_${3 + 5 * c}[0]`
+    m[`f1_${6 + c}[0]`] = `f1_${18 + c}[0]`
+    m[`f1_${9 + 2 * c}[0]`] = `f1_${21 + 2 * c}[0]`
+    m[`f1_${10 + 2 * c}[0]`] = `f1_${22 + 2 * c}[0]`
+    for (const [line, b] of Object.entries(E25)) m[`f1_${b + c}[0]`] = `f1_${E26[Number(line)] + c}[0]`
+  }
+  ;['f1_77[0]', 'f1_78[0]', 'f1_79[0]', 'f1_80[0]', 'f1_81[0]'].forEach((k, i) => { m[k] = `f1_${95 + i}[0]` })
+  m['f1_82[0]'] = 'f2_3[0]'; m['f1_83[0]'] = 'f2_4[0]'; m['f1_84[0]'] = 'f2_5[0]'
+  for (let i = 0; i < 4; i++) {
+    for (let j = 0; j < 3; j++) m[`f2_${3 + 3 * i + j}[0]`] = `f2_${6 + 3 * i + j}[0]`
+    for (let j = 0; j < 5; j++) m[`f2_${15 + 5 * i + j}[0]`] = `f2_${18 + 5 * i + j}[0]`
+  }
+  Object.assign(m, { 'f2_36[0]': 'f2_39[0]', 'f2_39[0]': 'f2_42[0]', 'f2_40[0]': 'f2_43[0]', 'f2_42[0]': 'f2_45[0]', 'f2_43[0]': 'f2_46[0]', 'f2_45[0]': 'f2_48[0]', 'f2_46[0]': 'f2_49[0]', 'f2_47[0]': 'f2_50[0]', 'f2_78[0]': 'f3_4[0]' })
+  // Table keys for Part II rows overlap the totals' 2025 numbers, so map by the 2025 key only once.
+  const v: Record<string, FieldValue> = {}
+  for (const [k, x] of Object.entries(fill.values)) v[m[k] ?? k] = x
+  // Line 13 (interest) total row = 13b "Other" (no vehicle loans on rentals here).
+  for (let c = 0; c < 3; c++) if (v[`f1_${64 + c}[0]`]) v[`f1_${58 + c}[0]`] = v[`f1_${64 + c}[0]`]
+  let pages = fill.pages
+  if ('f3_4[0]' in v && v['f3_4[0]'] !== '') {
+    v['f3_1[0]'] = v['f2_1[0]'] ?? ''
+    v['f3_2[0]'] = v['f2_2[0]'] ?? ''
+    pages = [...(pages ?? [0, 1]), 2]
+  }
+  void ret
+  return { ...fill, title: `${fill.title} (2026 draft)`, values: v, pages }
+}
+
+/** Schedule 2 (2026): restructured into Sections A–C; Additional Medicare tax split into SE (line 11) and wages (17b);
+ *  Form 5329 early-distribution tax on line 5, excess-contribution tax on line 18. */
+function schedule2(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
+  const s = res.schedule2
+  const owners = ret.filingStatus === 'mfj' ? ['taxpayer', 'spouse'] : ['taxpayer']
+  const wages = ret.w2s.filter((w) => owners.includes(w.owner)).reduce((t, w) => t + (w.medicareWages || w.wages), 0)
+  const se = res.scheduleSE.reduce((t, x) => t + x.netEarnings, 0)
+  const thr = { single: 200000, mfj: 250000, mfs: 125000, hoh: 200000, qss: 200000 }[ret.filingStatus]
+  const seAddl = Math.min(s.additionalMedicareTax, Math.round(Math.max(0, se - Math.max(0, thr - wages)) * 0.009))
+  const wageAddl = s.additionalMedicareTax - seAddl
+  const line5 = s.earlyDistributionTax
+  const line14 = s.hsaAdditionalTax
+  const line15 = s.selfEmploymentTax + line5 + s.netInvestmentIncomeTax + seAddl + line14
+  return {
+    id: 's2', file: 'f1040s2.pdf', title: 'Schedule 2 (2026 draft)',
+    values: {
+      ...header(ret, 'f1_01[0]', 'f1_02[0]'),
+      'f1_12[0]': amt(s.amt), 'f1_13[0]': amt(s.amt),
+      'f1_15[0]': amt(s.selfEmploymentTax),
+      'f1_16[0]': amt(line5), 'c1_6[0]': line5 > 0 && !res.form5329.some((f) => f.required),
+      'f1_17[0]': amt(s.netInvestmentIncomeTax),
+      'f1_22[0]': amt(seAddl),
+      'f1_27[0]': amt(line14), 'f2_06[0]': amt(line14),
+      'f2_07[0]': amt(line15),
+      'f2_12[0]': amt(wageAddl), 'f2_14[0]': amt(wageAddl), 'f2_15[0]': amt(s.hsaExcessTax), 'f2_19[0]': amt(wageAddl + s.hsaExcessTax),
+      'f2_20[0]': amt(s.total, true)
+    }
+  }
+}
+
+/** Form 8995 (2026): one-digit field names; line 16 minimum deduction and 17 the deduction; carryforwards on 18–19. */
+const FORM_8995_2026 = (fill: FormFill, res: TaxReturnResult): FormFill => {
+  const v: Record<string, FieldValue> = {}
+  for (const [k, x] of Object.entries(fill.values)) {
+    const m = /^f1_0(\d)\[0\]$/.exec(k)
+    if (m) v[`f1_${m[1]}[0]`] = x
+    else if (k === 'f1_32[0]') v['f1_34[0]'] = x
+    else if (k === 'f1_33[0]') v['f1_35[0]'] = x
+    else v[k] = x
+  }
+  const ded = res.f1040['13a']
+  if (ded > res.qbi.deduction) v['f1_32[0]'] = amt(ded)
+  v['f1_33[0]'] = amt(ded, true)
+  return { ...fill, title: 'Form 8995 (2026 draft)', values: v }
+}
+
+/** Form 2441 (2026): Part I is now a table with one column per provider. */
+const FORM_2441_2026 = (fill: FormFill, ret: TaxReturnInput): FormFill => {
+  const v: Record<string, FieldValue> = {}
+  const drop = new Set(['f1_3[0]', 'f1_4[0]', 'f1_5[0]', 'f1_6[0]', 'f1_7[0]', 'f1_8[0]', 'f1_9[0]', 'f1_10[0]', 'f1_11[0]', 'f1_12[0]', 'f1_13[0]', 'f1_14[0]',
+    'ColD[0].c1_4[0]', 'ColD[0].c1_4[1]', 'ColD[0].c1_5[0]', 'ColD[0].c1_5[1]', 'ColD[0].c1_6[0]', 'ColD[0].c1_6[1]'])
+  for (const [k, x] of Object.entries(fill.values)) if (!drop.has(k)) v[k] = x
+  ret.dependentCare.providers.slice(0, 3).forEach((p, i) => {
+    v[`Provider${i + 1}[0].f1_${3 + i}[0]`] = p.name
+    v[`Provider${i + 1}[0].f1_${6 + i}[0]`] = p.address
+    v[`f1_${9 + i}[0]`] = digits(p.tin).length === 9 && !p.tin.includes('-') ? digits(p.tin) : p.tin
+    v[`Provider${i + 1}[0].c1_${4 + i}[0]`] = p.householdEmployee
+    v[`Provider${i + 1}[0].c1_${4 + i}[1]`] = !p.householdEmployee
+    v[`f1_${12 + i}[0]`] = amt(p.amountPaid)
+  })
+  return { ...fill, title: 'Form 2441 (2026 draft)', values: v }
+}
+
+/** Schedule 1-A (2026): one row per employer/vehicle; the app enters the totals on the first row. */
+function schedule1A(ret: TaxReturnInput, res: TaxReturnResult): FormFill {
+  const s = res.schedule1A
+  const fs = ret.filingStatus
+  const joint = fs === 'mfj'
+  const tipStart = { single: 150000, mfj: 300000, mfs: 0, hoh: 150000, qss: 150000 }[fs]
+  const carStart = { single: 100000, mfj: 200000, mfs: 100000, hoh: 100000, qss: 100000 }[fs]
+  const seniorStart = { single: 75000, mfj: 150000, mfs: 0, hoh: 75000, qss: 75000 }[fs]
+  const v: Record<string, FieldValue> = { ...header(ret, 'f1_01[0]', 'f1_02[0]'), 'f1_03[0]': amt(res.f1040['11b'], true), 'f1_09[0]': amt(s.magi, true), 'f3_23[0]': amt(s.total, true) }
+  const pages = [0]
+  if (s.tipsCapped > 0) {
+    const t = ret.schedule1A.qualifiedTips
+    Object.assign(v, {
+      'f1_12[0]': amt(t), 'f1_14[0]': amt(t), 'f1_35[0]': amt(t), 'f1_102[0]': amt(t), 'f1_103[0]': amt(s.tipsCapped),
+      'f1_104[0]': amt(s.magi, true), 'f1_105[0]': amt(tipStart, true), 'f1_106[0]': amt(s.tipOtExcess, true),
+      'f1_107[0]': String(Math.floor(s.tipOtExcess / 1000)), 'f1_108[0]': amt(s.tipOtReduction, true), 'f1_109[0]': amt(s.tips, true)
+    })
+  }
+  if (s.overtimeCapped > 0) {
+    const o = ret.schedule1A.qualifiedOvertime
+    Object.assign(v, {
+      'f2_03[0]': amt(o), 'f2_16[0]': amt(o), 'f2_38[0]': amt(o), 'f2_39[0]': amt(s.overtimeCapped),
+      'f2_40[0]': amt(s.magi, true), 'f2_41[0]': amt(tipStart, true), 'f2_42[0]': amt(s.tipOtExcess, true),
+      'f2_43[0]': String(Math.floor(s.tipOtExcess / 1000)), 'f2_44[0]': amt(s.tipOtReduction, true), 'f2_45[0]': amt(s.overtime, true)
+    })
+    pages.push(1)
+  }
+  if (s.carCapped > 0) {
+    const c = ret.schedule1A.carLoanInterest
+    Object.assign(v, {
+      'f3_01[0]': ret.schedule1A.vehicleVin, 'f3_03[0]': amt(c), 'c3_1[0]': true, 'c3_2[0]': true,
+      'f3_07[0]': amt(c), 'f3_08[0]': amt(s.carCapped), 'f3_09[0]': amt(s.magi, true), 'f3_10[0]': amt(carStart, true),
+      'f3_11[0]': amt(s.carExcess, true), 'f3_12[0]': String(Math.ceil(s.carExcess / 1000)), 'f3_13[0]': amt(s.carReduction, true), 'f3_14[0]': amt(s.carLoanInterest, true)
+    })
+  }
+  if (s.senior > 0) {
+    Object.assign(v, {
+      'f3_15[0]': amt(s.magi, true), 'f3_16[0]': amt(seniorStart, true), 'f3_17[0]': amt(s.seniorExcess, true),
+      'f3_18[0]': amt(s.seniorExcess * 0.06, true), 'f3_19[0]': amt(s.seniorEach, true), 'f3_20[0]': amt(s.seniorTaxpayer),
+      'f3_21[0]': joint ? amt(s.seniorSpouse) : '', 'f3_22[0]': amt(s.senior, true)
+    })
+  }
+  pages.push(2)
+  return { id: 's1a', file: 'f1040s1a.pdf', title: 'Schedule 1-A (2026 draft)', values: v, pages }
 }
 
 const P1 = 'topmostSubform[0].Page1[0].'
@@ -251,6 +420,13 @@ export function buildPacket2026(ret: TaxReturnInput, res: TaxReturnResult, prepa
     } else if (fill.id === 'sa') forms.push(scheduleA(ret, res))
     else if (fill.id === 's3') forms.push(SCHEDULE_3_2026(fill))
     else if (fill.id === 's1') forms.push(SCHEDULE_1_2026(fill))
+    else if (fill.id === 's1a') forms.push(schedule1A(ret, res))
+    else if (fill.id === 's2') forms.push(schedule2(ret, res))
+    else if (fill.file === 'f1040sc.pdf') forms.push(SCHEDULE_C_2026(fill))
+    else if (fill.file === 'f1040se.pdf') forms.push(SCHEDULE_E_2026(fill, ret))
+    else if (fill.id === '8995') forms.push(FORM_8995_2026(fill, res))
+    else if (fill.id === '2441') forms.push(FORM_2441_2026(fill, ret))
+    else if (fill.id === '8582') forms.push(UNPAD_2026(fill))
     else if (FORMS_2026[fill.file]) forms.push({ ...fill, title: fill.id.startsWith('st-') ? fill.title : `${fill.title} (2026 draft)` })
     else missing.add(fill.title.replace(/\s*\(.*$/, ''))
   }
