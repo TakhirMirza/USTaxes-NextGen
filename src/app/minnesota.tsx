@@ -3,11 +3,11 @@
  */
 import { ReactElement, useMemo, useState } from 'react'
 import type { MnInput, Owner, Person } from '../engine/model.ts'
-import { computeMinnesota } from '../engine/mn2025.ts'
+import { MN_M1M_ADDITION_LINES, computeMinnesota } from '../engine/mn2025.ts'
 import { buildMnPacket } from '../pdf/mn2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { Check, MoneyField, Section, TextField, usd } from './fields'
-import { WithholdingItems } from './creditrows'
+import { ExplainItems, WithholdingItems } from './creditrows'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -103,6 +103,7 @@ export function MinnesotaStep({ ret, set, result, preparer }: StepProps & { prep
           <MoneyField label="Other subtractions" hint="For example Schedule M1R (65 or older/disabled) or M1QPEN" value={d.otherSubtractions} onChange={(n) => put({ otherSubtractions: n })} />
           <MoneyField label="Interest on other states’ municipal bonds" hint="Taxed in Minnesota" value={d.otherStateBondInterest} onChange={(n) => put({ otherStateBondInterest: n })} />
           <MoneyField label="Other additions" value={d.otherAdditions} onChange={(n) => put({ otherAdditions: n })} />
+          <ExplainItems ret={ret} set={set} k="mn.otherAdditions" setTotal={(r, n) => ({ ...r, mn: { ...r.mn, otherAdditions: n } })} lines={MN_M1M_ADDITION_LINES.map(([l]) => l)} summary="List each item with its Schedule M1M line" />
         </div>
         <table className="lines"><tbody>
           {M1M.filter(([k]) => k === '40' || (M[k] ?? 0) !== 0).map(([k, label]) => (

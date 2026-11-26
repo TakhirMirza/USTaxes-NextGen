@@ -3,10 +3,11 @@
  */
 import { ReactElement, useMemo, useState } from 'react'
 import type { NcInput, Owner, Person } from '../engine/model.ts'
-import { computeNorthCarolina } from '../engine/nc2025.ts'
+import { NC_ADDITION_LINES, NC_DEDUCTION_LINES, computeNorthCarolina } from '../engine/nc2025.ts'
 import { buildNcPacket } from '../pdf/nc2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { Check, MoneyField, Section, TextField, usd } from './fields'
+import { ExplainItems } from './creditrows'
 import type { StepProps } from './steps'
 
 const LINES: [line: string, label: string][] = [
@@ -74,7 +75,9 @@ export function NorthCarolinaStep({ ret, set, result, preparer }: StepProps & { 
           <MoneyField label="Bailey retirement benefits" hint="NC, local or federal government, vested by Aug 12, 1989" value={d.baileyRetirement} onChange={(n) => put({ baileyRetirement: n })} />
           <MoneyField label="Uniformed services retirement" hint="Schedule S line 21" value={d.militaryRetirement} onChange={(n) => put({ militaryRetirement: n })} />
           <MoneyField label="Other additions (Schedule S)" value={d.otherAdditions} onChange={(n) => put({ otherAdditions: n })} />
+          <ExplainItems ret={ret} set={set} k="nc.otherAdditions" setTotal={(r, n) => ({ ...r, nc: { ...r.nc, otherAdditions: n } })} lines={NC_ADDITION_LINES.map(([l]) => l)} summary="List each item with its Schedule S line" />
           <MoneyField label="Other deductions (Schedule S)" value={d.otherDeductions} onChange={(n) => put({ otherDeductions: n })} />
+          <ExplainItems ret={ret} set={set} k="nc.otherDeductions" setTotal={(r, n) => ({ ...r, nc: { ...r.nc, otherDeductions: n } })} lines={NC_DEDUCTION_LINES.map(([l]) => l)} summary="List each item with its Schedule S line" />
         </div>
         <p className="why">{nc.deduction.method === 'itemized' ? `Using NC itemized deductions: ${usd(nc.deduction.itemized)} (mortgage interest and property tax capped at $20,000).` : `Using the NC standard deduction: ${usd(nc.deduction.standard)}.`}</p>
       </Section>
@@ -89,6 +92,11 @@ export function NorthCarolinaStep({ ret, set, result, preparer }: StepProps & { 
         {d.useTax === 0 && (
           <div className="checks"><Check label="I certify that no consumer use tax is due" checked={d.noUseTaxDue} onChange={(on) => put({ noUseTaxDue: on })} /></div>
         )}
+        <div className="checks">
+          <Check label="I am a veteran (page 1, Veteran Information)" checked={d.veteran.taxpayer} onChange={(on) => put({ veteran: { ...d.veteran, taxpayer: on } })} />
+          {ret.filingStatus === 'mfj' && <Check label="My spouse is a veteran" checked={d.veteran.spouse} onChange={(on) => put({ veteran: { ...d.veteran, spouse: on } })} />}
+          <Check label="I filed a federal extension (Form 4868)" checked={d.federalExtension} onChange={(on) => put({ federalExtension: on })} />
+        </div>
       </Section>
 
       {nc.issues.length > 0 && (

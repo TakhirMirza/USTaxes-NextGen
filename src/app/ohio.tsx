@@ -3,11 +3,11 @@
  */
 import { ReactElement, useMemo, useState } from 'react'
 import type { OhInput, Owner, Person } from '../engine/model.ts'
-import { computeOhio, OH_DONATION_LETTERS } from '../engine/oh2025.ts'
+import { OH_DEDUCTION_LINES, OH_DONATION_LETTERS, computeOhio } from '../engine/oh2025.ts'
 import { buildOhPacket } from '../pdf/oh2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { MoneyField, Section, TextField, usd } from './fields'
-import { WithholdingItems } from './creditrows'
+import { ExplainItems, WithholdingItems } from './creditrows'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -93,6 +93,7 @@ export function OhioStep({ ret, set, result, preparer }: StepProps & { preparer:
           <MoneyField label="168(k) and 179 depreciation add-back" value={d.depreciationAddback} onChange={(n) => put({ depreciationAddback: n })} />
           <MoneyField label="Other additions" value={d.otherAdditions} onChange={(n) => put({ otherAdditions: n })} />
           <MoneyField label="Other deductions" value={d.otherDeductions} onChange={(n) => put({ otherDeductions: n })} />
+          <ExplainItems ret={ret} set={set} k="oh.otherDeductions" setTotal={(r, n) => ({ ...r, oh: { ...r.oh, otherDeductions: n } })} lines={OH_DEDUCTION_LINES.map(([l]) => l)} summary="List each item with its Schedule of Adjustments line" />
           <MoneyField label="Other business income or loss" hint="Schedule of Business Income line 9" allowNegative value={d.otherBusinessIncome} onChange={(n) => put({ otherBusinessIncome: n })} />
         </div>
         {oh.business['10'] !== 0 && <p className="why">Business income {usd(oh.business['10'])}: {usd(oh.business['13'])} deducted, {usd(oh.business['15'])} taxed at 3%.</p>}

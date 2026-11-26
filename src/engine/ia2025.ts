@@ -268,7 +268,6 @@ export function computeIowa(ret: TaxReturnInput, res: TaxReturnResult): IaResult
   if (oos) attach.push(`The income tax return you filed with ${o.state.trim() || 'the other state'} (and any pass-through entity statement) for IA 130`)
   if (part1.length + part2.length > 0) attach.push('The certificate or schedule required for each IA 148 tax credit (see the IA 148 instructions)')
   if (oos && !o.state.trim()) issues.push('IA 130: enter the name of the other state or jurisdiction.')
-  if (part1.length > 10 || part2.length > 7) issues.push('IA 148 has room for 10 nonrefundable and 7 refundable credits; use a second IA 148 for the rest.')
   if (vA.some((x) => x.G > 0) || vB.some((x) => x.G > 0)) issues.push(`IA 148 Part V reduces credits beyond your tax by 15% (30% for research activities, code 58): ${[...vA, ...vB].filter((x) => x.G > 0).map((x) => `code ${x.code} −${x.G.toLocaleString('en-US')}`).join(', ')}. The reduction expires.`)
   if (d.credits148.some((c) => ['46', '47', '62', '97', '67'].includes(code0(c)) && !c.reduce)) issues.push('IA 148 Part V: credit codes 46, 47, 62, 97 and 67 are reduced only for the agreements or awards listed on the form (2023 and later); mark the credit if yours is one of them.')
   if (part1.some((c) => c.H > 0)) issues.push('Some IA 148 nonrefundable credit is more than your tax; the rest (column H) may carry forward if the credit allows it.')

@@ -37,11 +37,22 @@ import { computeKentucky } from '../engine/ky2025.ts'
 import { buildKyPacket } from './ky2025.ts'
 import { IL_SUBTRACTION_LINES_P2, IL_SUBTRACTION_LINES_P3, computeIllinois } from '../engine/il2025.ts'
 import { IL_GIFT, buildIlPacket } from './il2025.ts'
+import { computeIowa } from '../engine/ia2025.ts'
+import { buildIaPacket } from './ia2025.ts'
+import { OH_DEDUCTION_LINES } from '../engine/oh2025.ts'
+import { MN_M1M_ADDITION_LINES } from '../engine/mn2025.ts'
+import { emptyIaCredit148 } from '../engine/model.ts'
+import { NC_DEDUCTION_LINES, computeNorthCarolina } from '../engine/nc2025.ts'
+import { buildNcPacket } from './nc2025.ts'
+import { computeNebraska } from '../engine/ne2025.ts'
+import { buildNePacket } from './ne2025.ts'
+import { computePennsylvania } from '../engine/pa2025.ts'
+import { buildPaPacket } from './pa2025.ts'
 import { buildPdf, fillForm } from './fill.ts'
 import type { FillProblem } from './fill.ts'
 import type { FormFill } from './irs2025.ts'
 
-type St = 'al' | 'ga' | 'mn' | 'oh' | 'ms' | 'ut' | 'ct' | 'or' | 'co' | 'mo' | 'az' | 'ca' | 'ky' | 'il'
+type St = 'al' | 'ga' | 'mn' | 'oh' | 'ms' | 'ut' | 'ct' | 'or' | 'co' | 'mo' | 'az' | 'ca' | 'ky' | 'il' | 'ia' | 'nc' | 'ne' | 'pa'
 
 /** A single filer with `n` W-2s, each with state withholding. */
 const many = (st: St, n: number, patch: Partial<TaxReturnInput> = {}): TaxReturnInput => {
@@ -315,4 +326,97 @@ test('IL: college savings accounts on line 13a and other subtractions on their l
   assert.equal(v[mil], '400')
   assert.ok(!p.notIncluded.some((x) => x.includes('line 13a') || x.includes('not on a line')))
   await fillsClean(p.forms, 'ILM')
+})
+
+test('OR: a second Schedule OR-ASC sheet for codes that do not fit', async () => {
+  const ret = many('or', 1)
+  const res = computeReturn(ret)
+  const or = computeOregon(ret, res)
+  or.asc.subtractions = ['301', '302', '303', '304'].map((code) => ({ code, amount: 10 }))
+  const p = buildOrPacket(ret, res, or)
+  const second = p.forms.find((f) => f.id === 'orasc-2')!
+  assert.equal(second.values['or-asc-p1-6'], '304')
+  assert.equal(second.values['or-asc-p1-12'], undefined)
+  assert.ok(!p.notIncluded.some((x) => x.includes('second Schedule OR-ASC')))
+  await fillsClean(p.forms, 'ORASC')
+})
+
+test('IA: a second IA 148 for nonrefundable credits after the tenth', async () => {
+  const base = many('ia', 1, { w2s: [{ ...emptyW2('taxpayer'), employer: 'Big Co', wages: 90000, socialSecurityWages: 90000, medicareWages: 90000 }] })
+  const credits148 = Array.from({ length: 11 }, (_, i) => ({ ...emptyIaCredit148(), code: String(10 + i), current: 10 }))
+  const ret = { ...base, ia: { ...base.ia, credits148 } }
+  const res = computeReturn(ret)
+  const ia = computeIowa(ret, res)
+  const p = buildIaPacket(ret, res, ia)
+  const second = p.forms.find((f) => f.id === 'ia148-2')!
+  assert.equal(second.values['1A. Tax Credit Code'], '20')
+  assert.equal(second.values['Part I Total (sum of column F)'], undefined)
+  assert.ok(!ia.issues.some((x) => x.includes('second IA 148')))
+  await fillsClean(p.forms, 'IA148')
+})
+
+test('OH: joint filing credit statement and other deductions on their lines', async () => {
+  const base = many('oh', 1)
+  const sp = { ...emptyW2('spouse'), employer: 'Spouse Co', wages: 60000, socialSecurityWages: 60000, medicareWages: 60000 }
+  const l20 = OH_DEDUCTION_LINES.find(([l]) => l.startsWith('Line 20'))![0]
+  const ret = { ...base, filingStatus: 'mfj' as const, spouse: { ...base.spouse, firstName: 'Sam', lastName: 'Doe', ssn: '987654321', age: 40 }, w2s: [...base.w2s, sp],
+    oh: { ...base.oh, otherDeductions: 500 }, explain: { 'oh.otherDeductions': [{ line: l20, description: 'STABLE', amount: 300 }] } }
+  const res = computeReturn(ret)
+  const oh = computeOhio(ret, res)
+  assert.equal(oh.adjustments['20'], 300)
+  assert.equal(oh.adjustments['31'], 200)
+  const p = buildOhPacket(ret, res, oh)
+  assert.ok(oh.credits['12'] > 0)
+  assert.ok(p.forms.some((f) => f.id.startsWith('st-oh-jfc')))
+  assert.ok(!p.notIncluded.some((x) => x.includes('each spouse')))
+  await fillsClean(p.forms, 'OHJ')
+})
+
+test('MN: other additions on their Schedule M1M lines', async () => {
+  const base = many('mn', 1)
+  const l6 = MN_M1M_ADDITION_LINES.find(([l]) => l.startsWith('Line 6'))![0]
+  const ret = { ...base, mn: { ...base.mn, otherAdditions: 800 }, explain: { 'mn.otherAdditions': [{ line: l6, description: '529 for K-12', amount: 500 }] } }
+  const res = computeReturn(ret)
+  const p = buildMnPacket(ret, res, computeMinnesota(ret, res))
+  const v = p.forms.find((f) => f.id === 'mnm1m')!.values
+  assert.equal(v['M1Mline6'], '500')
+  assert.equal(v['M1Mline3'], '300')
+  await fillsClean(p.forms, 'MNM')
+})
+
+test('NC: other deductions on their Schedule S lines; veteran and extension answers', async () => {
+  const base = many('nc', 1)
+  const l30 = NC_DEDUCTION_LINES.find(([l]) => l.startsWith('Line 30'))![0]
+  const ret = { ...base, nc: { ...base.nc, otherDeductions: 400, veteran: { taxpayer: true, spouse: false }, federalExtension: false }, explain: { 'nc.otherDeductions': [{ line: l30, description: 'PESA', amount: 400 }] } }
+  const res = computeReturn(ret)
+  const p = buildNcPacket(ret, res, computeNorthCarolina(ret, res))
+  assert.equal(p.forms.find((f) => f.id === 'ncd400s')!.values['y_d400schswf_li30_good'], '400')
+  const v = p.forms.find((f) => f.id === 'ncd400')!.values
+  assert.equal(v['y_d400wf_v1yes'], true)
+  assert.equal(v['y_d400wf_fedex1no'], true)
+  assert.ok(!p.notIncluded.some((x) => x.includes('Schedule S') || x.includes('veteran')))
+  await fillsClean(p.forms, 'NCS')
+})
+
+test('NE: the foreign adversarial company question is answered', async () => {
+  const ret = many('ne', 1)
+  const res = computeReturn(ret)
+  const p = buildNePacket(ret, res, computeNebraska(ret, res))
+  assert.ok(Object.values(p.forms[0].values).includes('no'))
+  assert.ok(!p.notIncluded.some((x) => x.includes('adversarial')))
+  await fillsClean(p.forms, 'NEQ')
+})
+
+test('PA: 529 beneficiaries on Schedule O Part I, each capped at $19,000', async () => {
+  const base = many('pa', 1, { w2s: [{ ...emptyW2('taxpayer'), employer: 'Big Co', wages: 120000, socialSecurityWages: 120000, medicareWages: 120000 }] })
+  const ret = { ...base, pa: { ...base.pa, tuitionContributions: { taxpayer: 25000, spouse: 0 }, beneficiaries529: [{ name: 'Ann Doe', ssn: '111223333', taxpayer: 20000, spouse: 0 }, { name: 'Ben Doe', ssn: '111223334', taxpayer: 5000, spouse: 0 }] } }
+  const res = computeReturn(ret)
+  const pa = computePennsylvania(ret, res)
+  assert.equal(pa.scheduleO.tuition.taxpayer, 24000)
+  const p = buildPaPacket(ret, res, pa)
+  const v = p.forms.find((f) => f.id === 'pa40o')!.values
+  assert.equal(v['PART I - NAME (2)'], 'Ben Doe')
+  assert.equal(v['CONTRIBUTIONS BY TAXPAYER  (1)'], '19000')
+  assert.ok(!p.notIncluded.some((x) => x.includes('beneficiary')))
+  await fillsClean(p.forms, 'PAO')
 })

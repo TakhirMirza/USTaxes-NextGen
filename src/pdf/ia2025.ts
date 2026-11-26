@@ -185,10 +185,12 @@ export function formIa130(ret: TaxReturnInput, ia: IaResult): FormFill | null {
 }
 
 /** IA 148 pages 1–2: Part I, Part II, Part III and Part IV. */
-export function formIa148(ret: TaxReturnInput, ia: IaResult): FormFill | null {
-  const p1 = ia.part1.slice(0, 10)
-  const p2 = ia.part2.slice(0, 7)
-  if (p1.length + p2.length === 0) return null
+export function formIa148(ret: TaxReturnInput, ia: IaResult, copy = 0): FormFill | null {
+  const first = copy === 0
+  const p1 = ia.part1.slice(copy * 10, copy * 10 + 10)
+  const p2 = ia.part2.slice(copy * 7, copy * 7 + 7)
+  const pv = (rows: readonly unknown[]): number => rows.slice(copy * 10, copy * 10 + 10).length
+  if (p1.length + p2.length + pv(ia.partV.A) + pv(ia.partV.B) === 0 && !(first && ia.part1.length + ia.part2.length)) return null
   const v: Record<string, FieldValue> = { 'Name(s)': fullName(ret), 'SSN or FEIN': digits(ret.taxpayer.ssn) }
   p1.forEach((c, i) => {
     const n = i + 1
@@ -201,17 +203,18 @@ export function formIa148(ret: TaxReturnInput, ia: IaResult): FormFill | null {
     dollars(v, `${n}G. Expired amount`, c.G)
     dollars(v, `${n}H. Amount carried forward to future years (subtract columns F and G from column E)`, c.H, true)
   })
-  const t1 = p1.reduce((s, c) => s + c.F, 0)
-  const t2 = p2.reduce((s, c) => s + c.K, 0)
-  if (p1.length) dollars(v, 'Part I Total (sum of column F)', t1, true)
+  // Totals cover every sheet and go on the first one only.
+  const t1 = ia.part1.reduce((s, c) => s + c.F, 0)
+  const t2 = ia.part2.reduce((s, c) => s + c.K, 0)
+  if (first && ia.part1.length) dollars(v, 'Part I Total (sum of column F)', t1, true)
   p2.forEach((c, i) => {
     const n = i + 11
     v[`${n}I. Tax Credit Code`] = c.code.trim()
     if (c.certificate.trim()) v[`${n}J. Certificate Number`] = c.certificate.trim()
     dollars(v, `${n}K. Current year amount`, c.K, true)
   })
-  if (p2.length) dollars(v, 'Part II Total (sum of column K)', t2, true)
-  dollars(v, 'Part III Total (sum of Part I and Part II)', t1 + t2, true)
+  if (first && ia.part2.length) dollars(v, 'Part II Total (sum of column K)', t2, true)
+  if (first) dollars(v, 'Part III Total (sum of Part I and Part II)', t1 + t2, true)
   const pt = [...p1.map((c, i) => ({ c, line: i + 1 })), ...p2.map((c, i) => ({ c, line: i + 11 }))].filter((x) => x.c.entityName.trim()).slice(0, 6)
   pt.forEach(({ c, line }, i) => {
     const n = i + 1
@@ -221,12 +224,13 @@ export function formIa148(ret: TaxReturnInput, ia: IaResult): FormFill | null {
     if (c.disregardedFein.trim()) v[`${n}O. Disregarded entity’s FEIN`] = digits(c.disregardedFein)
   })
   // Part V: Section A (page 3) and Section B (page 4).
-  const pages = [0, 1]
-  for (const [rows, sfx, liab, label, page] of [[ia.partV.A, 'V', ia.partV.liabilityA, 'Tax liability after specified nonrefundable tax credits', 2], [ia.partV.B, 'B', ia.partV.liabilityB, 'Tax liability after refundable tax credits', 3]] as const) {
+  const pages = p1.length + p2.length || first ? [0, 1] : []
+  for (const [all, sfx, liab, label, page] of [[ia.partV.A, 'V', ia.partV.liabilityA, 'Tax liability after specified nonrefundable tax credits', 2], [ia.partV.B, 'B', ia.partV.liabilityB, 'Tax liability after refundable tax credits', 3]] as const) {
+    const rows = all.slice(copy * 10, copy * 10 + 10)
     if (!rows.length) continue
     pages.push(page)
     v[label] = String(Math.round(liab))
-    rows.slice(0, 10).forEach((x, i) => {
+    rows.forEach((x, i) => {
       const n = i + 1
       v[`${n}A. Tax Credit Code ${sfx}`] = x.code
       if (x.certificate) v[`${n}B. Certificate Number ${sfx}`] = x.certificate
@@ -238,7 +242,7 @@ export function formIa148(ret: TaxReturnInput, ia: IaResult): FormFill | null {
       dollars(v, `${n}H. Allowable tax credit claim (D minus G) ${sfx}`, x.H, true, `${n}H. Allowable tax credit claim (D minus G) (cents) ${sfx}`)
     })
   }
-  return { id: 'ia148', file: 'ia-148.pdf', title: 'Iowa IA 148', values: v, pages }
+  return { id: first ? 'ia148' : `ia148-${copy + 1}`, file: 'ia-148.pdf', title: first ? 'Iowa IA 148' : `Iowa IA 148 (sheet ${copy + 1})`, values: v, pages }
 }
 
 const FUEL_FIELDS: Record<IaFuelRow, [invoice: string, hwy: string, claimed: string, paid: string, sales: string, credit: string]> = {
@@ -277,6 +281,7 @@ export function buildIaPacket(ret: TaxReturnInput, res: TaxReturnResult, ia: IaR
   const notIncluded = [...ia.attach]
   if (ret.filingStatus === 'mfs' && ret.ia.spouseNet === null) notIncluded.push('Step 2: your spouse’s net income (enter it in the Iowa section)')
   const forms = [formIa1040(ret, res, ia, preparer), formIa130(ret, ia), formIa148(ret, ia), formIa4136(ret, ia)]
+  for (let k = 1; k * 10 < ia.part1.length || k * 7 < ia.part2.length || k * 10 < ia.partV.A.length || k * 10 < ia.partV.B.length; k++) forms.splice(2 + k, 0, formIa148(ret, ia, k))
   forms.push(...dependentsStatement(ret, 4, 'IA 1040, Dependents (continued)', 'st-ia-deps'))
   const d = ret.ia
   const parts: [string, number, string, string][] = [

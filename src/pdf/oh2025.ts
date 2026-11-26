@@ -9,7 +9,7 @@ import type { TaxReturnResult } from '../engine/compute.ts'
 import type { OhResult } from '../engine/oh2025.ts'
 import { OH_DONATION_LETTERS } from '../engine/oh2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
-import { dependentsStatement } from './statement.ts'
+import { dependentsStatement, money0, statementForms } from './statement.ts'
 
 const FILE = 'oh1040.pdf'
 const digits = (v: string): string => v.replace(/\D/g, '')
@@ -192,7 +192,21 @@ export function buildOhPacket(ret: TaxReturnInput, res: TaxReturnResult, oh: OhR
     const n = Math.max(1, Math.ceil(w / 7), Math.ceil(r / 4), Math.ceil(o.w2g.length / 2), o.nec.length, o.g.length)
     for (let k = 0; k < n; k++) forms.push(scheduleOhWithholding(ret, oh, k))
   }
-  const notIncluded = oh.attach.filter((a) => !/^Ohio Schedule of|^Schedule of Ohio Withholding/.test(a))
+  const notIncluded = oh.attach.filter((a) => !/^Ohio Schedule of|^Schedule of Ohio Withholding|^A statement listing each spouse/.test(a))
+  if (oh.credits['12'] > 0) {
+    const rows: string[][] = []
+    for (const [o, who] of [['taxpayer', ret.taxpayer], ['spouse', ret.spouse]] as const) {
+      const w2 = ret.w2s.filter((w) => w.owner === o && w.wages > 0)
+      w2.forEach((w) => rows.push([`${who.firstName} ${who.lastName}`.trim(), `Wages (W-2), ${w.employer || 'employer'}`, money0(Math.round(w.wages))]))
+      rows.push([`${who.firstName} ${who.lastName}`.trim(), 'Total qualifying income', money0(Math.round(w2.reduce((s, w) => s + w.wages, 0)))])
+    }
+    forms.push(...statementForms(ret, {
+      id: 'st-oh-jfc', attachTo: 'Ohio Schedule of Credits, line 12 (joint filing credit)', title: 'Each spouse’s qualifying income',
+      columns: [{ label: 'Spouse', width: 160 }, { label: 'Source', width: 240 }, { label: 'Amount', width: 110, right: true }],
+      rows,
+      note: 'Each spouse has at least $500 of qualifying income included in Ohio adjusted gross income.'
+    }))
+  }
   if (oh.lines['14'] > 0) notIncluded.push('State copies of your W-2s and 1099s with Ohio withholding (place them after the last page)')
   if (ret.oh.otherWithholding > 0 && !(ret.withholdingLists?.['oh.otherWithholding'] ?? []).some((x) => x.tax > 0)) notIncluded.push('Schedule of Ohio Withholding Parts D–F: list your W-2G, 1099-NEC and 1099-G statements (their tax is in the Part A total)')
   forms.push(...dependentsStatement(ret, 15, 'Schedule of Dependents (continued)', 'st-oh-deps'))

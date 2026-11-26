@@ -55,7 +55,7 @@ test('Georgia Form 500, Schedule 1 and IND-CR: every key matches exactly one fie
 
 test('Ohio IT 1040 and schedules: every key matches exactly one field', async () => {
   const { packet } = run('OH')
-  assert.deepEqual(packet.forms.map((x) => x.id), ['oh1040', 'ohadj', 'ohbus', 'ohcred', 'ohdep', 'ohwh'])
+  assert.deepEqual(packet.forms.map((x) => x.id).filter((x) => !x.startsWith('st-')), ['oh1040', 'ohadj', 'ohbus', 'ohcred', 'ohdep', 'ohwh'])
   const problems: FillProblem[] = []
   for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
   assert.deepEqual(problems, [])

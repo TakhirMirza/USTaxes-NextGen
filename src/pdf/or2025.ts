@@ -143,23 +143,28 @@ export function formOr40(ret: TaxReturnInput, res: TaxReturnResult, or: OrResult
   return { id: 'or40', file: 'or40.pdf', title: 'Oregon Form OR-40', values: v, pages: [0, 1, 2, 3, 4, 5, 6] }
 }
 
-export function formOrAsc(ret: TaxReturnInput, or: OrResult): FormFill {
+export function formOrAsc(ret: TaxReturnInput, or: OrResult, copy = 0): FormFill {
   const v: Record<string, FieldValue> = {}
   const a = 'or-asc-'
+  const first = copy === 0
+  const add = or.asc.additions.slice(copy * 2, copy * 2 + 2)
+  const sub = or.asc.subtractions.slice(copy * 3, copy * 3 + 3)
+  const std = or.asc.standard.slice(copy * 5, copy * 5 + 5)
+  const ref = or.asc.refundable.slice(copy * 3, copy * 3 + 3)
   v[`${a}p1-1a`] = upper(ret.taxpayer.lastName)
   v[`${a}p1-1b`] = ssn(ret.taxpayer.ssn)
-  or.asc.additions.slice(0, 2).forEach((x, i) => { v[`${a}p1-${1 + i * 2}`] = x.code; v[`${a}p1-${2 + i * 2}`] = String(x.amount) })
-  if (or.asc.additions.length) v[`${a}p1-5`] = String(or.lines['8'])
-  or.asc.subtractions.slice(0, 3).forEach((x, i) => { v[`${a}p1-${6 + i * 2}`] = x.code; v[`${a}p1-${7 + i * 2}`] = String(x.amount) })
-  if (or.asc.subtractions.length) v[`${a}p1-12`] = String(or.lines['13'])
-  or.asc.standard.slice(0, 5).forEach((x, i) => { v[`${a}p2-${1 + i * 3}`] = x.code; v[`${a}p2-${2 + i * 3}`] = x.state; v[`${a}p2-${3 + i * 3}`] = String(x.amount) })
-  if (or.asc.standard.length) v[`${a}p2-16`] = String(or.lines['27'])
-  or.asc.refundable.slice(0, 3).forEach((x, i) => { v[`${a}p3-${1 + i * 2}`] = x.code; v[`${a}p3-${2 + i * 2}`] = String(x.amount) })
-  if (or.asc.refundable.length) v[`${a}p3-7`] = String(or.lines['39'])
+  add.forEach((x, i) => { v[`${a}p1-${1 + i * 2}`] = x.code; v[`${a}p1-${2 + i * 2}`] = String(x.amount) })
+  if (first && or.asc.additions.length) v[`${a}p1-5`] = String(or.lines['8'])
+  sub.forEach((x, i) => { v[`${a}p1-${6 + i * 2}`] = x.code; v[`${a}p1-${7 + i * 2}`] = String(x.amount) })
+  if (first && or.asc.subtractions.length) v[`${a}p1-12`] = String(or.lines['13'])
+  std.forEach((x, i) => { v[`${a}p2-${1 + i * 3}`] = x.code; v[`${a}p2-${2 + i * 3}`] = x.state; v[`${a}p2-${3 + i * 3}`] = String(x.amount) })
+  if (first && or.asc.standard.length) v[`${a}p2-16`] = String(or.lines['27'])
+  ref.forEach((x, i) => { v[`${a}p3-${1 + i * 2}`] = x.code; v[`${a}p3-${2 + i * 2}`] = String(x.amount) })
+  if (first && or.asc.refundable.length) v[`${a}p3-7`] = String(or.lines['39'])
   const pages = [0]
-  if (or.asc.standard.length) pages.push(1)
-  if (or.asc.refundable.length) pages.push(2)
-  return { id: 'orasc', file: 'or-asc.pdf', title: 'Oregon Schedule OR-ASC', values: v, pages }
+  if (std.length) pages.push(1)
+  if (ref.length) pages.push(2)
+  return { id: first ? 'orasc' : `orasc-${copy + 1}`, file: 'or-asc.pdf', title: first ? 'Oregon Schedule OR-ASC' : `Oregon Schedule OR-ASC (sheet ${copy + 1})`, values: v, pages }
 }
 
 export function formOrA(ret: TaxReturnInput, or: OrResult): FormFill {
@@ -272,13 +277,15 @@ export function formsOrAddDep(ret: TaxReturnInput): FormFill[] {
 export function buildOrPacket(ret: TaxReturnInput, res: TaxReturnResult, or: OrResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formOr40(ret, res, or, preparer)]
   const asc = or.asc
-  if (asc.additions.length || asc.subtractions.length || asc.standard.length || asc.refundable.length) forms.push(formOrAsc(ret, or))
+  if (asc.additions.length || asc.subtractions.length || asc.standard.length || asc.refundable.length) {
+    const n = Math.max(1, Math.ceil(asc.additions.length / 2), Math.ceil(asc.subtractions.length / 3), Math.ceil(asc.standard.length / 5), Math.ceil(asc.refundable.length / 3))
+    for (let k = 0; k < n; k++) forms.push(formOrAsc(ret, or, k))
+  }
   if (or.itemize) forms.push(formOrA(ret, or))
   const wf = formOrWfhdc(ret, res, or)
   if (wf && (or.wfhdc?.['29'] ?? 0) > 0) forms.push(wf)
   const notIncluded = [...or.attach]
   if (ret.dependents.some((x) => !(ret.or.dependentBirthDates[x.id] ?? '').replace(/\D/g, ''))) notIncluded.push('Page 2: dependents’ dates of birth that were not entered')
-  if (asc.subtractions.length > 3 || asc.standard.length > 5 || asc.refundable.length > 3 || asc.additions.length > 2) notIncluded.push('A second Schedule OR-ASC for the codes that did not fit')
   if (or.lines['38'] > 0) notIncluded.push('Keep the Oregon Kids Credit worksheet (OR-40 instructions) with your records')
   if (or.retirementCredit && or.retirementCredit['credit'] > 0) notIncluded.push('Keep the retirement income credit worksheet (Publication OR-17) with your records')
   if (or.wfhdc && or.wfhdc['29'] > 0) notIncluded.push('Schedule OR-WFHDC: check each provider’s SSN or FEIN, phone and relationship code, and the expenses split between children')

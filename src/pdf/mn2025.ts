@@ -6,6 +6,7 @@
 import type { TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { MnResult } from '../engine/mn2025.ts'
+import { MN_M1M_ADDITION_LINES } from '../engine/mn2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
@@ -63,7 +64,16 @@ export function formM1(ret: TaxReturnInput, res: TaxReturnResult, mn: MnResult, 
 export function formM1M(ret: TaxReturnInput, mn: MnResult): FormFill {
   const M = mn.m
   const values = header(ret, 'YourFirstNameandInitial', 'LastName', 'YourSocialSecurityNumber')
-  for (const k of ['1', '3', '10', '11', '12', '13', '14', '15', '20', '25', '40']) values[`M1Mline${k}`] = amt(M[k], k === '10' || k === '40')
+  for (const k of ['1', '10', '11', '12', '13', '14', '15', '20', '25', '40']) values[`M1Mline${k}`] = amt(M[k], k === '10' || k === '40')
+  // Other additions: each listed item on its own line; the rest on line 3.
+  const by = new Map<string, number>()
+  for (const x of ret.explain?.['mn.otherAdditions'] ?? []) {
+    const f = MN_M1M_ADDITION_LINES.find(([label]) => label === x.line)?.[1] ?? 'M1Mline3'
+    by.set(f, (by.get(f) ?? 0) + Math.round(x.amount))
+  }
+  const listed = [...by.values()].reduce((s, n) => s + n, 0)
+  if (listed !== M['3']) by.set('M1Mline3', (by.get('M1Mline3') ?? 0) + M['3'] - listed)
+  for (const [f, n] of by) if (n > 0) values[f] = amt(n)
   if (M['13'] > 0) values.nameandgradeofeachchild = 'SEE STATEMENT'
   return { id: 'mnm1m', file: 'mnm1m.pdf', title: 'Minnesota Schedule M1M', values, pages: [0, 1] }
 }
@@ -151,7 +161,7 @@ export function buildMnPacket(ret: TaxReturnInput, res: TaxReturnResult, mn: MnR
   const shown = ['Schedule M1M', 'Schedule M1REF', 'Schedule M1CWFC', 'Schedule M1DQC', 'Schedule M1W']
   const notIncluded = mn.attach.filter((a) => !shown.some((s) => a.startsWith(s)))
   if (mn.m['38'] > 0) notIncluded.push('Schedule M1M: put your other subtractions on their own lines (lines 16–39); only the line 40 total includes them')
-  if (mn.m['3'] > 0) notIncluded.push('Schedule M1M: other additions are on line 3; move them to their own line if another fits')
+  if (mn.m['3'] > 0 && !(ret.explain?.['mn.otherAdditions'] ?? []).length) notIncluded.push('Schedule M1M: other additions are on line 3; list them in the Minnesota section to put each on its own line')
   if (mn.m['13'] > 0) notIncluded.push('Schedule M1M line 13: the name and grade of each child')
   if (ret.mn.refundableCredits > 0) notIncluded.push('Schedule M1REF: put your other refundable credits on their own lines (only the line 14 total includes them)')
   if (mn.dqc.length > 0) notIncluded.push('Schedule M1DQC: write each dependent’s date of birth (row 4)')

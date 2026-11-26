@@ -11,6 +11,16 @@
 import type { Owner, TaxReturnInput } from './model.ts'
 import type { TaxReturnResult } from './compute.ts'
 
+/** Schedule M1M addition lines an "other addition" item can go on (label → PDF field). The last is the catch-all line 3. */
+export const MN_M1M_ADDITION_LINES: [label: string, field: string][] = [
+  ['Line 2: tax-exempt mutual fund dividends from other states’ bonds', 'M1Mline2'],
+  ['Line 4: capital gain portion of a lump-sum distribution (Form 4972)', 'M1Mline4'],
+  ['Line 5: Schedule M1HOME addition', 'M1Mline5'],
+  ['Line 6: education savings account distributions for K-12 tuition', 'M1Mline6'],
+  ['Line 9: Schedule M1NC addition', 'M1Mline9'],
+  ['Line 3: expenses attributable to income not taxed by Minnesota', 'M1Mline3']
+]
+
 export type MnStatus = 'single' | 'mfj' | 'mfs' | 'hoh' | 'qss'
 const r = (n: number): number => Math.round(n)
 const pos = (n: number): number => Math.max(0, n)

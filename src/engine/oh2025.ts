@@ -12,6 +12,36 @@ import type { Owner, TaxReturnInput } from './model.ts'
 import type { TaxReturnResult } from './compute.ts'
 import { k1Activity } from './k1.ts'
 
+/** Schedule of Adjustments deduction lines an "other deduction" item can go on (label → line). The last, line 31, is the catch-all. */
+export const OH_DEDUCTION_LINES: [label: string, line: string][] = [
+  ['Line 14: Employee compensation earned in Ohio by residents of neighboring states', '14'],
+  ['Line 17: Certain railroad benefits', '17'],
+  ['Line 18: Interest from Ohio public obligations; gains from their sale', '18'],
+  ['Line 19: Contributions to an Ohio county individual development account', '19'],
+  ['Line 20: Contributions to a STABLE account (Ohio ABLE plan)', '20'],
+  ['Line 21: Income earned in Ohio for disaster recovery work', '21'],
+  ['Line 22: Payments related to the East Palestine train derailment', '22'],
+  ['Line 23: Ohio adoption grant program payments', '23'],
+  ['Line 24: Contributions to and interest on an Ohio Homebuyer Plus account', '24'],
+  ['Line 25: Contributions to a pregnancy resource center', '25'],
+  ['Line 27: Prior-year 168(k) and 179 depreciation add-backs', '27'],
+  ['Line 28: Refunds of federal itemized deductions in Schedule 1 line 8z', '28'],
+  ['Line 29: Repayment of income reported in a prior year', '29'],
+  ['Line 30: Wage expense not deducted (work opportunity credit)', '30'],
+  ['Line 32: Military pay received while stationed outside Ohio', '32'],
+  ['Line 33: Compensation of nonresident military servicemembers and spouses', '33'],
+  ['Line 35: Military injury relief fund grants; veteran’s disability severance', '35'],
+  ['Line 36: Certain Ohio National Guard reimbursements and benefits', '36'],
+  ['Line 38: Pell/Ohio College Opportunity grants used for room and board', '38'],
+  ['Line 39: Ohio educator expenses above the federal deduction', '39'],
+  ['Line 40: Rural loan repayments by the Ohio Department of Higher Education', '40'],
+  ['Line 41: Grant payments for adopted students (Ohio Department of Higher Education)', '41'],
+  ['Line 43: Survivor benefits', '43'],
+  ['Line 45: Medical savings account contributions/earnings', '45'],
+  ['Line 46: Qualified organ donor expenses', '46'],
+  ['Line 31: Federal conformity deductions', '31']
+]
+
 export const OH_BRACKETS = { zeroTo: 26050, middleTo: 100000, middleBase: 342, middleRate: 0.0275, topBase: 2394.32, topRate: 0.03125 }
 export const OH_BUSINESS = { deduction: 250000, deductionMfs: 125000, rate: 0.03 }
 export const OH_DONATION_LETTERS = ['a', 'b', 'c', 'd', 'e', 'f'] as const
@@ -107,12 +137,24 @@ export function computeOhio(ret: TaxReturnInput, res: TaxReturnResult): OhResult
   A['15'] = r(pos(d.stateRefundInFagi))
   A['16'] = r(f['6b'])
   A['26'] = r(pos(d.usObligationInterest))
-  A['31'] = r(pos(d.otherDeductions))
+  // Other deductions: each listed item on its own line; the rest (or all, when none are listed) on line 31.
+  {
+    const total = r(pos(d.otherDeductions))
+    let listed = 0
+    for (const x of ret.explain?.['oh.otherDeductions'] ?? []) {
+      const line = OH_DEDUCTION_LINES.find(([label]) => label === x.line)?.[1]
+      const amt = Math.min(r(pos(x.amount)), total - listed)
+      if (!line || line === '31' || amt <= 0) continue
+      A[line] = (A[line] ?? 0) + amt
+      listed += amt
+    }
+    A['31'] = total - listed
+  }
   A['34'] = r(pos(d.uniformedRetirement))
   A['37'] = r(pos(d.contributions529))
   A['42'] = r(pos(d.disabilitySurvivor))
   A['44'] = r(pos(d.medicalExpenses))
-  A['47'] = A['13'] + A['15'] + A['16'] + A['26'] + A['31'] + A['34'] + A['37'] + A['42'] + A['44']
+  A['47'] = Object.entries(A).filter(([k]) => Number(k) >= 13 && Number(k) <= 46).reduce((s, [, v]) => s + v, 0)
   L['2a'] = A['12']
   L['2b'] = A['47']
   L['3'] = L['1'] + L['2a'] - L['2b']
@@ -202,7 +244,7 @@ export function computeOhio(ret: TaxReturnInput, res: TaxReturnResult): OhResult
   if (C['39'] > 0) attach.push('Ohio IT RC (resident credit) and a copy of the other state’s return')
   if (C['12'] > 0) attach.push('A statement listing each spouse’s qualifying income (joint filing credit)')
   if (A['11'] > 0) issues.push('Other additions are shown on Schedule of Adjustments line 11; move them to the line that matches each item.')
-  if (A['31'] > 0) issues.push('Other deductions are shown on Schedule of Adjustments line 31; move them to the line that matches each item.')
+  if (A['31'] > 0) issues.push('Other deductions not listed by line are shown on Schedule of Adjustments line 31 (federal conformity deductions); list each item with its line in the Ohio section.')
   if (other > 0) issues.push('Enter your other nonrefundable credits on the matching lines 14–35 of the Schedule of Credits.')
   if (C['2'] > 0) issues.push(`Retirement income credit: ${C['2']} for ${retirementIncome.toLocaleString('en-US')} of retirement income (Table 2). It only applies to income received on account of retirement.`)
   if (A['16'] > 0) issues.push('Ohio does not tax Social Security: your taxable benefits are deducted on Schedule of Adjustments line 16.')

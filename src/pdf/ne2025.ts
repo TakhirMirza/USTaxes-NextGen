@@ -49,6 +49,7 @@ export function formNe1040n(ret: TaxReturnInput, res: TaxReturnResult, ne: NeRes
     v['Spouses Social Security Number2'] = s.slice(5, 9)
   }
   if (ret.ne.schoolDistrictCode.trim()) v['High School District Code'] = digits(ret.ne.schoolDistrictCode).slice(0, 7)
+  v['Is the taxpayer claiming any benefits or tax credits from a business that is, or is owned in whole or part, by a foreign adversarial company? (See instructions)'] = ret.ne.foreignAdversarial ? 'yes' : 'no'
   if (ret.digitalAssets !== null) v['During 2025, did you receive, sell, exchange, gift, or otherwise dispose of a digital asset or a financial interest in a digital asset?'] = ret.digitalAssets ? '#0' : '#1'
   v[{ single: 'Single', mfj: 'Married, filing jointly', mfs: 'Married, filing separately', hoh: 'Head of Household', qss: 'Qualifying surviving spouse (QSS)' }[fs]] = '#0'
   if (fs === 'mfs') {
@@ -191,5 +192,5 @@ export function buildNePacket(ret: TaxReturnInput, res: TaxReturnResult, ne: NeR
   if (ne.lines['12'] + ne.lines['13'] > 0) forms.push(formNeScheduleI(ret, ne))
   for (const x of [formNeScheduleII(ret, ne), formNe2441n(ret, res, ne)]) if (x) forms.push(x)
   forms.push(...dependentsStatement(ret, 3, 'Form 1040N, Dependents (continued)', 'st-ne-deps'))
-  return { forms, notIncluded: [...ne.attach.filter((x) => x !== 'Nebraska Schedule I'), 'Page 1: answer the foreign adversarial company question (Yes / No)'] }
+  return { forms, notIncluded: ne.attach.filter((x) => x !== 'Nebraska Schedule I') }
 }

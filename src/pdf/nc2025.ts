@@ -6,6 +6,7 @@
 import type { Person, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { NcResult } from '../engine/nc2025.ts'
+import { NC_ADDITION_LINES, NC_DEDUCTION_LINES } from '../engine/nc2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
@@ -38,6 +39,9 @@ export function formD400(ret: TaxReturnInput, res: TaxReturnResult, nc: NcResult
     y_d400wf_add: upper(c.street.trim()), 'y_d400wf_apartment number': upper(c.apt.trim()), y_d400wf_city: upper(c.city.trim()), y_d400wf_zip: digits(c.zip).slice(0, 9),
     y_d400wf_county: upper(d.county.trim().replace(/[^A-Za-z]/g, '')).slice(0, 5),
     y_d400wf_rs1yes: true, y_d400wf_rs2yes: joint,
+    y_d400wf_v1yes: d.veteran.taxpayer, y_d400wf_v2no: !d.veteran.taxpayer,
+    ...(joint ? { y_d400wf_sv1yes: d.veteran.spouse, y_d400wf_sv1no: !d.veteran.spouse } : {}),
+    y_d400wf_fedex1yes: d.federalExtension, y_d400wf_fedex1no: !d.federalExtension,
     [STATUS[fs]]: true,
     y_d400wf_sname2: fs === 'mfs' ? upper(`${ret.spouse.firstName.trim()} ${ret.spouse.lastName.trim()}`) : '', y_d400wf_sssn2: fs === 'mfs' ? digits(ret.spouse.ssn) : '',
     y_d400wf_li6_good: amt(L['6'], true), y_d400wf_li7_good: amt(L['7']), y_d400wf_li8_good: amt(L['8'], true), y_d400wf_li9_good: amt(L['9']),
@@ -72,16 +76,37 @@ export function scheduleS(ret: TaxReturnInput, nc: NcResult): FormFill {
       y_d400wf_lname2_PG2: upper(ret.taxpayer.lastName.trim()).slice(0, 10), y_d400schswf_ssn: digits(ret.taxpayer.ssn),
       y_d400schswf_li1_good: amt(A['1']), y_d400schswf_li3_good: amt(A['3']), y_d400schswf_li16_good: amt(A['16']),
       y_d400schswf_li17_good: amt(B['17']), y_d400schswf_li18_good: amt(B['18']), y_d400schswf_li19_good: amt(B['19']), y_d400schswf_li20_good: amt(B['20']),
-      y_d400schswf_li21_good: amt(B['21']), y_d400schswf_li41_good: amt(B['41'])
+      y_d400schswf_li21_good: amt(B['21']), y_d400schswf_li41_good: amt(B['41']),
+      ...ncPlaced(ret, 'nc.otherAdditions', NC_ADDITION_LINES, A.other).values,
+      ...ncPlaced(ret, 'nc.otherDeductions', NC_DEDUCTION_LINES, B.other).values
     }
   }
+}
+
+/** Listed "other" items on their Schedule S lines; `unplaced` is the part not on any line. */
+export function ncPlaced(ret: TaxReturnInput, key: string, lines: [string, string][], total: number): { values: Record<string, FieldValue>; unplaced: number } {
+  const by = new Map<string, number>()
+  for (const x of ret.explain?.[key] ?? []) {
+    const line = lines.find(([label]) => label === x.line)?.[1]
+    if (line) by.set(line, (by.get(line) ?? 0) + Math.round(x.amount))
+  }
+  const values: Record<string, FieldValue> = {}
+  let placed = 0
+  for (const [line, n] of by) {
+    const use = Math.min(n, total - placed)
+    if (use <= 0) continue
+    values[`y_d400schswf_li${line}_good`] = amt(use)
+    placed += use
+  }
+  return { values, unplaced: total - placed }
 }
 
 export function buildNcPacket(ret: TaxReturnInput, res: TaxReturnResult, nc: NcResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formD400(ret, res, nc, preparer)]
   if (nc.lines['7'] > 0 || nc.lines['9'] > 0) forms.push(scheduleS(ret, nc))
   const notIncluded = nc.attach.filter((a) => a !== 'Form D-400 Schedule S, supplemental schedule')
-  notIncluded.push('Form D-400 page 1: answer the veteran and federal extension questions')
-  if (nc.scheduleS.additions.other > 0 || nc.scheduleS.deductions.other > 0) notIncluded.push('Schedule S: put your other additions or deductions on their own lines (only the totals on lines 16 and 41 include them here)')
+  const unA = ncPlaced(ret, 'nc.otherAdditions', NC_ADDITION_LINES, nc.scheduleS.additions.other).unplaced
+  const unD = ncPlaced(ret, 'nc.otherDeductions', NC_DEDUCTION_LINES, nc.scheduleS.deductions.other).unplaced
+  if (unA > 0 || unD > 0) notIncluded.push(`Schedule S: ${(unA + unD).toLocaleString('en-US')} of other additions or deductions is not on a line — list each item with its Schedule S line in the North Carolina section (the totals on lines 16 and 41 already include it)`)
   return { forms, notIncluded }
 }
