@@ -126,6 +126,24 @@ test('additional 2% tax on net capital gain income over $350,000 AGI', () => {
   assert.equal(v.lines['21b'], 2000)
 })
 
+test('Form 502CG: excluded gains on lines 2–7 reduce line 9 (Form 502 line 20a)', async () => {
+  const r0 = base({ w2s: [w2(400000)], capitalTransactions: [{ ...emptyTransaction(), description: 'Stock', term: 'long', dateAcquired: '01/01/2020', dateSold: '06/01/2025', proceeds: 150000, costBasis: 50000 }] })
+  const ret = { ...r0, maryland: { ...r0.maryland, cg: { ...r0.maryland.cg, '3': 30000, k1: 5000 } } }
+  const res = computeReturn(ret)
+  const v = computeMaryland(ret, res)
+  assert.equal(v.cg!['1'], 100000)
+  assert.equal(v.cg!['8'], 30000)
+  assert.equal(v.cg!['9'], 70000)
+  assert.equal(v.lines['20a'], 70000)
+  const { buildMarylandPacket } = await import('../pdf/md2025.ts')
+  const p = buildMarylandPacket(ret, res, v)
+  const f = p.forms.find((x) => x.id === 'md502cg')!
+  assert.equal(f.values['Text Box 73'], undefined)
+  assert.equal(f.values['Text Box 72'], '30000')
+  assert.equal(f.values['Text Box 78'], '70000')
+  assert.ok(!p.notIncluded.some((x) => x.startsWith('Form 502CG')))
+})
+
 test('dependent taxpayer: status 6, no exemption', () => {
   const v = md(base({ canBeClaimedAsDependent: true, w2s: [w2(8000)] }))
   assert.equal(v.status, 6)

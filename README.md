@@ -108,7 +108,8 @@ North Carolina Schedule S other additions and deductions go on their own lines, 
 federal extension answers; Nebraska page 1 has the foreign adversarial company answer; Pennsylvania Schedule O Part I
 lists each 529 beneficiary (limited to $19,000 per beneficiary per contributor).
 Also filled: Kentucky Schedule KW-2 (every W-2, 1099 and W-2G with Kentucky withholding), North Carolina D-400
-Schedule A and Form D-400TC, and New York Form IT-112-R (the resident credit on IT-201 line 41 is figured from it). The blank forms live in `public/forms/2025` (official IRS PDFs).
+Schedule A and Form D-400TC, and New York Form IT-112-R (the resident credit on IT-201 line 41 is figured from it).
+Maryland Form 502CG (the 2% tax on capital gain over $350,000 federal AGI) is filled line by line. The blank forms live in `public/forms/2025` (official IRS PDFs).
 
 ## Tax years
 

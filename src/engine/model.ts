@@ -572,6 +572,8 @@ export interface MarylandInput {
   deductionMethod: 'auto' | 'standard' | 'itemized'
   /** Gains excluded on Form 502CG (residence sold for $1.5 million or less, retirement accounts…). */
   capitalGainExclusions: number
+  /** Form 502CG line 1a (net capital gain from Maryland Schedules K-1, informational) and lines 2–7 (gains not subject to the 2% tax). When any of lines 2–7 is set, their sum replaces `capitalGainExclusions`. */
+  cg: Record<'k1' | '2' | '3' | '4' | '5' | '6' | '7', number>
   /** Dependent id → MM/DD/YYYY, for Form 502B. */
   dependentBirthDates: Record<string, string>
   /** Other nonrefundable credits from Form 502CR (line 24, besides the senior credit the app figures). */
@@ -589,7 +591,7 @@ export const emptyMdEntry = (code = ''): MdCodedEntry => ({ id: newId('mdx'), co
 export const emptyMaryland = (): MarylandInput => ({
   subdivisionCode: '', subdivisionName: '', withholding: 0, estimatedPayments: 0, stateRefundInFagi: 0, otherStateBondInterest: 0, statePickup: 0,
   additions: [], usObligationInterest: 0, subtractions: [], totallyDisabled: { taxpayer: false, spouse: false }, deductionMethod: 'auto',
-  capitalGainExclusions: 0, dependentBirthDates: {}, otherCredits: 0, localCredits: 0, refundableCredits: 0, contributions: [0, 0, 0, 0, 0], creditForward: 0
+  capitalGainExclusions: 0, cg: { k1: 0, '2': 0, '3': 0, '4': 0, '5': 0, '6': 0, '7': 0 }, dependentBirthDates: {}, otherCredits: 0, localCredits: 0, refundableCredits: 0, contributions: [0, 0, 0, 0, 0], creditForward: 0
 })
 const normalizeMaryland = (m: Partial<MarylandInput> | undefined): MarylandInput => {
   const base = emptyMaryland()
@@ -599,6 +601,7 @@ const normalizeMaryland = (m: Partial<MarylandInput> | undefined): MarylandInput
     additions: entries(m?.additions), subtractions: entries(m?.subtractions),
     totallyDisabled: { ...base.totallyDisabled, ...(m?.totallyDisabled ?? {}) },
     dependentBirthDates: { ...(m?.dependentBirthDates ?? {}) },
+    cg: { ...base.cg, ...(m?.cg ?? {}) },
     contributions: Array.isArray(m?.contributions) && m.contributions.length === 5 ? (m.contributions.map((n) => Number(n) || 0) as MarylandInput['contributions']) : base.contributions
   }
 }

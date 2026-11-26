@@ -199,10 +199,22 @@ export function MarylandStep({ ret, set, result, preparer }: StepProps & { prepa
           <MoneyField label="Other credits (Form 502CR)" hint="For example, child care, tax paid to another state, long-term care insurance" value={m.otherCredits} onChange={(n) => put({ otherCredits: n })} />
           <MoneyField label="Local credits (502CR Part BB)" value={m.localCredits} onChange={(n) => put({ localCredits: n })} />
           <MoneyField label="Other refundable credits (502CR Part CC)" hint="For example, student loan debt relief" value={m.refundableCredits} onChange={(n) => put({ refundableCredits: n })} />
-          {L['20a'] > 0 || result.f1040['11a'] > 350000 ? (
-            <MoneyField label="Gains excluded on Form 502CG" hint="Home sold for $1.5 million or less, retirement accounts…" value={m.capitalGainExclusions} onChange={(n) => put({ capitalGainExclusions: n })} />
-          ) : null}
         </div>
+        {(L['20a'] > 0 || result.f1040['11a'] > 350000) && (
+          <details className="explain" open={!!md.cg}>
+            <summary>{md.cg ? `Form 502CG: ${usd(md.cg['9'])} of capital gain subject to the 2% tax (line 20a)` : 'Form 502CG (2% tax on capital gain when federal AGI is over $350,000)'}</summary>
+            <div className="grid">
+              <MoneyField label="Net capital gain from Maryland Schedules K-1" hint="Line 1a (part of line 1)" value={m.cg['k1']} onChange={(n) => put({ cg: { ...m.cg, 'k1': n } })} />
+              <MoneyField label="Gain on your primary residence (sale under $1.5 million)" hint="Line 2" value={m.cg['2']} onChange={(n) => put({ cg: { ...m.cg, '2': n } })} />
+              <MoneyField label="Gain on assets in a retirement plan (401(k), IRA…)" hint="Line 3" value={m.cg['3']} onChange={(n) => put({ cg: { ...m.cg, '3': n } })} />
+              <MoneyField label="Gain on cattle, horses or breeding livestock" hint="Line 4" value={m.cg['4']} onChange={(n) => put({ cg: { ...m.cg, '4': n } })} />
+              <MoneyField label="Gain on land under a conservation or preservation easement" hint="Line 5" value={m.cg['5']} onChange={(n) => put({ cg: { ...m.cg, '5': n } })} />
+              <MoneyField label="Gain on section 179 business property" hint="Line 6" value={m.cg['6']} onChange={(n) => put({ cg: { ...m.cg, '6': n } })} />
+              <MoneyField label="Gain on affordable housing owned by a nonprofit" hint="Line 7" value={m.cg['7']} onChange={(n) => put({ cg: { ...m.cg, '7': n } })} />
+              {m.capitalGainExclusions > 0 && <MoneyField label="Excluded gains (total, used when lines 2–7 are empty)" value={m.capitalGainExclusions} onChange={(n) => put({ capitalGainExclusions: n })} />}
+            </div>
+          </details>
+        )}
       </Section>
 
       <Section title="Refund and contributions">

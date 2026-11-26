@@ -157,11 +157,31 @@ export function form502su(ret: TaxReturnInput, md: MdResult): FormFill {
   return { id: 'md502su', file: 'md502su.pdf', title: 'Maryland Form 502SU', values }
 }
 
+/** Form 502CG: net capital gain income subject to the additional 2% tax (line 9 → Form 502 line 20a). */
+export function form502cg(ret: TaxReturnInput, md: MdResult): FormFill | null {
+  const C = md.cg
+  if (!C) return null
+  const [tf, tmi] = firstAndInitial(ret.taxpayer)
+  const v: Record<string, FieldValue> = { 'Text Field 13': tf, 'Text Field 12': tmi, 'Text Field 11': ret.taxpayer.lastName.trim(), 'Text Field 10': digits(ret.taxpayer.ssn) }
+  if (ret.filingStatus === 'mfj') {
+    const [sf, smi] = firstAndInitial(ret.spouse)
+    Object.assign(v, { 'Text Field 9': sf, 'Text Field 8': smi, 'Text Field 7': ret.spouse.lastName.trim(), 'Text Field 6': digits(ret.spouse.ssn) })
+  }
+  v['Text Box 69'] = amt(C['1'], true)
+  if (C['1a']) v['Text Field 15'] = amt(C['1a'])
+  ;['2', '3', '4', '5', '6', '7'].forEach((k, i) => { if (C[k]) v[`Text Box ${71 + i}`] = amt(C[k]) })
+  v['Text Box 77'] = amt(C['8'], true)
+  v['Text Box 78'] = amt(C['9'], true)
+  return { id: 'md502cg', file: 'md502cg.pdf', title: 'Maryland Form 502CG', values: v, pages: [0] }
+}
+
 export function buildMarylandPacket(ret: TaxReturnInput, res: TaxReturnResult, md: MdResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [form502(ret, res, md, preparer)]
   if (ret.dependents.length && md.status !== 6) forms.push(form502b(ret, md))
   if (md.subtractions.length) forms.push(form502su(ret, md))
-  const notIncluded = [...md.attach]
+  const cg = form502cg(ret, md)
+  if (cg) forms.push(cg)
+  const notIncluded = md.attach.filter((a) => !(cg && a.startsWith('Form 502CG')))
   if (md.subtractions.some((s) => !SU_FIELD[s.code])) notIncluded.push('Form 502SU lines for codes the app does not recognize')
   if (md.county?.rate === 'anne-arundel' || md.county?.rate === 'frederick') notIncluded.push(`Local tax: ${md.county.name} uses its own brackets; line 28 is figured with its 2025 rates (the rate box is left blank).`)
   forms.push(...dependentsStatement(ret, 12, 'Form 502B (continued)', 'st-md-deps'))

@@ -50,12 +50,14 @@ import { computePennsylvania } from '../engine/pa2025.ts'
 import { buildPaPacket } from './pa2025.ts'
 import { computeNewYork } from '../engine/ny2025.ts'
 import { buildNyPacket } from './ny2025.ts'
-import { emptyNcTc, emptyNyIt112r } from '../engine/model.ts'
+import { emptyNcTc, emptyNyIt112r, emptyTransaction } from '../engine/model.ts'
+import { computeMaryland } from '../engine/md2025.ts'
+import { buildMarylandPacket } from './md2025.ts'
 import { buildPdf, fillForm } from './fill.ts'
 import type { FillProblem } from './fill.ts'
 import type { FormFill } from './irs2025.ts'
 
-type St = 'al' | 'ga' | 'mn' | 'oh' | 'ms' | 'ut' | 'ct' | 'or' | 'co' | 'mo' | 'az' | 'ca' | 'ky' | 'il' | 'ia' | 'nc' | 'ne' | 'pa' | 'ny'
+type St = 'al' | 'ga' | 'mn' | 'oh' | 'ms' | 'ut' | 'ct' | 'or' | 'co' | 'mo' | 'az' | 'ca' | 'ky' | 'il' | 'ia' | 'nc' | 'ne' | 'pa' | 'ny' | 'md'
 
 /** A single filer with `n` W-2s, each with state withholding. */
 const many = (st: St, n: number, patch: Partial<TaxReturnInput> = {}): TaxReturnInput => {
@@ -479,4 +481,13 @@ test('NY: Form IT-112-R figures the resident credit on IT-201 line 41', async ()
   assert.equal(f.values['1b dollarsR'], '40000')
   assert.ok(!p.notIncluded.some((x) => x.startsWith('Form IT-112-R')))
   await fillsClean(p.forms, 'NY112')
+})
+
+test('MD: Form 502CG fills cleanly', async () => {
+  const base = many('md', 1, { w2s: [{ ...emptyW2('taxpayer'), employer: 'Big Co', wages: 400000, socialSecurityWages: 176100, medicareWages: 400000 }], capitalTransactions: [{ ...emptyTransaction(), description: 'Stock', term: 'long', dateAcquired: '01/01/2020', dateSold: '06/01/2025', proceeds: 150000, costBasis: 50000 }] })
+  const ret = { ...base, maryland: { ...base.maryland, cg: { ...base.maryland.cg, '2': 20000 } } }
+  const res = computeReturn(ret)
+  const p = buildMarylandPacket(ret, res, computeMaryland(ret, res))
+  assert.ok(p.forms.some((f) => f.id === 'md502cg'))
+  await fillsClean(p.forms, 'MDCG')
 })

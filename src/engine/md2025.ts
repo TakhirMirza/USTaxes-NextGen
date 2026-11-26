@@ -142,6 +142,8 @@ export const mdPoverty = (people: number): number => (people <= 8 ? MD_POVERTY[M
 export interface MdLine { code: string; label: string; amount: number; auto: boolean }
 
 export interface MdResult {
+  /** Form 502CG lines, when federal AGI is over $350,000 and there is net capital gain. */
+  cg: Record<string, number> | null
   status: MdStatus
   county: (typeof MD_COUNTIES)[number] | undefined
   lines: Record<string, number>
@@ -283,7 +285,12 @@ export function computeMaryland(ret: TaxReturnInput, res: TaxReturnResult): MdRe
   L['20'] = pos(L['18'] - L['19'])
 
   // Additional 2% tax on net capital gain income (Form 502CG) for federal AGI over $350,000.
-  L['20a'] = fagi > MD_CAPITAL_GAIN_SURTAX.agi ? r(pos(f['7a']) - pos(m.capitalGainExclusions)) : 0
+  const cgLines = (['2', '3', '4', '5', '6', '7'] as const).map((k) => r(pos(m.cg[k])))
+  const cgExcluded = cgLines.some((x) => x > 0) ? cgLines.reduce((s, x) => s + x, 0) : r(pos(m.capitalGainExclusions))
+  L['20a'] = fagi > MD_CAPITAL_GAIN_SURTAX.agi ? r(pos(f['7a']) - cgExcluded) : 0
+  // Form 502CG lines 1–9.
+  const CG: Record<string, number> | null = fagi > MD_CAPITAL_GAIN_SURTAX.agi && pos(f['7a']) > 0 ? { '1': r(pos(f['7a'])), '1a': r(pos(m.cg.k1)), ...Object.fromEntries(cgLines.map((x, i) => [String(i + 2), x])), '8': cgExcluded } : null
+  if (CG) CG['9'] = pos(CG['1'] - CG['8'])
   if (L['20a'] < 0) L['20a'] = 0
 
   // ── Maryland tax and credits ──
@@ -363,7 +370,7 @@ export function computeMaryland(ret: TaxReturnInput, res: TaxReturnResult): MdRe
   if (ret.dependents.length && ret.dependents.some((d) => !m.dependentBirthDates[d.id])) issues.push('Form 502B requires each dependent’s date of birth.')
   if (L['47'] > 1000 && L['43'] === 0) issues.push('You owe more than $1,000 with no estimated payments: Maryland may charge interest for underpaid estimated tax (Form 502UP), not figured here.')
   return {
-    status, county, lines: L, localRate: local.rate, exemptions, pension, twoIncome, subtractions, additions,
+    cg: CG, status, county, lines: L, localRate: local.rate, exemptions, pension, twoIncome, subtractions, additions,
     deduction: { method, standard, itemized, federalItemized, incomeTaxes, phaseout },
     eic: { worksheet, federal: fedEic }, poverty: { eligible: povertyEligible, people: household, guideline },
     credits: { senior, childTaxCredit }, issues, attach
