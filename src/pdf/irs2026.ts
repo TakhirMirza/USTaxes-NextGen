@@ -19,15 +19,62 @@ import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.t
 export const FORMS_2026: Record<string, string> = {
   'f1040.pdf': 'Form 1040', 'f1040s1.pdf': 'Schedule 1', 'f1040s1a.pdf': 'Schedule 1-A', 'f1040s2.pdf': 'Schedule 2', 'f1040s3.pdf': 'Schedule 3',
   'f1040s3a.pdf': 'Schedule 3-A', 'f1040sa.pdf': 'Schedule A', 'f1040sb.pdf': 'Schedule B', 'f1040sc.pdf': 'Schedule C', 'f1040sd.pdf': 'Schedule D',
-  'f1040se.pdf': 'Schedule E', 'f1040sei.pdf': 'Schedule EIC', 'f1040sse.pdf': 'Schedule SE', 'f1040s8.pdf': 'Schedule 8812',
-  'f2441.pdf': 'Form 2441', 'f6251.pdf': 'Form 6251', 'f8582.pdf': 'Form 8582', 'f8829.pdf': 'Form 8829', 'f8863.pdf': 'Form 8863',
-  'f8880.pdf': 'Form 8880', 'f8889.pdf': 'Form 8889', 'f8949.pdf': 'Form 8949', 'f8995.pdf': 'Form 8995', 'statement.pdf': 'Supporting statement'
+  'f1040se.pdf': 'Schedule E', 'f1040sei.pdf': 'Schedule EIC', 'f1040sse.pdf': 'Schedule SE', 'f1040s8.pdf': 'Schedule 8812', 'f1040v.pdf': 'Form 1040-V',
+  'f2441.pdf': 'Form 2441', 'f4562.pdf': 'Form 4562', 'f4797.pdf': 'Form 4797', 'f5329.pdf': 'Form 5329', 'f6251.pdf': 'Form 6251', 'f8582.pdf': 'Form 8582', 'f8829.pdf': 'Form 8829', 'f8863.pdf': 'Form 8863',
+  'f8880.pdf': 'Form 8880', 'f8889.pdf': 'Form 8889', 'f8949.pdf': 'Form 8949', 'f8995.pdf': 'Form 8995', 'f8995a.pdf': 'Form 8995-A', 'statement.pdf': 'Supporting statement'
 }
 
 /** Form 8582 (2026): same layout; field numbers lost their leading zero (f1_01 → f1_1). */
 const UNPAD_2026 = (fill: FormFill): FormFill => {
   const v: Record<string, FieldValue> = {}
   for (const [k, x] of Object.entries(fill.values)) v[k.replace(/^(f\d_)0(\d\[0\])$/, '$1$2')] = x
+  return { ...fill, title: `${fill.title} (2026 draft)`, values: v }
+}
+
+/** Form 4562 (2026): new lines 14a–14d push Part II and the line 19 table down three field numbers. Page 2 is unchanged. */
+const FORM_4562_2026 = (fill: FormFill): FormFill => {
+  const v: Record<string, FieldValue> = {}
+  for (const [k, x] of Object.entries(fill.values)) {
+    const m = /^f1_(\d+)\[0\]$/.exec(k)
+    const n = m ? Number(m[1]) : 0
+    if (n === 23) continue // 2025 line 15 (not used)
+    v[m && n >= 24 ? `f1_${n + 3}[0]` : k] = x
+  }
+  return { ...fill, title: `${fill.title} (2026 draft)`, values: v }
+}
+
+/** Form 4797 (2026): new line 7 (livestock) and line 18 renumber Parts I–II; Part III fields keep their names. */
+const FORM_4797_2026 = (fill: FormFill): FormFill => {
+  const v: Record<string, FieldValue> = {}
+  for (const [k, x] of Object.entries(fill.values)) {
+    const m = /^f1_(\d+)\[0\]$/.exec(k)
+    const n = m ? Number(m[1]) : 0
+    const to = !m ? n : n >= 38 && n <= 71 ? n + 1 : n === 75 || n === 77 ? n + 2 : n
+    v[m ? `f1_${to}[0]` : k] = x
+  }
+  return { ...fill, title: `${fill.title} (2026 draft)`, values: v }
+}
+
+/** Form 8995-A (2026): line 40 minimum deduction and line 41 total added before the carryforward. */
+const FORM_8995A_2026 = (fill: FormFill, res: TaxReturnResult): FormFill => {
+  const v: Record<string, FieldValue> = { ...fill.values }
+  if ('f2_49[0]' in v) {
+    const carry = v['f2_49[0]']
+    const ded = res.f1040['13a']
+    v['f2_49[0]'] = ded > res.qbi.deduction ? amt(ded) : ''
+    v['f2_50[0]'] = amt(ded, true)
+    v['f2_51[0]'] = carry
+  }
+  return { ...fill, title: `${fill.title} (2026 draft)`, values: v }
+}
+
+/** Form 5329 (2026): the address block gained two fields, so Part I moves up by two; page 2 is unchanged. */
+const FORM_5329_2026 = (fill: FormFill): FormFill => {
+  const v: Record<string, FieldValue> = {}
+  for (const [k, x] of Object.entries(fill.values)) {
+    const m = /^f1_(\d+)\[0\]$/.exec(k)
+    v[m && Number(m[1]) >= 9 ? `f1_${Number(m[1]) + 2}[0]` : k] = x
+  }
   return { ...fill, title: `${fill.title} (2026 draft)`, values: v }
 }
 
@@ -427,6 +474,10 @@ export function buildPacket2026(ret: TaxReturnInput, res: TaxReturnResult, prepa
     else if (fill.id === '8995') forms.push(FORM_8995_2026(fill, res))
     else if (fill.id === '2441') forms.push(FORM_2441_2026(fill, ret))
     else if (fill.id === '8582') forms.push(UNPAD_2026(fill))
+    else if (fill.file === 'f5329.pdf') forms.push(FORM_5329_2026(fill))
+    else if (fill.file === 'f4562.pdf') forms.push(FORM_4562_2026(fill))
+    else if (fill.file === 'f4797.pdf') forms.push(FORM_4797_2026(fill))
+    else if (fill.file === 'f8995a.pdf') forms.push(FORM_8995A_2026(fill, res))
     else if (FORMS_2026[fill.file]) forms.push({ ...fill, title: fill.id.startsWith('st-') ? fill.title : `${fill.title} (2026 draft)` })
     else missing.add(fill.title.replace(/\s*\(.*$/, ''))
   }

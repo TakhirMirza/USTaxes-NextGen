@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import * as lib from 'pdf-lib'
 import { computeReturn } from '../engine/compute.ts'
-import { emptyBusiness, emptyDependent, emptyK1, emptyProvider, emptyRental, emptyReturn, emptyStudent, emptyTransaction, emptyW2 } from '../engine/model.ts'
+import { empty1099R, emptyAsset, emptyBusiness, emptyHsa, emptyDependent, emptyK1, emptySale, emptyProvider, emptyRental, emptyReturn, emptyStudent, emptyTransaction, emptyW2 } from '../engine/model.ts'
 import type { TaxReturnInput } from '../engine/model.ts'
 import { buildPacket2026 } from './irs2026.ts'
 import { buildPdf, fillForm } from './fill.ts'
@@ -165,4 +165,63 @@ test('2026 forms used as-is (EIC, 8889, 8880, 8582, 8829, 6251): every value lan
     assert.deepEqual(problems, [], name)
     if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-2026-${name}.pdf`, (await buildPdf(lib, p.forms, load, name)).bytes)
   }
+})
+
+test('2026 Forms 4562, 4797 and 8995-A on the drafts (assets, property sales, income over the QBI threshold)', async () => {
+  const ret = family({
+    dependents: [], filingStatus: 'single', spouse: emptyReturn().spouse,
+    w2s: [{ ...emptyW2('taxpayer'), employer: 'Acme', wages: 190000, federalWithholding: 40000, socialSecurityWages: 184500, medicareWages: 190000 }],
+    businesses: [{ ...emptyBusiness('taxpayer'), name: 'Studio', activity: 'Design', grossReceipts: 90000, qbi: { w2Wages: 20000, ubia: 30000, sstb: false },
+      assets: [{ ...emptyAsset('5'), description: 'Computer', placedInService: '03/01/2026', cost: 3000, section179: 3000 },
+        { ...emptyAsset('7'), description: 'Desk', placedInService: '04/01/2026', cost: 2000, bonus: 'none' }] }],
+    rentals: [{ ...emptyRental('taxpayer'), address: '5 Oak Ave', rents: 24000, expenses: { ...emptyRental().expenses, taxes: 3000 },
+      assets: [{ ...emptyAsset('27.5'), description: 'Condo', placedInService: '01/15/2026', cost: 200000 }] }],
+    propertySales: [{ ...emptySale(), description: 'Old printer', kind: '1245', dateAcquired: '01/10/2022', dateSold: '06/01/2026', salesPrice: 1500, costBasis: 4000, depreciation: 3000 },
+      { ...emptySale(), description: 'Lot', kind: 'land', dateAcquired: '01/10/2020', dateSold: '07/01/2026', salesPrice: 20000, costBasis: 25000 }]
+  })
+  const res = computeReturn(ret)
+  assert.equal(res.qbi.form, '8995a')
+  const p = buildPacket2026(ret, res)
+  const f4562 = p.forms.find((x) => x.file === 'f4562.pdf' && x.id.includes(ret.businesses[0].id))!
+  assert.equal(f4562.values['f1_20[0]'], '3,000')
+  assert.ok(f4562.values['f1_43[0]'], '7-year row (19c) basis at its 2026 field')
+  assert.ok(!('f1_26[0]' in f4562.values) || f4562.values['f1_26[0]'] === '', 'no 2025 row numbers left')
+  const rent = p.forms.find((x) => x.file === 'f4562.pdf' && x.id.includes(ret.rentals[0].id))!
+  assert.equal(rent.values['f1_78[0]'], '200,000')
+  assert.equal(rent.values['f1_77[0]'], '01/2026')
+  const f4797 = p.forms.find((x) => x.id === '4797')!
+  assert.equal(f4797.values['f1_6[0]'], 'Lot')
+  assert.equal(f4797.values['f1_39[0]'], '-5,000') // line 8 (2025 line 7): the land loss
+  assert.ok(!f4797.values['f1_38[0]'], 'new line 7 (livestock) left blank')
+  assert.equal(f4797.values['f2_1[0]'], 'Old printer')
+  const a = p.forms.find((x) => x.id === '8995a')!
+  assert.equal(a.values['f2_50[0]'], res.f1040['13a'].toLocaleString('en-US'))
+  const problems: FillProblem[] = []
+  for (const form of p.forms) await fillForm(lib, await load(form.file), form, problems)
+  assert.deepEqual(problems, [])
+  if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-2026-assets.pdf`, (await buildPdf(lib, p.forms, load, 'assets')).bytes)
+})
+
+test('2026 Form 5329 (Part I and VII) and Form 1040-V on the drafts', async () => {
+  const ret = family({
+    dependents: [], filingStatus: 'single', spouse: emptyReturn().spouse,
+    w2s: [{ ...emptyW2('taxpayer'), employer: 'Acme', wages: 90000, federalWithholding: 2000, socialSecurityWages: 90000, medicareWages: 90000 }],
+    retirement: [{ ...empty1099R(), payer: 'IRA Co', grossDistribution: 12000, taxableAmount: 12000, code: '1', ira: true, earlyExceptionCode: '08', earlyExceptionAmount: 4000 }],
+    hsa: { taxpayer: { ...emptyHsa(), coverage: 'self', personalContributions: 6000, yearEndValue: 15000 }, spouse: emptyHsa() }
+  })
+  const res = computeReturn(ret)
+  assert.ok(res.f1040['37'] > 0)
+  const p = buildPacket2026(ret, res)
+  const f = p.forms.find((x) => x.id === '5329-taxpayer')!
+  assert.equal(f.values['f1_11[0]'], '12,000')
+  assert.equal(f.values['f1_12[0]'], '08')
+  assert.equal(f.values['f1_15[0]'], '800')
+  assert.ok(!('f1_9[0]' in f.values))
+  assert.equal(f.values['f2_24[0]'], res.form5329[0].line49.toLocaleString('en-US'))
+  assert.equal(p.forms[p.forms.length - 1].id, '1040v')
+  assert.ok(!p.notIncluded.some((x) => /5329|1040-V/.test(x)), p.notIncluded.join('; '))
+  const problems: FillProblem[] = []
+  for (const form of p.forms) await fillForm(lib, await load(form.file), form, problems)
+  assert.deepEqual(problems, [])
+  if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-2026-5329.pdf`, (await buildPdf(lib, p.forms, load, '5329')).bytes)
 })
