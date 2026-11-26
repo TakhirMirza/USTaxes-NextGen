@@ -230,13 +230,57 @@ export function formAr1000tc(ret: TaxReturnInput, ar: ArResult): FormFill | null
   return { id: 'ar1000tc', file: 'ar-1000tc.pdf', title: 'Arkansas AR1000TC', values: v }
 }
 
+const arMoney = (n: number): string => { const x = Math.round(n); return x === 0 ? '' : x < 0 ? `(${-x})` : String(x) }
+const legalName = (ret: TaxReturnInput): string => upper(`${ret.taxpayer.firstName} ${ret.taxpayer.lastName}`)
+
+/** AR4: interest (Part I) and dividends (Part II) by payer, column A; Social Security in Part III. */
+export function formAr4(ret: TaxReturnInput, res: TaxReturnResult, ar: ArResult): FormFill | null {
+  const L = ar.lines
+  if (L['10'] <= 0 && L['11'] <= 0) return null
+  const v: Record<string, FieldValue> = { 'AR4-1': legalName(ret), 'AR4-2': ssn(ret.taxpayer.ssn) }
+  const ints: [string, number][] = ret.interest.filter((x) => x.interest > 0).map((x) => [upper(x.payer), x.interest])
+  if (ret.ar.usObligationInterest > 0) ints.push(['LESS U.S. OBLIGATION INTEREST (EXEMPT)', -ret.ar.usObligationInterest])
+  const divs: [string, number][] = ret.dividends.filter((x) => x.ordinaryDividends > 0).map((x) => [upper(x.payer), x.ordinaryDividends])
+  const rows = (list: [string, number][], first: number, total: number, sum: number, label: string): void => {
+    const shown = list.length > 10 ? [...list.slice(0, 9), [label, list.slice(9).reduce((t, x) => t + x[1], 0)] as [string, number]] : list
+    shown.forEach(([name, n], i) => { v[`AR4-${first + 4 * i}`] = name; v[`AR4-${first + 1 + 4 * i}`] = arMoney(n) })
+    if (sum) v[`AR4-${total}`] = arMoney(sum)
+  }
+  rows(ints, 3, 43, L['10'], 'OTHER PAYERS (SEE STATEMENT)')
+  rows(divs, 46, 86, L['11'], 'OTHER PAYERS (SEE STATEMENT)')
+  const ss = ret.socialSecurity.reduce((t, x) => t + Math.max(0, x.netBenefits), 0)
+  if (ss > 0) { v['AR4-89'] = arMoney(ss); v['AR4-102'] = arMoney(ss) }
+  void res
+  return { id: 'ar4', file: 'ar-4.pdf', title: 'Arkansas AR4', values: v }
+}
+
+/** AR-OI: other income (HSA distributions on line 2, the rest on line 10) and other subtractions (line 18), column A. */
+export function formArOi(ret: TaxReturnInput, res: TaxReturnResult, ar: ArResult): FormFill | null {
+  if (!ar.lines['22']) return null
+  const s1 = res.schedule1
+  const v: Record<string, FieldValue> = { 'AROI-1': legalName(ret), 'AROI-2': ssn(ret.taxpayer.ssn) }
+  const other = Math.round(s1.otherIncome + ret.ar.otherIncome)
+  const add = Math.round(s1.hsaTaxable) + Math.max(0, other)
+  const sub = Math.max(0, -other)
+  if (s1.hsaTaxable) v['AROI-6'] = arMoney(s1.hsaTaxable)
+  if (other > 0) v['AROI-30'] = arMoney(other)
+  v['AROI-32B'] = arMoney(add)
+  if (sub) { v['AROI-48'] = arMoney(sub); v['AROI-51'] = arMoney(sub) }
+  v['AROI-54'] = arMoney(add - sub)
+  return { id: 'aroi', file: 'ar-oi.pdf', title: 'Arkansas AR-OI', values: v }
+}
+
 export function buildArPacket(ret: TaxReturnInput, res: TaxReturnResult, ar: ArResult, preparer?: PreparerInfo | null): FormPacket {
-  const forms = [formArAr1000f(ret, res, ar, preparer), formAr1000adj(ret, ar), formAr3(ret, ar), formAr1000d(ret, ar), formAr2441(ret, res, ar), formAr1000tc(ret, ar)]
+  const forms = [formArAr1000f(ret, res, ar, preparer), formAr1000adj(ret, ar), formAr3(ret, ar), formAr1000d(ret, ar), formAr2441(ret, res, ar), formAr1000tc(ret, ar), formAr4(ret, res, ar), formArOi(ret, res, ar)]
   forms.push(...dependentsStatement(ret, 6, 'AR1000F, Dependents (continued)', 'st-ar-deps'))
   if (forms.some((f) => f?.id === 'ar1000tc')) forms.push(...peopleStatement(ret, ret.ar.tc.developmental.filter((x) => x.name.trim()), 6, { id: 'st-ar-dd', attachTo: 'AR1000TC, line 5 (continued)', title: 'Individuals with developmental disabilities after the sixth', note: 'Line 5 counts these individuals.' }))
   if (forms.some((f) => f?.file === 'ar-2441.pdf')) {
     forms.push(...careProvidersStatement(ret, 2, 'AR2441, Part I (continued)', 'st-ar-care'))
     forms.push(...peopleStatement(ret, ret.dependents.filter(careQualifyingPerson), 2, { id: 'st-ar-care-persons', attachTo: 'AR2441, Part II (continued)', title: 'Qualifying persons after the second' }))
   }
-  return { forms: forms.filter((x): x is FormFill => x !== null), notIncluded: [...ar.attach, 'Your W-2s (attach to the front of page 1)'] }
+  const has = (id: string): boolean => forms.some((f) => f?.id === id)
+  const notIncluded = ar.attach.filter((a) => !(has('ar4') && a.startsWith('AR4 ')) && !(has('aroi') && a.startsWith('AR-OI ')))
+  if (has('ar4') && (ret.interest.filter((x) => x.interest > 0).length > 10 || ret.dividends.filter((x) => x.ordinaryDividends > 0).length > 10)) notIncluded.push('AR4: a statement listing the payers after the ninth')
+  if (has('aroi') && Math.round(res.schedule1.otherIncome + ret.ar.otherIncome) !== 0) notIncluded.push('AR-OI line 10 or 18: a schedule describing the other income')
+  return { forms: forms.filter((x): x is FormFill => x !== null), notIncluded: [...notIncluded, 'Your W-2s (attach to the front of page 1)'] }
 }

@@ -46,6 +46,10 @@ export interface KyResult {
   itc: Record<'E' | 'F', Record<string, number>>
   wsA: Record<string, number> | null
   pensionWs: Record<'A' | 'B', number>
+  /** Form 8863-K lines (null when no Kentucky students or carryforwards are marked). */
+  k8863: Record<string, number> | null
+  /** Schedule P rows and lines 1(c)–4 by person (null without government pensions marked). */
+  schP: { rows: { id: string; owner: Owner; payer: string; date: string; taxable: number; pct: number; exempt: number; before98: boolean }[]; byOwner: Record<Owner, { c: number; l2: number; l3: number; l4: number }> } | null
   itemize: boolean
   itemized: number
   familySize: number
@@ -92,12 +96,29 @@ export function computeKentucky(ret: TaxReturnInput, res: TaxReturnResult): KyRe
     '14': pos(d.otherSubtractions), '16': pos(sm.knol)
   }
   const pensionWs: Record<'A' | 'B', number> = { A: 0, B: 0 }
+  // Schedule P: government pensions earned before 1998 are excluded in full (pre-1998 retirement) or by the exempt percentage, on top of the $31,110 for the rest.
+  const gp = d.govPensions ?? {}
+  const pre98 = (date: string): boolean => { const y = Number(date.replace(/\D/g, '').slice(-4)); return y > 1900 && y < 1998 }
+  const schPRows = ret.retirement.filter((x) => gp[x.id] && x.taxableAmount > 0).map((x) => {
+    const g = gp[x.id]
+    const pct = pre98(g.date) ? 1 : Math.min(100, Math.max(0, g.exemptPercent)) / 100
+    return { id: x.id, owner: x.owner, payer: x.payer, date: g.date, taxable: r(x.taxableAmount), pct, exempt: r(x.taxableAmount * pct), before98: pre98(g.date) }
+  })
+  const schP: KyResult['schP'] = schPRows.length ? { rows: schPRows, byOwner: { taxpayer: { c: 0, l2: 0, l3: 0, l4: 0 }, spouse: { c: 0, l2: 0, l3: 0, l4: 0 } } } : null
+  const exclusion = (o: Owner): number => {
+    if (!schP) return Math.min(KY_PENSION_EXCLUSION, r(retirementBy(o)))
+    const c = schP.rows.filter((x) => x.owner === o).reduce((s, x) => s + x.exempt, 0)
+    const l2 = pos(r(retirementBy(o)) - c)
+    const l3 = Math.min(l2, KY_PENSION_EXCLUSION)
+    schP.byOwner[o] = { c, l2, l3, l4: c + l3 }
+    return c + l3
+  }
   for (const [c, owners] of cols) {
     const m = M[c]
     for (const [k, n] of Object.entries(byLine)) m[k] = split(n)[c === 'A' ? 0 : 1]
     m['6'] = m['1'] + m['2'] + m['3'] + m['4'] + m['5']
     pensionWs[c] = owners.reduce((s, o) => s + r(retirementBy(o)), 0)
-    m['9'] = owners.reduce((s, o) => s + Math.min(KY_PENSION_EXCLUSION, r(retirementBy(o))), 0)
+    m['9'] = owners.reduce((s, o) => s + exclusion(o), 0)
     m['10'] = r(owners.reduce((s, o) => s + f['6b'] * ssShare(o), 0))
     m['15'] = ['7', '8', '9', '10', '11', '12', '13', '14'].reduce((s, k) => s + (m[k] ?? 0), 0)
     m['17'] = m['15'] + m['16']
@@ -191,7 +212,41 @@ export function computeKentucky(ret: TaxReturnInput, res: TaxReturnResult): KyRe
   L['20'] = familySize
   L['21'] = r(L['19'] * familyRate)
   L['22'] = L['19'] - L['21']
-  L['23'] = Math.min(r(pos(d.tuitionCredit)), L['22'])
+  // Form 8863-K: 25% of the federal education credits figured on expenses at Kentucky institutions (undergraduate), plus carryforwards.
+  const kyStudents = ret.students.filter((x) => d.kyStudents?.[x.id])
+  let k8863: Record<string, number> | null = null
+  const carry = (d.tuitionCarryforward ?? []).map((n) => r(pos(n)))
+  if (kyStudents.length || carry.some((n) => n > 0)) {
+    const K: Record<string, number> = {}
+    const frac = res.form8863Detail.phaseoutFraction
+    K['2'] = r(kyStudents.filter((x) => x.aotcEligible).reduce((s, x) => { const c = Math.min(4000, pos(x.qualifiedExpenses)); return s + Math.min(c, 2000) + 0.25 * pos(c - 2000) }, 0))
+    K['3'] = frac
+    K['4'] = r(K['2'] * frac)
+    K['6'] = r(kyStudents.filter((x) => !x.aotcEligible).reduce((s, x) => s + pos(x.qualifiedExpenses), 0))
+    K['7'] = Math.min(K['6'], 10000)
+    K['8'] = r(K['7'] * 0.2)
+    K['9'] = frac
+    K['10'] = r(K['8'] * frac)
+    K['11'] = K['4'] + K['10']
+    K['12'] = r(K['11'] * 0.25)
+    K['13'] = L['22']
+    carry.slice(0, 5).forEach((n, i) => { K[String(20 + i)] = n })
+    K['19'] = L['22']
+    K['25'] = carry.slice(0, 5).reduce((a, b) => a + b, 0)
+    K['26'] = pos(K['19'] - (K['20'] ?? 0))
+    K['27'] = pos((K['21'] ?? 0) - K['26']); K['28'] = pos(K['26'] - (K['21'] ?? 0))
+    K['29'] = pos((K['22'] ?? 0) - K['28']); K['30'] = pos(K['28'] - (K['22'] ?? 0))
+    K['31'] = pos((K['23'] ?? 0) - K['30']); K['32'] = pos(K['30'] - (K['23'] ?? 0))
+    K['33'] = pos((K['24'] ?? 0) - K['32'])
+    K['34'] = Math.min(K['19'], K['25'])
+    K['14'] = K['34']
+    K['15'] = pos(K['13'] - K['14'])
+    K['16'] = Math.min(K['15'], K['12'])
+    K['17'] = K['14'] + K['16']
+    K['18'] = K['15'] < K['12'] ? K['12'] - K['15'] : 0
+    k8863 = K
+  }
+  L['23'] = k8863 ? k8863['17'] : Math.min(r(pos(d.tuitionCredit)), L['22'])
   L['24'] = r(pos(res.schedule3.dependentCare) * 0.2)
   L['26'] = pos(L['22'] - L['23'] - L['24'])
   L['27'] = r(pos(d.useTax))
@@ -211,7 +266,7 @@ export function computeKentucky(ret: TaxReturnInput, res: TaxReturnResult): KyRe
 
   // ── Notes ──
   attach.push('Schedule KW-2 (Kentucky withholding statements) with your W-2s and 1099s')
-  if (pensionWs.A > KY_PENSION_EXCLUSION || pensionWs.B > KY_PENSION_EXCLUSION) attach.push('Schedule P, if any retirement income is from a federal, Kentucky or Kentucky local government plan')
+  if (!schP && (pensionWs.A > KY_PENSION_EXCLUSION || pensionWs.B > KY_PENSION_EXCLUSION)) attach.push('Schedule P, if any retirement income is from a federal, Kentucky or Kentucky local government plan')
   if ((M.A['16'] ?? 0) + (M.B['16'] ?? 0) > 0) attach.push('Schedule KNOL (Kentucky net operating loss)')
   if ((M.A['12'] ?? 0) + (M.B['12'] ?? 0) > 0) attach.push('Kentucky Form 4562 (Kentucky depreciation)')
   if ((M.A['5'] ?? 0) + (M.B['5'] ?? 0) + (M.A['14'] ?? 0) + (M.B['14'] ?? 0) > 0) attach.push('A statement explaining the other additions and subtractions on Schedule M, lines 5 and 14')
@@ -226,10 +281,10 @@ export function computeKentucky(ret: TaxReturnInput, res: TaxReturnResult): KyRe
   if (L['24'] > 0) attach.push('Federal Form 2441')
   if (ret.businesses.length > 0 || ret.rentals.length > 0) attach.push('A complete copy of your federal Form 1040 (business, farm or rental income)')
   if (twoCols) issues.push('Both spouses had income, so the return uses status 2 (married filing separately on a combined return): each spouse gets a $3,270 standard deduction. Income that belongs to both (interest, dividends, gains) is split evenly; adjust if it belongs to one of you.')
-  for (const o of owners) if (retirementBy(o) > KY_PENSION_EXCLUSION) issues.push(`${o === 'taxpayer' ? 'Your' : 'Your spouse’s'} retirement income is over $31,110: if any of it is from the federal, Kentucky or Kentucky local government systems (service before 1998), Schedule P may give a larger exclusion.`)
+  if (!schP) for (const o of owners) if (retirementBy(o) > KY_PENSION_EXCLUSION) issues.push(`${o === 'taxpayer' ? 'Your' : 'Your spouse’s'} retirement income is over $31,110: if any of it is from the federal, Kentucky or Kentucky local government systems (service before 1998), Schedule P may give a larger exclusion.`)
   if (fs === 'hoh' || fs === 'qss') issues.push('Kentucky has no head of household status: the return is filed as single (status 1).')
   if (res.schedule1A.tips + res.schedule1A.overtime + res.schedule1A.carLoanInterest > 0) issues.push('Kentucky does not allow the federal deductions for tips, overtime or car loan interest; they are below federal AGI, so nothing changes here.')
   if (L['36'] > 500 && L['31b'] === 0) issues.push('A balance due over $500 may mean an underpayment penalty (Form 2210-K).')
 
-  return { status, colA: A, colB: B, lines: L, schM: M, schA: S, itc, wsA, pensionWs, itemize, itemized, familySize, mgi, familyRate, issues, attach }
+  return { status, colA: A, colB: B, lines: L, schM: M, schA: S, itc, wsA, pensionWs, k8863, schP, itemize, itemized, familySize, mgi, familyRate, issues, attach }
 }

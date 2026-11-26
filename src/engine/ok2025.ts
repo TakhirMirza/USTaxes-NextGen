@@ -9,7 +9,7 @@
  * medical and gifts); $1,000 per exemption; tax from the 2025 tax table (rows of $50 below $100,000, at the midpoint)
  * or the worksheet (rates 0.25% to 4.75%); the child care / child tax credit (the larger of 20% of the federal care
  * credit or 5% of the federal child tax credit, AGI ≤ $100,000) and the earned income credit (5% of the federal
- * credit), both prorated by Oklahoma AGI over federal AGI. Whole dollars.
+ * credit under the 2020 federal rules, Form 511-EIC), both prorated by Oklahoma AGI over federal AGI. Whole dollars.
  */
 import type { Owner, TaxReturnInput } from './model.ts'
 import type { TaxReturnResult } from './compute.ts'
@@ -39,6 +39,33 @@ export function okTax(taxable: number, joint: boolean): number {
   return r(rateTax(Math.floor(x / 50) * 50 + 25, joint))
 }
 
+/** 2020 federal EIC parameters, by number of qualifying children (0–3). Oklahoma figures its credit under the 2020 rules (Form 511-EIC). */
+const EIC_2020 = [
+  { rate: 0.0765, max: 538, start: 8790, startJoint: 14680, phase: 0.0765, end: 15820, endJoint: 21710 },
+  { rate: 0.34, max: 3584, start: 19330, startJoint: 25220, phase: 0.1598, end: 41756, endJoint: 47646 },
+  { rate: 0.4, max: 5920, start: 19330, startJoint: 25220, phase: 0.2106, end: 47440, endJoint: 53330 },
+  { rate: 0.45, max: 6660, start: 19330, startJoint: 25220, phase: 0.2106, end: 50954, endJoint: 56844 }
+]
+export const OK_EIC_INVESTMENT_LIMIT_2020 = 3650
+
+/** The 2020 EIC Table amount for an income: figured at the middle of its $50 row, like the table. */
+export function okEic2020Table(income: number, children: number, joint: boolean): number {
+  const p = EIC_2020[Math.min(3, children)]
+  if (income <= 0 || income >= (joint ? p.endJoint : p.end)) return 0
+  const mid = Math.floor(income / 50) * 50 + 25
+  const start = joint ? p.startJoint : p.start
+  return Math.max(0, Math.round(Math.min(p.rate * mid, p.max) - (mid > start ? p.phase * (mid - start) : 0)))
+}
+
+/** Form 511-EIC line 20 for one year: the smaller of the credit by earned income (line 16) and by AGI (line 19). */
+export function okEic2020(earned: number, agi: number, children: number, joint: boolean): { line16: number; line19: number | null; line20: number } {
+  const line16 = okEic2020Table(earned, children, joint)
+  const p = EIC_2020[Math.min(3, children)]
+  const start = joint ? p.startJoint : p.start
+  const line19 = Math.round(earned) === Math.round(agi) || agi < Math.ceil(start / 50) * 50 ? null : okEic2020Table(agi, children, joint)
+  return { line16, line19, line20: line19 === null ? line16 : Math.min(line16, line19) }
+}
+
 export interface OkResult {
   lines: Record<string, number>
   schA: Record<string, number>
@@ -47,6 +74,10 @@ export interface OkResult {
   schD: Record<string, number> | null
   schF: Record<string, number>
   schG: Record<string, number>
+  /** Form 511-TX lines 1–7 (empty when no credit). */
+  tx: Record<string, number>
+  /** Form 511-EIC columns (2024 from the inputs, 2025 from this return); null when the credit is not available. */
+  eic: { earned: [number, number]; agi: [number, number]; line16: [number, number]; line19: [number | null, number | null]; line20: [number, number]; children: number } | null
   ratio: number
   exemptions: { regular: [number, number]; special: [number, number]; blind: [number, number]; dependents: number; total: number }
   issues: string[]
@@ -150,7 +181,19 @@ export function computeOklahoma(ret: TaxReturnInput, res: TaxReturnResult): OkRe
   F['6'] = ratio
   F['7'] = L['7'] < L['1'] ? r(F['5'] * ratio) : F['5']
   L['15'] = Math.min(F['7'], L['14'])
-  L['16'] = Math.min(r(pos(d.otherStateCredit)), pos(L['14'] - L['15']))
+  // Form 511-TX: tax paid to the other state, limited to Oklahoma tax × (income taxed by both ÷ Oklahoma AGI) when that income is entered.
+  const txIncome = r(pos(d.otherStateIncome ?? 0))
+  const tx: Record<string, number> = {}
+  if (d.otherStateCredit > 0) {
+    tx['1'] = txIncome
+    tx['2'] = L['7']
+    tx['3'] = txIncome > 0 && L['7'] > 0 ? Math.min(1, txIncome / L['7']) : 0
+    tx['4'] = L['14']
+    tx['5'] = txIncome > 0 ? r(L['14'] * tx['3']) : L['14']
+    tx['6'] = r(d.otherStateCredit)
+    tx['7'] = Math.min(tx['5'], tx['6'])
+  }
+  L['16'] = Math.min(tx['7'] ?? 0, pos(L['14'] - L['15']))
   L['17'] = Math.min(r(pos(d.otherCredit.amount)), pos(L['14'] - L['15'] - L['16']))
   L['18'] = pos(L['14'] - L['15'] - L['16'] - L['17'])
   L['19'] = r(pos(d.useTax))
@@ -160,7 +203,18 @@ export function computeOklahoma(ret: TaxReturnInput, res: TaxReturnResult): OkRe
   L['23'] = r(pos(d.extensionPayment))
   L['25'] = r(pos(d.salesTaxCredit))
   const G: Record<string, number> = {}
-  G['1'] = r(pos(f['27a']))
+  // Form 511-EIC: the 2020 federal rules, with the 2024 or 2025 earned income (whichever gives the larger credit).
+  const eicOk = res.eic.notEligibleBecause.length === 0 && res.eic.investmentIncome <= OK_EIC_INVESTMENT_LIMIT_2020
+  const jointEic = ret.filingStatus === 'mfj'
+  const prior = d.priorYearEic ?? { earnedIncome: 0, agi: 0 }
+  let eic: OkResult['eic'] = null
+  if (eicOk && (res.eic.earnedIncome > 0 || prior.earnedIncome > 0)) {
+    const ch = res.eic.qualifyingChildren
+    const y24 = prior.earnedIncome > 0 ? okEic2020(prior.earnedIncome, prior.agi || prior.earnedIncome, ch, jointEic) : { line16: 0, line19: null, line20: 0 }
+    const y25 = okEic2020(res.eic.earnedIncome, f['11a'], ch, jointEic)
+    eic = { earned: [r(prior.earnedIncome), r(res.eic.earnedIncome)], agi: [r(prior.agi || prior.earnedIncome), r(f['11a'])], line16: [y24.line16, y25.line16], line19: [y24.line19, y25.line19], line20: [y24.line20, y25.line20], children: ch }
+  }
+  G['1'] = eic ? Math.max(eic.line20[0], eic.line20[1]) : 0
   G['2'] = r(G['1'] * 0.05)
   G['3'] = ratio
   G['4'] = r(G['2'] * ratio)
@@ -192,5 +246,5 @@ export function computeOklahoma(ret: TaxReturnInput, res: TaxReturnResult): OkRe
   if (!d.county.trim()) issues.push('Enter your county (page 1).')
   if (L['39'] > 500 && L['22'] === 0) issues.push('A balance due may mean underpayment of estimated tax interest (Form OW-8-P).')
 
-  return { lines: L, schA: A, schB: B, schC: C, schD: D, schF: F, schG: G, ratio, exemptions: { regular, special, blind, dependents, total }, issues, attach }
+  return { lines: L, schA: A, schB: B, schC: C, schD: D, schF: F, schG: G, tx, eic, ratio, exemptions: { regular, special, blind, dependents, total }, issues, attach }
 }

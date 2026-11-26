@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import * as lib from 'pdf-lib'
 import { computeReturn } from './compute.ts'
-import { empty1099R, emptyDependent, emptyProvider, emptyReturn, emptySocialSecurity, emptyTransaction, emptyW2 } from './model.ts'
+import { empty1099Div, empty1099Int, empty1099R, emptyDependent, emptyProvider, emptyReturn, emptySocialSecurity, emptyTransaction, emptyW2 } from './model.ts'
 import type { ArInput, TaxReturnInput } from './model.ts'
 import { arAdditionalCredit, arLowTax, arRegularTax, computeArkansas } from './ar2025.ts'
 import { buildArPacket } from '../pdf/ar2025.ts'
@@ -140,4 +140,33 @@ test('AR schedules: AR1000D, AR1000ADJ, AR3, AR2441 and AR1000TC', async () => {
   assert.deepEqual(problems, [])
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 AR')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-ARS.pdf`, bytes)
+})
+
+test('AR4 (interest and dividends by payer) and AR-OI (other income) print on the official forms', async () => {
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const w = w2(50000)
+  const { ar: r, res, ret } = ar(base({
+    w2s: [w],
+    interest: [{ ...empty1099Int(), payer: 'Bank One', interest: 1200 }, { ...empty1099Int(), payer: 'Treasury Direct', interest: 800 }],
+    dividends: [{ ...empty1099Div(), payer: 'Fund Co', ordinaryDividends: 2500 }],
+    socialSecurity: [{ ...emptySocialSecurity(), owner: 'taxpayer' as const, netBenefits: 0 }],
+    otherIncome: 900
+  } as Partial<TaxReturnInput>), { w2: withheld(w, 1500), usObligationInterest: 800 })
+  assert.equal(r.lines['10'], 1200)
+  const p = buildArPacket(ret, res, r)
+  const a4 = p.forms.find((f) => f.id === 'ar4')!.values
+  assert.equal(a4['AR4-3'], 'BANK ONE'); assert.equal(a4['AR4-4'], '1200')
+  assert.equal(a4['AR4-8'], '800'); assert.equal(a4['AR4-12'], '(800)')
+  assert.equal(a4['AR4-43'], '1200')
+  assert.equal(a4['AR4-46'], 'FUND CO'); assert.equal(a4['AR4-86'], '2500')
+  const oi = p.forms.find((f) => f.id === 'aroi')
+  if (r.lines['22']) {
+    assert.equal(oi!.values['AROI-54'], String(r.lines['22']))
+  }
+  assert.ok(!p.notIncluded.some((n) => n.startsWith('AR4 (')))
+  const problems: FillProblem[] = []
+  for (const f of p.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+  assert.deepEqual(problems, [])
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-AR-more.pdf`, (await buildPdf(lib, p.forms, load, 'AR')).bytes)
 })

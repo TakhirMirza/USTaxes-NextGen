@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import * as lib from 'pdf-lib'
 import { computeReturn } from './compute.ts'
-import { empty1099R, emptyDependent, emptyReturn, emptySocialSecurity, emptyW2 } from './model.ts'
+import { empty1099R, emptyDependent, emptyReturn, emptySocialSecurity, emptyStudent, emptyW2 } from './model.ts'
 import type { KyInput, TaxReturnInput } from './model.ts'
 import { computeKentucky, kyFamilyCreditRate } from './ky2025.ts'
 import { buildKyPacket } from '../pdf/ky2025.ts'
@@ -142,4 +142,46 @@ test('KY combined return: Schedule A split between spouses', () => {
   assert.equal(k.schA['17'] + k.schA['18'], 100)
   assert.equal(k.schA['19'] + k.schA['20'], 9000)
   assert.equal(k.colA['10'], k.schA['19'])
+})
+
+test('Form 8863-K (25% of the federal credit at Kentucky schools) and Schedule P (government pensions)', async () => {
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  const st = { ...emptyStudent(), name: 'Amy Doe', ssn: '222334444', institution: 'University of Kentucky', institutionAddress: 'Lexington, KY', institutionEin: '610600439', qualifiedExpenses: 5000, aotcEligible: true }
+  const st2 = { ...emptyStudent(), name: 'Pat Doe', ssn: '123456789', institution: 'Ohio State', qualifiedExpenses: 3000, aotcEligible: false }
+  const w = w2(60000)
+  const e = ky(base({ w2s: [w], students: [st, st2] }), { w2: withheld(w, 2000), kyStudents: { [st.id]: true } })
+  const K = e.ky.k8863!
+  assert.equal(K['2'], 2500)
+  assert.equal(K['6'], 0)
+  assert.equal(K['12'], Math.round(K['11'] * 0.25))
+  assert.equal(e.ky.lines['23'], Math.min(K['12'], e.ky.lines['22']))
+  const pe = buildKyPacket(e.ret, e.res, e.ky)
+  const k8 = pe.forms.find((f) => f.id === 'ky8863k')!.values
+  assert.equal(k8['8863KLine1columnf1'], '2500')
+  assert.equal(k8['8863KLine17'], String(e.ky.lines['23']))
+  assert.ok(!pe.notIncluded.some((n) => n.startsWith('Form 8863-K (')))
+  // Schedule P: a state pension from a 1995 retirement is excluded in full; a federal one at 40% exempt; the rest up to $31,110.
+  const p1 = { ...empty1099R('taxpayer'), payer: 'KY Retirement Systems', grossDistribution: 40000, taxableAmount: 40000, code: '7' }
+  const p2 = { ...empty1099R('taxpayer'), payer: 'OPM', grossDistribution: 20000, taxableAmount: 20000, code: '7' }
+  const p3 = { ...empty1099R('taxpayer'), payer: 'IRA Co', grossDistribution: 10000, taxableAmount: 10000, code: '7', ira: true }
+  const r = ky(base({ taxpayer: { ...base({}).taxpayer, age: 70 }, retirement: [p1, p2, p3] }), { govPensions: { [p1.id]: { date: '06/30/1995', exemptPercent: 0 }, [p2.id]: { date: '01/31/2010', exemptPercent: 40 } } })
+  const P = r.ky.schP!.byOwner.taxpayer
+  assert.equal(P.c, 40000 + 8000)
+  assert.equal(P.l2, 70000 - 48000)
+  assert.equal(P.l3, 22000)
+  assert.equal(P.l4, 70000)
+  assert.equal(r.ky.schM.B['9'], 70000)
+  const pr = buildKyPacket(r.ret, r.res, r.ky)
+  const sp = pr.forms.find((f) => f.id === 'kyschp')!.values
+  assert.equal(sp['TSchPLine1ColB1'], '40000')
+  assert.equal(sp['Text30SchPLine1(b)ExemptPerc1'], '40%')
+  assert.equal(sp['Text30SchPLine4B'], '70000')
+  assert.ok(!pr.notIncluded.some((n) => n.startsWith('Schedule P, if')))
+  for (const packet of [pe, pr]) {
+    const problems: FillProblem[] = []
+    for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+    assert.deepEqual(problems, [])
+  }
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-KY-more.pdf`, (await buildPdf(lib, [...pe.forms, ...pr.forms], load, 'KY')).bytes)
 })

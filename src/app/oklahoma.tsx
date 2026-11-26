@@ -110,13 +110,17 @@ export function OklahomaStep({ ret, set, result, preparer }: StepProps & { prepa
         </div>
       </Section>
 
-      <Section title="Credits and other amounts" intro="The child care / child tax credit and the earned income credit (5% of federal) are figured for you.">
+      <Section title="Credits and other amounts" intro="The child care / child tax credit and the earned income credit (5% of the credit figured under the 2020 federal rules, Form 511-EIC) are figured for you.">
         <div className="grid">
-          <MoneyField label="Credit for tax paid to another state" hint="Form 511-TX" value={d.otherStateCredit} onChange={(n) => put({ otherStateCredit: n })} />
+          <MoneyField label="Income tax paid to another state" hint="Form 511-TX line 6: only the tax on income also taxed by Oklahoma" value={d.otherStateCredit} onChange={(n) => put({ otherStateCredit: n })} />
+          {d.otherStateCredit > 0 && <TextField label="Other state" hint="Form 511-TX line 6" autoComplete="off" value={d.otherStateName ?? ''} onChange={(s) => put({ otherStateName: s })} />}
+          {d.otherStateCredit > 0 && <MoneyField label="Income taxed by both states" hint="Form 511-TX line 1: personal services income; limits the credit" value={d.otherStateIncome ?? 0} onChange={(n) => put({ otherStateIncome: n })} />}
           <TextField label="Other credit: 511-CR line number" autoComplete="off" value={d.otherCredit.code} onChange={(s) => put({ otherCredit: { ...d.otherCredit, code: s.replace(/\D/g, '').slice(0, 2) } })} />
           <MoneyField label="Other credit: amount" value={d.otherCredit.amount} onChange={(n) => put({ otherCredit: { ...d.otherCredit, amount: n } })} />
           <MoneyField label="Sales tax relief credit" hint="Form 538-S: $40 per exemption, low household income" value={d.salesTaxCredit} onChange={(n) => put({ salesTaxCredit: n })} />
           <MoneyField label="Use tax" hint="Leave 0 to certify none is due; table: 0.056% of AGI" value={d.useTax} onChange={(n) => put({ useTax: n })} />
+          {(ok.eic || result.eic.earnedIncome > 0) && <MoneyField label="2024 earned income (optional)" hint="Form 511-EIC: the credit uses 2024 if it gives more" value={d.priorYearEic?.earnedIncome ?? 0} onChange={(n) => put({ priorYearEic: { agi: d.priorYearEic?.agi ?? 0, earnedIncome: n } })} />}
+          {(d.priorYearEic?.earnedIncome ?? 0) > 0 && <MoneyField label="2024 federal AGI" hint="2024 Form 1040 line 11" value={d.priorYearEic?.agi ?? 0} onChange={(n) => put({ priorYearEic: { earnedIncome: d.priorYearEic?.earnedIncome ?? 0, agi: n } })} />}
           {L['34'] > 0 && <MoneyField label="Apply to 2026 estimated tax" value={d.creditForward} onChange={(n) => put({ creditForward: n })} />}
         </div>
       </Section>

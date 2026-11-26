@@ -6,7 +6,7 @@ import type { KyInput, Owner, Person } from '../engine/model.ts'
 import { computeKentucky } from '../engine/ky2025.ts'
 import { buildKyPacket } from '../pdf/ky2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
-import { Choice, MoneyField, Section, TextField, usd } from './fields'
+import { Check, Choice, MoneyField, NumberField, Section, TextField, usd } from './fields'
 import { ExplainItems, WithholdingItems } from './creditrows'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
@@ -131,6 +131,28 @@ export function KentuckyStep({ ret, set, result, preparer }: StepProps & { prepa
         )}
       </Section>
 
+      {ret.retirement.some((x) => x.taxableAmount > 0) && (
+        <Section title="Government pensions (Schedule P)" intro="A pension from the federal government, the Commonwealth of Kentucky or a Kentucky local government can be excluded beyond the $31,110 for service before 1998: in full if you retired before 1998, otherwise by the exempt percentage from the Schedule P worksheet (or the revenue.ky.gov calculator).">
+          <div className="grid">
+            {ret.retirement.filter((x) => x.taxableAmount > 0).map((x) => {
+              const g = d.govPensions?.[x.id]
+              const putG = (v: { date: string; exemptPercent: number } | null): void => {
+                const next = { ...(d.govPensions ?? {}) }
+                if (v) next[x.id] = v
+                else delete next[x.id]
+                put({ govPensions: next })
+              }
+              return [
+                <Check key={`gp-${x.id}`} label={`${x.payer || '1099-R'} (${usd(x.taxableAmount)}): federal, Kentucky or Kentucky local government pension`} checked={!!g} onChange={(on) => putG(on ? { date: '', exemptPercent: 0 } : null)} />,
+                g && <TextField key={`gpd-${x.id}`} label="Date of retirement" placeholder="MM/DD/YYYY" autoComplete="off" value={g.date} onChange={(s) => putG({ ...g, date: s })} />,
+                g && !/(19[0-8]\d|199[0-7])\s*$/.test(g.date) && <NumberField key={`gpp-${x.id}`} label="Exempt percentage" hint="Schedule P worksheet line 4" decimal max={100} suffix="%" value={g.exemptPercent} onChange={(n) => putG({ ...g, exemptPercent: n })} />
+              ]
+            })}
+          </div>
+          {ky.schP && <p className="why">Pension exclusion (Schedule M line 9): {usd(ky.schP.byOwner.taxpayer.l4 + ky.schP.byOwner.spouse.l4)}.</p>}
+        </Section>
+      )}
+
       <Section title="Itemized deductions (Schedule A)" intro={`Kentucky allows only interest, gifts and other miscellaneous deductions — no taxes or medical expenses. Mortgage interest, gifts and other deductions come from your federal entries. Schedule A total: ${usd(ky.itemized)}${ky.itemize ? ' — used on line 10.' : ' — the standard deduction is larger.'}`}>
         <div className="grid">
           <MoneyField label="Mortgage interest not on a Form 1098" hint="Line 2" value={d.schA.individualMortgage} onChange={(n) => putA({ individualMortgage: n })} />
@@ -153,7 +175,13 @@ export function KentuckyStep({ ret, set, result, preparer }: StepProps & { prepa
           <MoneyField label="Income taxed by that state and included here" hint="Worksheet A line 4" value={d.otherState.income} onChange={(n) => putOs({ income: n })} />
           <MoneyField label="Tax paid to that state on that income" hint="Worksheet A line 11" value={d.otherState.tax} onChange={(n) => putOs({ tax: n })} />
           {two && <Choice legend="Whose income it was" value={d.otherState.owner} onChange={(o) => putOs({ owner: o })} options={owners.map((o) => ({ value: o, label: names[o] }))} />}
-          <MoneyField label="Education tuition credit" hint="Form 740 line 23; Form 8863-K" value={d.tuitionCredit} onChange={(n) => put({ tuitionCredit: n })} />
+          {ret.students.map((x) => (
+            <Check key={`kys-${x.id}`} label={`${x.name || 'Student'}: undergraduate at a Kentucky school${x.institution ? ` (${x.institution})` : ''}`} hint="Form 8863-K: 25% of the federal credit on these expenses" checked={!!d.kyStudents?.[x.id]} onChange={(on) => put({ kyStudents: { ...(d.kyStudents ?? {}), [x.id]: on } })} />
+          ))}
+          {ky.k8863 ? null : <MoneyField label="Education tuition credit" hint="Form 740 line 23; Form 8863-K (or mark the students above)" value={d.tuitionCredit} onChange={(n) => put({ tuitionCredit: n })} />}
+          {(ky.k8863 || ret.students.length > 0) && [2020, 2021, 2022, 2023, 2024].map((y, i) => (
+            <MoneyField key={`kyc-${y}`} label={`Tuition credit carryforward from ${y}`} hint="Form 8863-K Part V" value={d.tuitionCarryforward?.[i] ?? 0} onChange={(n) => { const c = [...(d.tuitionCarryforward ?? [0, 0, 0, 0, 0])]; c[i] = n; put({ tuitionCarryforward: c }) }} />
+          ))}
           <MoneyField label="Kentucky use tax" hint="6% of untaxed out-of-state purchases" value={d.useTax} onChange={(n) => put({ useTax: n })} />
           {L['37'] > 0 && <MoneyField label="Credit to 2026 estimated tax" value={d.creditForward} onChange={(n) => put({ creditForward: n })} />}
         </div>

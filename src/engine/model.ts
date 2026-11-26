@@ -1693,12 +1693,17 @@ export interface KyInput {
   license: Record<Owner, string>
   /** Use a joint return (status 3) even when both spouses had income. */
   forceJoint: boolean
+  /** Form 8863-K: students (by id) at Kentucky institutions in undergraduate studies; credit carryforwards from 2020–2024 (Part V). */
+  kyStudents?: Record<string, boolean>
+  /** Schedule P: federal, Kentucky or Kentucky local government pensions (by 1099-R id): date of retirement (MM/DD/YYYY) and the exempt percentage for retirements after 1997. */
+  govPensions?: Record<string, { date: string; exemptPercent: number }>
+  tuitionCarryforward?: number[]
 }
 export const emptyKy = (): KyInput => ({
   w2: {}, withholdingOther: 0, estimatedPayments: 0, otherStateBondInterest: 0, usObligationInterest: 0, militaryPay: 0, otherAdditions: 0, otherAdditionsText: '', otherSubtractions: 0, otherSubtractionsText: '',
   schM: { k1Additions: 0, federalDepreciation: 0, federalNol: 0, stateRefund: 0, k1Subtractions: 0, kyDepreciation: 0, knol: 0 },
   schA: { individualMortgage: 0, individualInfo: '', points: 0, investmentInterest: 0, artistic: 0, carryover: 0, gambling: 0, otherText: '' },
-  birthDate: { taxpayer: '', spouse: '' }, nationalGuard: { taxpayer: false, spouse: false }, itc: {}, otherState: { state: '', owner: 'taxpayer', income: 0, tax: 0 }, tuitionCredit: 0, useTax: 0, creditForward: 0, license: { taxpayer: '', spouse: '' }, forceJoint: false
+  birthDate: { taxpayer: '', spouse: '' }, nationalGuard: { taxpayer: false, spouse: false }, itc: {}, otherState: { state: '', owner: 'taxpayer', income: 0, tax: 0 }, tuitionCredit: 0, useTax: 0, creditForward: 0, license: { taxpayer: '', spouse: '' }, forceJoint: false, kyStudents: {}, tuitionCarryforward: [0, 0, 0, 0, 0]
 })
 
 export type OkRetirementKind = 'other' | 'okgov' | 'csrs' | 'military' | 'railroad'
@@ -1732,11 +1737,17 @@ export interface OkInput {
   salesTaxCredit: number
   /** Line 35: refund applied to 2026 estimated tax. */
   creditForward: number
+  /** Form 511-TX: the other state's name and the income for personal services taxed by both states (line 1). */
+  otherStateName?: string
+  otherStateIncome?: number
+  /** Form 511-EIC, Tax Year 2024 column: 2024 earned income and federal AGI (the credit uses the larger year). */
+  priorYearEic?: { earnedIncome: number; agi: number }
 }
 export const emptyOk = (): OkInput => ({
   w2: {}, withholding1099: 0, estimatedPayments: 0, extensionPayment: 0, county: '', dependentBirthDates: {}, retirementKind: {}, csrsClaim: { taxpayer: '', spouse: '' },
   usObligationInterest: 0, otherSubtraction: { code: '', amount: 0 }, otherStateBondInterest: 0, otherAddition: { code: '', amount: 0 }, militaryPay: 0, collegeSavings: 0,
-  otherAdjustment: { code: '', amount: 0 }, otherStateCredit: 0, otherCredit: { code: '', amount: 0 }, useTax: 0, salesTaxCredit: 0, creditForward: 0
+  otherAdjustment: { code: '', amount: 0 }, otherStateCredit: 0, otherCredit: { code: '', amount: 0 }, useTax: 0, salesTaxCredit: 0, creditForward: 0,
+  otherStateName: '', otherStateIncome: 0, priorYearEic: { earnedIncome: 0, agi: 0 }
 })
 
 export type CtRetirementKind = 'standard' | 'military' | 'railroad' | 'ctrb' | 'roth'

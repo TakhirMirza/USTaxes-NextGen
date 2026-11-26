@@ -193,8 +193,116 @@ export function formOk511(ret: TaxReturnInput, res: TaxReturnResult, ok: OkResul
   return { id: 'ok511', file: 'ok511.pdf', title: 'Oklahoma Form 511', values: v, pages }
 }
 
+const cents = (n: number): [string, string] => {
+  const v = Math.round(n * 100)
+  return v === 0 ? ['', ''] : [Math.floor(v / 100).toLocaleString('en-US'), String(v % 100).padStart(2, '0')]
+}
+const fullNames = (ret: TaxReturnInput, joint: boolean): string =>
+  [ret.taxpayer, ...(joint ? [ret.spouse] : [])].map((p) => upper(`${p.firstName} ${p.lastName}`)).join(' & ')
+
+/** Form 511-EIC: the Oklahoma earned income credit worksheet (2020 federal rules), 2024 and 2025 columns. */
+export function formOk511Eic(ret: TaxReturnInput, res: TaxReturnResult, ok: OkResult): FormFill | null {
+  const e = ok.eic
+  if (!e || ok.schG['1'] <= 0) return null
+  const v: Record<string, FieldValue> = { 'Name Shown on Form 511 or Form 511-NR': fullNames(ret, ret.filingStatus === 'mfj'), 'Social Security Number': digits(ret.taxpayer.ssn) }
+  // The PDF's field names still say 2023/2024; their columns are printed Tax Year 2024 and Tax Year 2025.
+  const cols: [string, string][] = [['Part I Tax Year 2023', 'Part II Tax Year 2023'], ['Part I Tax Year 2024', 'Part II Tax Year 2024']]
+  const wages = Math.round(res.f1040['1z'])
+  e.earned.forEach((earned, i) => {
+    if (earned <= 0) return
+    const [p1, p2] = cols[i]
+    const w = i === 1 ? Math.min(wages, earned) : earned
+    const se = earned - w
+    Object.assign(v, { [`${p1} Line 1`]: money(w), [`${p1} Line 3`]: money(w), [`${p1} Line 5`]: money(w) })
+    if (se) v[`${p1} Line 10`] = money(se)
+    const yr = i === 0 ? '2023' : '2024'
+    Object.assign(v, {
+      [`${p2} Line 15`]: keep0(earned), [`Part II Line 15 No qualifying children or qualifying children? ${yr}`]: e.line16[i] > 0 ? 'Yes' : 'No',
+      [`${p2} Line 16`]: money(e.line16[i]), [`${p2} Line 17`]: keep0(e.agi[i]),
+      [`Part II Line 18 Are the amounts on lines 15 and 17 the same? ${yr}`]: earned === e.agi[i] ? 'Yes' : 'No',
+      [`${p2} Line 20`]: money(e.line20[i])
+    })
+    if (earned !== e.agi[i]) {
+      v[`Part II Line 19 If you have qualifyiing children? ${yr}`] = e.line19[i] === null ? 'Yes' : 'No'
+      if (e.line19[i] !== null) v[`${p2} Line 19`] = keep0(e.line19[i]!)
+    }
+  })
+  return { id: 'ok511eic', file: 'ok511eic.pdf', title: 'Oklahoma Form 511-EIC', values: v, pages: [0, 1] }
+}
+
+/** Form 511-TX: credit for tax paid to another state. */
+export function formOk511Tx(ret: TaxReturnInput, ok: OkResult): FormFill | null {
+  const T = ok.tx
+  if (!T['7']) return null
+  const v: Record<string, FieldValue> = { Names: fullNames(ret, ret.filingStatus === 'mfj'), SSN: digits(ret.taxpayer.ssn) }
+  const put = (line: string, n: number): void => { const [d, c] = cents(n); v[`${line}d`] = d; v[`${line}c`] = c }
+  if (T['1']) { put('1', T['1']); put('2', T['2']); v['3'] = `${(T['3'] * 100).toFixed(2)}%` }
+  put('4', T['4']); put('5', T['5']); put('6', T['6']); put('7', T['7'])
+  v['6 Tax Paid To'] = upper(ret.ok.otherStateName ?? '')
+  return { id: 'ok511tx', file: 'ok511tx.pdf', title: 'Oklahoma Form 511-TX', values: v, pages: [0] }
+}
+
+const OK_CR_FIELD: Record<string, string> = { '1': 'C 1a', '3': 'C 3b' }
+/** Form 511-CR: the other credit on its line (column C), and the total on line 30. */
+export function formOk511Cr(ret: TaxReturnInput, ok: OkResult): FormFill | null {
+  const n = ok.lines['17']
+  if (n <= 0) return null
+  const code = ret.ok.otherCredit.code.replace(/^0+/, '')
+  const v: Record<string, FieldValue> = { Name: fullNames(ret, ret.filingStatus === 'mfj'), SSN: digits(ret.taxpayer.ssn), 'FEIN or SSN 2': digits(ret.taxpayer.ssn) }
+  const key = OK_CR_FIELD[code] ?? `C ${code}`
+  v[key] = money(n)
+  v['C 28'] = money(n); v['C 30c'] = money(n)
+  return { id: 'ok511cr', file: 'ok511cr.pdf', title: 'Oklahoma Form 511-CR', values: v, pages: [0, 1] }
+}
+
+/** Form 538-S: sales tax relief credit (household income from this return; $40 per qualified exemption). */
+export function formOk538s(ret: TaxReturnInput, res: TaxReturnResult, ok: OkResult): FormFill | null {
+  const credit = ok.lines['25']
+  if (credit <= 0) return null
+  const joint = ret.filingStatus === 'mfj'
+  const [tf, tmi] = firstAndInitial(ret.taxpayer.firstName)
+  const [sf, smi] = firstAndInitial(ret.spouse.firstName)
+  const f = res.f1040
+  const v: Record<string, FieldValue> = {
+    '538-S SSN1': digits(ret.taxpayer.ssn), '538-S Taxpayer First Name': tf, '538-S Taxpayer Middle Initial': tmi, '538-S Taxpayer Last Name': upper(ret.taxpayer.lastName),
+    '538-S Mailing Address': upper(ret.contact.street), '538-S City': upper(ret.contact.city), '538-S State': upper(ret.contact.state), '538-S ZIP': digits(ret.contact.zip),
+    '538-S Your Social Security Number': digits(ret.taxpayer.ssn), '538-S Oklahoma Resident': 'Yes',
+    '538-S 65 or Over': ret.taxpayer.age >= 65 || (joint && ret.spouse.age >= 65)
+  }
+  if (joint) Object.assign(v, { '538-S sSSN1': digits(ret.spouse.ssn), '538-S Spouse First Name': sf, '538-S Spouse Middle Initial': smi, '538-S Spouse Last Name': upper(ret.spouse.lastName) })
+  ret.dependents.slice(0, 4).forEach((d, i) => {
+    const c = 'abcd'[i]
+    Object.assign(v, { [`538-S Part 2 1${c}`]: upper(d.name), [`538-S Part 2 2${c}`]: d.age ? String(d.age) : '', [`538-S Part 2 3${c}-1`]: digits(d.ssn), [`538-S Part 2 4${c}`]: upper(d.relationship) })
+  })
+  const exA = 1, exB = joint ? 1 : 0, exC = ret.dependents.length
+  Object.assign(v, { '538-S Exemptions A': String(exA), '538-S Exemptions B': exB ? '1' : '', '538-S Exemptions C1': exC ? String(exC) : '', '538-S Exemptions D1': String(exA + exB + exC) })
+  const P: Record<string, number> = {
+    '1': ret.w2s.reduce((t, w) => t + w.wages, 0),
+    '2': f['2a'] + f['2b'] + f['3b'],
+    '4': ret.socialSecurity.reduce((t, x) => t + Math.max(0, x.netBenefits), 0),
+    '6': ret.retirement.reduce((t, x) => t + Math.max(0, x.grossDistribution), 0),
+    '8': res.schedule1.unemployment,
+    '9': f['27a'] + ok.lines['28'],
+    '11': Math.max(0, res.schedule1.rentalIncome) + Math.max(0, res.scheduleD.net) + Math.max(0, res.schedule1.otherGains),
+    '12': Math.max(0, res.schedule1.businessIncome),
+    '13': Math.max(0, res.schedule1.otherIncome)
+  }
+  let total = 0
+  for (const [k, n] of Object.entries(P)) { v[`538-S Part 3 ${k}`] = money(n); total += Math.round(n) }
+  v['538-S Part 3 14-1'] = keep0(total)
+  v['538-S Part 4 15-1'] = String(Math.round(credit / 40))
+  v['538-S Part 4 15-3'] = money(credit)
+  return { id: 'ok538s', file: 'ok538s.pdf', title: 'Oklahoma Form 538-S', values: v }
+}
+
 export function buildOkPacket(ret: TaxReturnInput, res: TaxReturnResult, ok: OkResult, preparer?: PreparerInfo | null): FormPacket {
-  const notIncluded = [...ok.attach]
+  const extra: [FormFill | null, string][] = [[formOk511Tx(ret, ok), 'Form 511-TX'], [formOk511Cr(ret, ok), 'Form 511-CR'], [formOk538s(ret, res, ok), 'Form 538-S'], [formOk511Eic(ret, res, ok), 'Form 511-EIC']]
+  const made = extra.filter(([f]) => f).map(([, n]) => n)
+  const notIncluded = ok.attach.filter((a) => !made.some((n) => a.startsWith(n)))
+  if (made.includes('Form 511-TX')) notIncluded.push('The other state’s return (with Form 511-TX)')
+  if (made.includes('Form 538-S') && ret.dependents.length > 4) notIncluded.push('Form 538-S: a schedule of the dependents after the first four, and each dependent’s income (Part 2 column 5)')
+  if (made.includes('Form 538-S')) notIncluded.push('Form 538-S Part 3: add any household income not on this return (nontaxable income, assistance, other household members)')
+  if (ok.eic && ok.eic.earned[1] > Math.round(res.f1040['1z'])) notIncluded.push('Form 511-EIC lines 6–13: self-employment detail from Schedule SE (the total is on line 10)')
   if (ret.dependents.some((x) => !(ret.ok.dependentBirthDates[x.id] ?? '').replace(/\D/g, ''))) notIncluded.push('Page 1: dependents’ dates of birth that were not entered')
-  return { forms: [formOk511(ret, res, ok, preparer), ...dependentsStatement(ret, 4, 'Form 511, Dependents (continued)', 'st-ok-deps')], notIncluded }
+  return { forms: [formOk511(ret, res, ok, preparer), ...dependentsStatement(ret, 4, 'Form 511, Dependents (continued)', 'st-ok-deps'), ...extra.flatMap(([f]) => (f ? [f] : []))], notIncluded }
 }

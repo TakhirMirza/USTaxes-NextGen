@@ -234,11 +234,73 @@ export function formsKyKw2(ret: TaxReturnInput, ky: KyResult): FormFill[] {
   return out
 }
 
+const names = (ret: TaxReturnInput): string =>
+  [ret.taxpayer, ...(ret.filingStatus === 'mfj' || ret.filingStatus === 'mfs' ? [ret.spouse] : [])].filter((p) => p.firstName || p.lastName).map((p) => upper(`${p.firstName} ${p.lastName}`)).join(' & ')
+const decimal = (n: number): string => (n >= 1 ? '1.000' : n.toFixed(3).replace(/^0/, ''))
+
+/** Form 8863-K: Kentucky education tuition tax credit (Parts I–V). */
+export function formKy8863k(ret: TaxReturnInput, ky: KyResult): FormFill | null {
+  const K = ky.k8863
+  if (!K || K['17'] <= 0 && K['18'] <= 0 && K['25'] <= 0) return null
+  const v: Record<string, FieldValue> = { '8863KTPName': names(ret), '8863KTPSSN': digits(ret.taxpayer.ssn) }
+  const ky8 = ret.students.filter((x) => ret.ky.kyStudents?.[x.id])
+  if (ky8.length) Object.assign(v, { '8863KPart1KYInstitutionCheckbox': 'Yes', '8863KPart1KYUnderGradStudiesCheckbox': 'Yes', '8863KPart1KYFilingStatusCheckbox': ret.filingStatus === 'mfs' ? 'No' : 'Yes' })
+  ky8.filter((x) => x.aotcEligible).slice(0, 2).forEach((x, i) => {
+    const c = Math.min(4000, Math.round(x.qualifiedExpenses)), d = Math.max(0, c - 2000), e = Math.round(d * 0.25)
+    Object.assign(v, {
+      [`8863KStudentName${i + 1}`]: upper(x.name), [`8863KStudentSSN${i + 1}`]: digits(x.ssn), [`8863KInstitutionName${i + 1}`]: upper(x.institution), [`8863KInstitutionAddress${i + 1}`]: upper(x.institutionAddress),
+      [`8863KLine1columnc${i + 1}`]: keep0(c), [`8863KLine1columnd${i + 1}`]: keep0(d), [`8863KLine1columne${i + 1}`]: keep0(e), [`8863KLine1columnf${i + 1}`]: keep0(Math.min(c, 2000) + e)
+    })
+  })
+  ky8.filter((x) => !x.aotcEligible).slice(0, 2).forEach((x, i) => {
+    Object.assign(v, { [`8863KLLCStudentName${i + 1}`]: upper(x.name), [`8863KLLCStudentSSN${i + 1}`]: digits(x.ssn), [`8863KPart3KYInstitutionName${i + 1}`]: upper(x.institution), [`8863KPart3KYInstitutionAddress${i + 1}`]: upper(x.institutionAddress), [`8863KLine5(d)${i + 1}`]: keep0(x.qualifiedExpenses) })
+  })
+  if (K['2']) { v['8863KLine2'] = keep0(K['2']); v['8863KLine3'] = decimal(K['3']); v['8863KLine4'] = keep0(K['4']) }
+  if (K['6']) { v['8863KLine6'] = keep0(K['6']); v['8863KLine7'] = keep0(K['7']); v['8863KLine8'] = keep0(K['8']); v['8863KLine9e'] = decimal(K['9']); v['8863KLine10'] = keep0(K['10']) }
+  for (const k of ['11', '12', '13', '14', '15', '16', '17', '18']) v[`8863KLine${k}`] = k === '17' || k === '13' ? keep0(K[k]) : money(K[k])
+  if (K['25'] > 0) for (let l = 19; l <= 34; l++) v[`8863KLine${l}`] = money(K[String(l)])
+  return { id: 'ky8863k', file: 'ky-8863k.pdf', title: 'Kentucky Form 8863-K', values: v, pages: K['25'] > 0 ? [0, 1, 2] : [0, 1] }
+}
+
+/** Schedule P: pension income exclusion (column A spouse, B yourself). */
+export function formKySchP(ret: TaxReturnInput, ky: KyResult): FormFill | null {
+  const P = ky.schP
+  if (!P) return null
+  const v: Record<string, FieldValue> = { SchPTPName: names(ret), SchPSSN: digits(ret.taxpayer.ssn) }
+  const col = (o: string): 'A' | 'B' => (o === 'spouse' ? 'A' : 'B')
+  const a = P.rows.filter((x) => x.before98).slice(0, 2)
+  const b = P.rows.filter((x) => !x.before98).slice(0, 3)
+  const tot = { a: { A: 0, B: 0 }, b: { A: 0, B: 0 } }
+  a.forEach((x, i) => {
+    v[`SchPLine1(a)Name${i + 1}`] = upper(x.payer); v[`SchPLine1Date${i + 1}`] = x.date
+    v[col(x.owner) === 'A' ? `SchPLine1ColA${i + 1}` : `TSchPLine1ColB${i + 1}`] = keep0(x.exempt)
+    tot.a[col(x.owner)] += x.exempt
+  })
+  b.forEach((x, i) => {
+    Object.assign(v, { [`SchPLine1(b)Name${i + 1}`]: upper(x.payer), [`Text30SchPLine1(b)Date${i + 1}`]: x.date, [`Text30SchPLine1(b)TaxPen${i + 1}`]: keep0(x.taxable), [`Text30SchPLine1(b)ExemptPerc${i + 1}`]: `${+(x.pct * 100).toFixed(2)}%` })
+    v[`Text30SchPLine1(b)Col${col(x.owner)}${i + 1}`] = keep0(x.exempt)
+    tot.b[col(x.owner)] += x.exempt
+  })
+  const own = (c: 'A' | 'B') => P.byOwner[c === 'A' ? 'spouse' : 'taxpayer']
+  const used = (c: 'A' | 'B'): boolean => P.rows.some((x) => col(x.owner) === c) || (c === 'A' ? own('A').l4 > 0 : true)
+  for (const c of ['A', 'B'] as const) {
+    if (!used(c)) continue
+    if (a.length) v[c === 'A' ? 'SchPLine1ColATotal' : 'TSchPLine1ColBTotal'] = money(tot.a[c])
+    if (b.length) v[`Text30SchPLine1(b)Col${c}Total`] = money(tot.b[c])
+    Object.assign(v, { [`Text30SchPLine1(c)Col${c}`]: keep0(own(c).c), [`Text30SchPLine2${c}`]: keep0(own(c).l2), [`Text30SchPLine3${c}`]: keep0(own(c).l3), [`Text30SchPLine4${c}`]: keep0(own(c).l4) })
+  }
+  return { id: 'kyschp', file: 'ky-schp.pdf', title: 'Kentucky Schedule P', values: v, pages: [0] }
+}
+
 export function buildKyPacket(ret: TaxReturnInput, res: TaxReturnResult, ky: KyResult, preparer?: PreparerInfo | null): FormPacket {
   const forms = [formKy740(ret, res, ky, preparer), formKySchM(ret, ky), formKySchA(ret, ky), formKyItc(ret, res, ky)]
   const out = forms.filter((x): x is FormFill => x !== null)
   const kw2 = formsKyKw2(ret, ky)
   out.push(...kw2)
+  const k8 = formKy8863k(ret, ky)
+  const sp = formKySchP(ret, ky)
+  if (k8) out.push(k8)
+  if (sp) out.push(sp)
   const M = ky.schM
   const add = (M.A['5'] ?? 0) + (M.B['5'] ?? 0)
   const sub = (M.A['14'] ?? 0) + (M.B['14'] ?? 0)
@@ -251,8 +313,11 @@ export function buildKyPacket(ret: TaxReturnInput, res: TaxReturnResult, ky: KyR
   out.push(...st)
   const missing = (add > 0 && !st.some((f) => f.id.startsWith('st-ky-otherAdditions'))) || (sub > 0 && !st.some((f) => f.id.startsWith('st-ky-otherSubtractions')))
   const otherListed = (ret.withholdingLists?.['ky.withholdingOther'] ?? []).some((x) => x.tax > 0)
-  const notIncluded = ky.attach.filter((a) => (missing || !a.startsWith('A statement explaining the other additions')) && !(kw2.length && a.startsWith('Schedule KW-2')))
+  const notIncluded = ky.attach.filter((a) => (missing || !a.startsWith('A statement explaining the other additions')) && !(kw2.length && a.startsWith('Schedule KW-2')) && !(k8 && a.startsWith('Form 8863-K')))
   if (kw2.length) notIncluded.push('Your W-2s, 1099s and W-2Gs with Kentucky withholding (keep them with your records; Schedule KW-2 lists them)')
   if (ret.ky.withholdingOther > 0 && !otherListed) notIncluded.push('Schedule KW-2 Part II: list each 1099 or W-2G with Kentucky withholding in the Kentucky section')
+  if (k8 && ret.students.filter((x) => ret.ky.kyStudents?.[x.id]).length > 2) notIncluded.push('Form 8863-K: students after the first two in Part II or III (on a copy of the page)')
+  if (sp && ky.schP && ky.schP.rows.length > 5) notIncluded.push('Schedule P: government pensions after the first rows (on a copy)')
+  if (sp && ky.schP?.rows.some((x) => !x.before98)) notIncluded.push('Schedule P worksheet (page 2) or the revenue.ky.gov calculator printout, for each exempt percentage')
   return { forms: out, notIncluded }
 }
