@@ -42,17 +42,11 @@ import { buildIaPacket } from './ia2025.ts'
 import { OH_DEDUCTION_LINES } from '../engine/oh2025.ts'
 import { MN_M1M_ADDITION_LINES } from '../engine/mn2025.ts'
 import { emptyIaCredit148 } from '../engine/model.ts'
-import { NC_DEDUCTION_LINES, computeNorthCarolina } from '../engine/nc2025.ts'
-import { buildNcPacket } from './nc2025.ts'
-import { computeNebraska } from '../engine/ne2025.ts'
-import { buildNePacket } from './ne2025.ts'
-import { computePennsylvania } from '../engine/pa2025.ts'
-import { buildPaPacket } from './pa2025.ts'
 import { buildPdf, fillForm } from './fill.ts'
 import type { FillProblem } from './fill.ts'
 import type { FormFill } from './irs2025.ts'
 
-type St = 'al' | 'ga' | 'mn' | 'oh' | 'ms' | 'ut' | 'ct' | 'or' | 'co' | 'mo' | 'az' | 'ca' | 'ky' | 'il' | 'ia' | 'nc' | 'ne' | 'pa'
+type St = 'al' | 'ga' | 'mn' | 'oh' | 'ms' | 'ut' | 'ct' | 'or' | 'co' | 'mo' | 'az' | 'ca' | 'ky' | 'il' | 'ia'
 
 /** A single filer with `n` W-2s, each with state withholding. */
 const many = (st: St, n: number, patch: Partial<TaxReturnInput> = {}): TaxReturnInput => {
@@ -382,41 +376,4 @@ test('MN: other additions on their Schedule M1M lines', async () => {
   assert.equal(v['M1Mline6'], '500')
   assert.equal(v['M1Mline3'], '300')
   await fillsClean(p.forms, 'MNM')
-})
-
-test('NC: other deductions on their Schedule S lines; veteran and extension answers', async () => {
-  const base = many('nc', 1)
-  const l30 = NC_DEDUCTION_LINES.find(([l]) => l.startsWith('Line 30'))![0]
-  const ret = { ...base, nc: { ...base.nc, otherDeductions: 400, veteran: { taxpayer: true, spouse: false }, federalExtension: false }, explain: { 'nc.otherDeductions': [{ line: l30, description: 'PESA', amount: 400 }] } }
-  const res = computeReturn(ret)
-  const p = buildNcPacket(ret, res, computeNorthCarolina(ret, res))
-  assert.equal(p.forms.find((f) => f.id === 'ncd400s')!.values['y_d400schswf_li30_good'], '400')
-  const v = p.forms.find((f) => f.id === 'ncd400')!.values
-  assert.equal(v['y_d400wf_v1yes'], true)
-  assert.equal(v['y_d400wf_fedex1no'], true)
-  assert.ok(!p.notIncluded.some((x) => x.includes('Schedule S') || x.includes('veteran')))
-  await fillsClean(p.forms, 'NCS')
-})
-
-test('NE: the foreign adversarial company question is answered', async () => {
-  const ret = many('ne', 1)
-  const res = computeReturn(ret)
-  const p = buildNePacket(ret, res, computeNebraska(ret, res))
-  assert.ok(Object.values(p.forms[0].values).includes('no'))
-  assert.ok(!p.notIncluded.some((x) => x.includes('adversarial')))
-  await fillsClean(p.forms, 'NEQ')
-})
-
-test('PA: 529 beneficiaries on Schedule O Part I, each capped at $19,000', async () => {
-  const base = many('pa', 1, { w2s: [{ ...emptyW2('taxpayer'), employer: 'Big Co', wages: 120000, socialSecurityWages: 120000, medicareWages: 120000 }] })
-  const ret = { ...base, pa: { ...base.pa, tuitionContributions: { taxpayer: 25000, spouse: 0 }, beneficiaries529: [{ name: 'Ann Doe', ssn: '111223333', taxpayer: 20000, spouse: 0 }, { name: 'Ben Doe', ssn: '111223334', taxpayer: 5000, spouse: 0 }] } }
-  const res = computeReturn(ret)
-  const pa = computePennsylvania(ret, res)
-  assert.equal(pa.scheduleO.tuition.taxpayer, 24000)
-  const p = buildPaPacket(ret, res, pa)
-  const v = p.forms.find((f) => f.id === 'pa40o')!.values
-  assert.equal(v['PART I - NAME (2)'], 'Ben Doe')
-  assert.equal(v['CONTRIBUTIONS BY TAXPAYER  (1)'], '19000')
-  assert.ok(!p.notIncluded.some((x) => x.includes('beneficiary')))
-  await fillsClean(p.forms, 'PAO')
 })

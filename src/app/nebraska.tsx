@@ -6,7 +6,7 @@ import type { NeInput, NeRetirementKind, Owner, Person } from '../engine/model.t
 import { computeNebraska } from '../engine/ne2025.ts'
 import { buildNePacket } from '../pdf/ne2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
-import { Check, MoneyField, Section, TextField, usd } from './fields'
+import { MoneyField, Section, TextField, usd } from './fields'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -72,9 +72,6 @@ export function NebraskaStep({ ret, set, result, preparer }: StepProps & { prepa
           <MoneyField label="2025 estimated and extension payments" hint="Line 40" value={d.estimatedPayments} onChange={(n) => put({ estimatedPayments: n })} />
           {L['60'] > 0 && <MoneyField label="Apply to 2026 estimated tax" value={d.creditForward} onChange={(n) => put({ creditForward: n })} />}
           {L['60'] > 0 && <MoneyField label="Wildlife Conservation Fund donation" value={d.wildlife} onChange={(n) => put({ wildlife: n })} />}
-        </div>
-        <div className="checks">
-          <Check label="I am claiming benefits or credits from a business owned in whole or part by a foreign adversarial company (page 1 question)" checked={d.foreignAdversarial} onChange={(on) => put({ foreignAdversarial: on })} />
         </div>
       </Section>
 

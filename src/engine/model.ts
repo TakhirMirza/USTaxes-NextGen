@@ -822,8 +822,6 @@ export interface PaInput {
   gamblingWinnings: number
   /** Schedule O: 529 plan contributions by owner (up to $19,000 per beneficiary each). */
   tuitionContributions: Record<Owner, number>
-  /** Schedule O Section I: each 529 beneficiary and what each spouse contributed for them (when listed, these replace the totals). */
-  beneficiaries529: { name: string; ssn: string; taxpayer: number; spouse: number }[]
   withholding: number
   priorYearCredit: number
   estimatedPayments: number
@@ -841,7 +839,7 @@ export interface PaInput {
 }
 export const emptyPa = (): PaInput => ({
   schoolDistrict: '', schoolCode: '', compensation: null, unreimbursedExpenses: 0, otherStateBondInterest: 0, usObligationInterest: 0,
-  gamblingWinnings: 0, tuitionContributions: { taxpayer: 0, spouse: 0 }, beneficiaries529: [], withholding: 0, priorYearCredit: 0, estimatedPayments: 0,
+  gamblingWinnings: 0, tuitionContributions: { taxpayer: 0, spouse: 0 }, withholding: 0, priorYearCredit: 0, estimatedPayments: 0,
   extensionPayment: 0, residentCredit: 0, otherCredits: 0, useTax: 0, otherEligibilityIncome: 0, spouseEligibilityIncome: 0, creditForward: 0
 })
 
@@ -869,14 +867,11 @@ export interface NcInput {
   noUseTaxDue: boolean
   creditForward: number
   contributions: number
-  /** Page 1: veteran information (each spouse) and whether a federal extension was filed. */
-  veteran: { taxpayer: boolean; spouse: boolean }
-  federalExtension: boolean
 }
 export const emptyNc = (): NcInput => ({
   county: '', withholding: { taxpayer: 0, spouse: 0 }, estimatedPayments: 0, extensionPayment: 0, stateRefundInFagi: 0, otherStateBondInterest: 0,
   usObligationInterest: 0, baileyRetirement: 0, militaryRetirement: 0, otherAdditions: 0, otherDeductions: 0, spouseItemizes: false, taxCredits: 0,
-  useTax: 0, noUseTaxDue: true, creditForward: 0, contributions: 0, veteran: { taxpayer: false, spouse: false }, federalExtension: false
+  useTax: 0, noUseTaxDue: true, creditForward: 0, contributions: 0
 })
 
 /** State copy of a W-2 or 1099-R: the IDs and state amounts a withholding schedule asks for. */
@@ -1984,8 +1979,6 @@ export const emptyAr = (): ArInput => ({
 
 export type NeRetirementKind = 'standard' | 'military' | 'railroad' | 'csrs'
 export interface NeInput {
-  /** Page 1: claiming benefits or credits from a business owned by a foreign adversarial company. */
-  foreignAdversarial: boolean
   /** Nebraska W-2 details by W-2 id (line 36). */
   w2: Record<string, StateStatement>
   /** Line 37: Nebraska tax withheld on 1099s and W-2Gs; line 40: estimated and extension payments. */
@@ -2011,7 +2004,7 @@ export interface NeInput {
 }
 export const emptyNe = (): NeInput => ({
   w2: {}, withholdingOther: 0, estimatedPayments: 0, schoolDistrictCode: '', otherStateBondInterest: 0, stateRefundInFagi: 0, usObligationInterest: 0,
-  retirementKind: {}, collegeSavings: 0, enable: 0, otherState: { state: '', agi: 0, tax: 0 }, useTax: 0, creditForward: 0, wildlife: 0, foreignAdversarial: false
+  retirementKind: {}, collegeSavings: 0, enable: 0, otherState: { state: '', agi: 0, tax: 0 }, useTax: 0, creditForward: 0, wildlife: 0
 })
 
 export interface MsInput {
@@ -3190,8 +3183,8 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     ca: { ...emptyCa(), ...(r.ca ?? {}), birthDate: { ...emptyCa().birthDate, ...(r.ca?.birthDate ?? {}) }, specialCredit: { ...emptyCa().specialCredit, ...(r.ca?.specialCredit ?? {}) }, contribution: { ...emptyCa().contribution, ...(r.ca?.contribution ?? {}) }, dependentBirthDates: { ...(r.ca?.dependentBirthDates ?? {}) }, stateWages: typeof r.ca?.stateWages === 'number' ? r.ca.stateWages : null },
     ny: { ...emptyNy(), ...(r.ny ?? {}), birthDate: { ...emptyNy().birthDate, ...(r.ny?.birthDate ?? {}) }, govPensions: { ...emptyNy().govPensions, ...(r.ny?.govPensions ?? {}) }, pensionExclusionOverride: { ...emptyNy().pensionExclusionOverride, ...(r.ny?.pensionExclusionOverride ?? {}) }, dependentBirthDates: { ...(r.ny?.dependentBirthDates ?? {}) } },
     il: { ...emptyIl(), ...(r.il ?? {}), birthDate: { ...emptyIl().birthDate, ...(r.il?.birthDate ?? {}) }, dependentBirthDates: { ...(r.il?.dependentBirthDates ?? {}) } },
-    pa: { ...emptyPa(), ...(r.pa ?? {}), tuitionContributions: { ...emptyPa().tuitionContributions, ...(r.pa?.tuitionContributions ?? {}) }, beneficiaries529: Array.isArray(r.pa?.beneficiaries529) ? r.pa.beneficiaries529.map((b: Partial<{ name: string; ssn: string; taxpayer: number; spouse: number }>) => ({ name: String(b?.name ?? ''), ssn: String(b?.ssn ?? ''), taxpayer: Number(b?.taxpayer) || 0, spouse: Number(b?.spouse) || 0 })) : [], compensation: typeof r.pa?.compensation === 'number' ? r.pa.compensation : null },
-    nc: { ...emptyNc(), ...(r.nc ?? {}), withholding: { ...emptyNc().withholding, ...(r.nc?.withholding ?? {}) }, veteran: { ...emptyNc().veteran, ...(r.nc?.veteran ?? {}) } },
+    pa: { ...emptyPa(), ...(r.pa ?? {}), tuitionContributions: { ...emptyPa().tuitionContributions, ...(r.pa?.tuitionContributions ?? {}) }, compensation: typeof r.pa?.compensation === 'number' ? r.pa.compensation : null },
+    nc: { ...emptyNc(), ...(r.nc ?? {}), withholding: { ...emptyNc().withholding, ...(r.nc?.withholding ?? {}) } },
     mi: { ...emptyMi(), ...(r.mi ?? {}), publicPensions: { ...emptyMi().publicPensions, ...(r.mi?.publicPensions ?? {}) }, birthYear: { ...emptyMi().birthYear, ...(r.mi?.birthYear ?? {}) } },
     ga: { ...emptyGa(), ...(r.ga ?? {}), birthDate: { ...emptyGa().birthDate, ...(r.ga?.birthDate ?? {}) }, disabled: { ...emptyGa().disabled, ...(r.ga?.disabled ?? {}) }, disabilityDate: { ...emptyGa().disabilityDate, ...(r.ga?.disabilityDate ?? {}) }, militaryRetirement: { ...emptyGa().militaryRetirement, ...(r.ga?.militaryRetirement ?? {}) }, w2: normalizeStatements(r.ga?.w2), donations: { ...(r.ga?.donations ?? {}) } },
     oh: { ...emptyOh(), ...(r.oh ?? {}), w2: normalizeStatements(r.oh?.w2), r1099: normalizeStatements(r.oh?.r1099), donations: { ...(r.oh?.donations ?? {}) }, dependentBirthDates: { ...(r.oh?.dependentBirthDates ?? {}) } },

@@ -6,8 +6,6 @@
 import type { Person, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { PaResult } from '../engine/pa2025.ts'
-import { PA_529_LIMIT } from '../engine/pa2025.ts'
-import { money0, statementForms } from './statement.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
@@ -131,9 +129,8 @@ export function scheduleO(ret: TaxReturnInput, pa: PaResult): FormFill {
   const tp = o.tuition.taxpayer + o.hsa + o.studentLoan
   const values: Record<string, FieldValue> = {
     'Name (if filing jointly, use name shown first on the PA-40)': upper(fullName(ret.taxpayer)), 'Enter the Social Security number shown first on the PA-40': digits(ret.taxpayer.ssn),
-    ...paBeneficiaryRows(ret, o.tuition, joint),
-    'Total IRC Section 529 Contributions  TAXPAYER': amt(o.tuition.taxpayer),
-    'Total IRC Section 529 Contributions  SPOUSE': joint ? amt(o.tuition.spouse) : '',
+    'CONTRIBUTIONS BY TAXPAYER  (1)': amt(o.tuition.taxpayer), 'Total IRC Section 529 Contributions  TAXPAYER': amt(o.tuition.taxpayer),
+    'CONTRIBUTIONS BY SPOUSE (1)': joint ? amt(o.tuition.spouse) : '', 'Total IRC Section 529 Contributions  SPOUSE': joint ? amt(o.tuition.spouse) : '',
     'PART III - Health Savings Account contributions allowed for federal purposes TAXPAYER 6(c)': amt(o.hsa),
     'PART III - Student Loan Interest Deduction TAXPAYER 7(c)': amt(o.studentLoan),
     'PART III - Add Lines 2, 4, 5, 6, and 7 and enter amounts here TAXPAYER 8(c)': amt(tp),
@@ -148,36 +145,13 @@ export function scheduleO(ret: TaxReturnInput, pa: PaResult): FormFill {
   return { id: 'pa40o', file: 'pa40o.pdf', title: 'PA Schedule O', values }
 }
 
-const paBeneficiaries = (ret: TaxReturnInput) => ret.pa.beneficiaries529.filter((b) => b.name.trim() || b.taxpayer || b.spouse)
-
-/** Schedule O Part I rows: each beneficiary (up to ten), or just the totals on row 1 when none are listed. */
-function paBeneficiaryRows(ret: TaxReturnInput, tuition: Record<'taxpayer' | 'spouse', number>, joint: boolean): Record<string, FieldValue> {
-  const bens = paBeneficiaries(ret)
-  if (!bens.length) return { 'CONTRIBUTIONS BY TAXPAYER  (1)': amt(tuition.taxpayer), 'CONTRIBUTIONS BY SPOUSE (1)': joint ? amt(tuition.spouse) : '' }
-  const v: Record<string, FieldValue> = {}
-  bens.slice(0, 10).forEach((b, i) => {
-    const n = i + 1
-    v[`PART I - NAME (${n})`] = b.name.trim()
-    v[`PART I - SOCIAL SECURITY NUMBER  (${n})`] = digits(b.ssn)
-    v[`CONTRIBUTIONS BY TAXPAYER  (${n})`] = amt(Math.min(PA_529_LIMIT, Math.round(b.taxpayer)))
-    if (joint) v[`CONTRIBUTIONS BY SPOUSE (${n})`] = amt(Math.min(PA_529_LIMIT, Math.round(b.spouse)))
-  })
-  return v
-}
-
 export function buildPaPacket(ret: TaxReturnInput, res: TaxReturnResult, pa: PaResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formPA40(ret, res, pa, preparer)]
   if (pa.lines['21'] > 0) forms.push(scheduleSP(ret, res, pa))
   if (pa.lines['10'] > 0) forms.push(scheduleO(ret, pa))
   const filled = new Set(['PA Schedule O, other deductions', 'PA Schedule SP, Tax Forgiveness'])
   const notIncluded = pa.attach.filter((a) => !filled.has(a))
-  const bens = paBeneficiaries(ret)
-  if (pa.scheduleO.tuition.taxpayer + pa.scheduleO.tuition.spouse > 0 && !bens.length) notIncluded.push('PA Schedule O Section I: each 529 beneficiary’s name and Social Security number (list them in the Pennsylvania section)')
-  if (bens.length > 10) forms.push(...statementForms(ret, {
-    id: 'st-pa-529', attachTo: 'PA Schedule O, Part I (continued)', title: '529 beneficiaries after the tenth',
-    columns: [{ label: 'Beneficiary', width: 190 }, { label: 'SSN', width: 90 }, { label: 'Contributions by taxpayer', width: 110, right: true }, { label: 'Contributions by spouse', width: 110, right: true }],
-    rows: bens.slice(10).map((b) => [b.name, b.ssn, money0(Math.min(PA_529_LIMIT, Math.round(b.taxpayer))), ret.filingStatus === 'mfj' ? money0(Math.min(PA_529_LIMIT, Math.round(b.spouse))) : ''])
-  }))
+  if (pa.scheduleO.tuition.taxpayer + pa.scheduleO.tuition.spouse > 0) notIncluded.push('PA Schedule O Section I: each 529 beneficiary’s name and Social Security number')
   if (ret.filingStatus === 'mfj' && pa.lines['10'] > 0) notIncluded.push('PA Schedule O: split the HSA and student loan deductions between spouses if both had them')
   return { forms, notIncluded }
 }
