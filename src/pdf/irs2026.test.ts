@@ -196,6 +196,7 @@ test('2026 Forms 4562, 4797 and 8995-A on the drafts (assets, property sales, in
   assert.equal(f4797.values['f2_1[0]'], 'Old printer')
   const a = p.forms.find((x) => x.id === '8995a')!
   assert.equal(a.values['f2_50[0]'], res.f1040['13a'].toLocaleString('en-US'))
+  assert.equal(a.values['f2_49[0]'], '400') // line 40: active QBI of at least $1,000
   const problems: FillProblem[] = []
   for (const form of p.forms) await fillForm(lib, await load(form.file), form, problems)
   assert.deepEqual(problems, [])
@@ -224,4 +225,31 @@ test('2026 Form 5329 (Part I and VII) and Form 1040-V on the drafts', async () =
   for (const form of p.forms) await fillForm(lib, await load(form.file), form, problems)
   assert.deepEqual(problems, [])
   if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-2026-5329.pdf`, (await buildPdf(lib, p.forms, load, '5329')).bytes)
+})
+
+test('2026 Schedules A and C of Form 8995-A: a service business in the phase-in and a loss to net', async () => {
+  const biz = (name: string, receipts: number, w2Wages: number, sstb = false, expenses = 0) => ({
+    ...emptyBusiness('taxpayer'), name, activity: 'Services', businessCode: '541990', grossReceipts: receipts,
+    expenses: { ...emptyBusiness().expenses, other: expenses }, qbi: { w2Wages, ubia: 20000, sstb }
+  })
+  const ret = family({
+    dependents: [], filingStatus: 'single', spouse: emptyReturn().spouse,
+    w2s: [{ ...emptyW2('taxpayer'), employer: 'Acme', wages: 180000, federalWithholding: 40000, socialSecurityWages: 180000, medicareWages: 180000 }],
+    businesses: [biz('Studio', 60000, 10000), biz('Consulting', 40000, 0, true), biz('Kiosk', 5000, 0, false, 12000)]
+  })
+  const res = computeReturn(ret)
+  assert.equal(res.qbi.form, '8995a')
+  assert.ok(res.qbi.phaseIn, `taxable income ${res.qbi.taxableIncomeBeforeQbi} should be inside the 2026 phase-in range`)
+  const p = buildPacket2026(ret, res)
+  const ids = p.forms.map((x) => x.id)
+  assert.ok(ids.includes('8995aa') && ids.includes('8995ac'), ids.join(', '))
+  const sa = p.forms.find((x) => x.id === '8995aa')!
+  assert.equal(sa.values['Table_PartI[0].Row1a[0].f1_3[0]'], 'Consulting')
+  assert.ok(sa.values['Table_PartI[0].Row5[0].f1_19[0]'], 'line 5 column A without the _RO suffix')
+  assert.ok(!Object.keys(sa.values).some((k) => k.endsWith('_RO[0]')))
+  assert.ok(!p.notIncluded.some((x) => /8995-A/.test(x)), p.notIncluded.join('; '))
+  const problems: FillProblem[] = []
+  for (const form of p.forms) await fillForm(lib, await load(form.file), form, problems)
+  assert.deepEqual(problems, [])
+  if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-2026-sstb.pdf`, (await buildPdf(lib, p.forms, load, 'sstb')).bytes)
 })

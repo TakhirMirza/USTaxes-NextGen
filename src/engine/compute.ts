@@ -108,6 +108,8 @@ export interface TaxReturnResult {
   eic: { qualifyingChildren: number; earnedIncome: number; investmentIncome: number; credit: number; notEligibleBecause: string[] }
   schedule8812: { qualifyingChildren: number; otherDependents: number; creditBeforePhaseout: number; phaseoutReduction: number; nonrefundable: number; refundable: number }
   qbi: QbiResult
+  /** Minimum deduction for active QBI (2026 on; Form 8995 line 16, Form 8995-A line 40). 0 when not eligible. */
+  qbiMinimum: number
   deduction: { standard: number; itemized: number; used: 'standard' | 'itemized' }
   summary: {
     totalIncome: number
@@ -1229,6 +1231,7 @@ function computeCore(input: TaxReturnInput, homeItemizing: boolean): TaxReturnRe
     eic: { qualifyingChildren: eicChildren, earnedIncome, investmentIncome, credit: eic, notEligibleBecause: eic > 0 ? [] : eicReasons },
     schedule8812: { qualifyingChildren, otherDependents, creditBeforePhaseout, phaseoutReduction, nonrefundable, refundable },
     qbi,
+    qbiMinimum,
     deduction: { standard, itemized: itemizedTotal, used },
     summary: {
       totalIncome: line9, agi, taxableIncome: line15, totalTax: line24, totalPayments: line33,

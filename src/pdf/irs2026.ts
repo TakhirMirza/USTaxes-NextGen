@@ -21,7 +21,7 @@ export const FORMS_2026: Record<string, string> = {
   'f1040s3a.pdf': 'Schedule 3-A', 'f1040sa.pdf': 'Schedule A', 'f1040sb.pdf': 'Schedule B', 'f1040sc.pdf': 'Schedule C', 'f1040sd.pdf': 'Schedule D',
   'f1040se.pdf': 'Schedule E', 'f1040sei.pdf': 'Schedule EIC', 'f1040sse.pdf': 'Schedule SE', 'f1040s8.pdf': 'Schedule 8812', 'f1040v.pdf': 'Form 1040-V',
   'f2441.pdf': 'Form 2441', 'f4562.pdf': 'Form 4562', 'f4797.pdf': 'Form 4797', 'f5329.pdf': 'Form 5329', 'f6251.pdf': 'Form 6251', 'f8582.pdf': 'Form 8582', 'f8829.pdf': 'Form 8829', 'f8863.pdf': 'Form 8863',
-  'f8880.pdf': 'Form 8880', 'f8889.pdf': 'Form 8889', 'f8949.pdf': 'Form 8949', 'f8995.pdf': 'Form 8995', 'f8995a.pdf': 'Form 8995-A', 'statement.pdf': 'Supporting statement'
+  'f8880.pdf': 'Form 8880', 'f8889.pdf': 'Form 8889', 'f8949.pdf': 'Form 8949', 'f8995.pdf': 'Form 8995', 'f8995a.pdf': 'Form 8995-A', 'f8995aa.pdf': 'Schedule A (Form 8995-A)', 'f8995ac.pdf': 'Schedule C (Form 8995-A)', 'statement.pdf': 'Supporting statement'
 }
 
 /** Form 8582 (2026): same layout; field numbers lost their leading zero (f1_01 → f1_1). */
@@ -61,7 +61,7 @@ const FORM_8995A_2026 = (fill: FormFill, res: TaxReturnResult): FormFill => {
   if ('f2_49[0]' in v) {
     const carry = v['f2_49[0]']
     const ded = res.f1040['13a']
-    v['f2_49[0]'] = ded > res.qbi.deduction ? amt(ded) : ''
+    v['f2_49[0]'] = amt(res.qbiMinimum)
     v['f2_50[0]'] = amt(ded, true)
     v['f2_51[0]'] = carry
   }
@@ -75,6 +75,13 @@ const FORM_5329_2026 = (fill: FormFill): FormFill => {
     const m = /^f1_(\d+)\[0\]$/.exec(k)
     v[m && Number(m[1]) >= 9 ? `f1_${Number(m[1]) + 2}[0]` : k] = x
   }
+  return { ...fill, title: `${fill.title} (2026 draft)`, values: v }
+}
+
+/** Schedule A (Form 8995-A) (2026): the column copies of lines 5–10 lost their _RO suffix. */
+const SCHEDULE_8995AA_2026 = (fill: FormFill): FormFill => {
+  const v: Record<string, FieldValue> = {}
+  for (const [k, x] of Object.entries(fill.values)) v[k.replace(/_RO\[0\]$/, '[0]')] = x
   return { ...fill, title: `${fill.title} (2026 draft)`, values: v }
 }
 
@@ -170,7 +177,7 @@ const FORM_8995_2026 = (fill: FormFill, res: TaxReturnResult): FormFill => {
     else v[k] = x
   }
   const ded = res.f1040['13a']
-  if (ded > res.qbi.deduction) v['f1_32[0]'] = amt(ded)
+  v['f1_32[0]'] = amt(res.qbiMinimum)
   v['f1_33[0]'] = amt(ded, true)
   return { ...fill, title: 'Form 8995 (2026 draft)', values: v }
 }
@@ -477,6 +484,7 @@ export function buildPacket2026(ret: TaxReturnInput, res: TaxReturnResult, prepa
     else if (fill.file === 'f5329.pdf') forms.push(FORM_5329_2026(fill))
     else if (fill.file === 'f4562.pdf') forms.push(FORM_4562_2026(fill))
     else if (fill.file === 'f4797.pdf') forms.push(FORM_4797_2026(fill))
+    else if (fill.file === 'f8995aa.pdf') forms.push(SCHEDULE_8995AA_2026(fill))
     else if (fill.file === 'f8995a.pdf') forms.push(FORM_8995A_2026(fill, res))
     else if (FORMS_2026[fill.file]) forms.push({ ...fill, title: fill.id.startsWith('st-') ? fill.title : `${fill.title} (2026 draft)` })
     else missing.add(fill.title.replace(/\s*\(.*$/, ''))
