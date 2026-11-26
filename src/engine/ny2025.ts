@@ -228,6 +228,8 @@ export function nyItemized(ret: TaxReturnInput, res: TaxReturnResult, nyagi: num
 
 export interface NyResult {
   lines: Record<string, number>
+  /** Form IT-112-R lines (column A keys end in a, column B in b), when the other state is entered. */
+  it112r: Record<string, number> | null
   deduction: { method: 'standard' | 'itemized'; standard: number; itemized: number; it196: NyItemized | null }
   care: { persons: number; line3a: number; line5: number; line6: number; line7: number; line8: number; line10: number; line11: number; line13: number; line14: number; under4Expenses: number; nycLine4: number; nycLine6: number; nycCredit: number }
   elimination: { threshold: number; line3: number; line5: number; line10: number; credit: number }
@@ -236,6 +238,52 @@ export interface NyResult {
   eic: { federal: number; tentative: number; worksheetB: number; nycRate: number }
   issues: string[]
   attach: string[]
+}
+
+/**
+ * Form IT-112-R (2025): column A is the IT-201 income (lines 1–19, NY adjustments and NY AGI); column B is what the
+ * other jurisdiction sourced and taxed. Line 28 is also limited so New York tax is not reduced below the tax on income
+ * without the column B amount (line 28 instructions).
+ */
+export function it112r(ret: TaxReturnInput, L: Record<string, number>, nyagi: number, fs: TaxReturnInput['filingStatus']): Record<string, number> {
+  const d = ret.ny.it112r
+  const R: Record<string, number> = {}
+  const A = (k: string): number => R[`${k}a`]
+  // Column A from IT-201: 1–11 same lines, 12 farm (IT-201 13), 13 unemployment (14), 14 Social Security (15), 15 other (16).
+  for (let k = 1; k <= 11; k++) R[`${k}a`] = L[String(k)] ?? 0
+  R['12a'] = L['13'] ?? 0; R['13a'] = L['14'] ?? 0; R['14a'] = L['15'] ?? 0; R['15a'] = L['16'] ?? 0
+  R['16a'] = Array.from({ length: 15 }, (_, i) => A(String(i + 1))).reduce((s, n) => s + n, 0)
+  R['17a'] = L['18'] ?? 0
+  R['18a'] = R['16a'] - R['17a']
+  R['19a'] = (L['20'] + L['21'] + L['22'] + L['23']) - L['32']
+  R['20a'] = nyagi
+  R['21a'] = 0
+  R['22a'] = R['20a'] + R['21a']
+  const b = (k: string): number => Math.round(d.b[k] ?? 0)
+  for (const k of ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15']) R[`${k}b`] = b(k)
+  R['16b'] = Array.from({ length: 15 }, (_, i) => R[`${i + 1}b`]).reduce((s, n) => s + n, 0)
+  R['17b'] = b('17')
+  R['18b'] = R['16b'] - R['17b']
+  R['20b'] = R['18b']
+  R['21b'] = b('21')
+  R['22b'] = R['20b'] + R['21b']
+  R['24a'] = Math.round(d.taxpayerTax)
+  R['24b'] = Math.round(Math.max(0, d.entityTax))
+  R['24'] = R['24a'] + R['24b']
+  R['25'] = Math.max(0, L['39'] - L['40'])
+  R['26'] = R['22a'] > 0 ? Math.round((R['22b'] / R['22a']) * 10000) / 10000 : 0
+  R['27'] = Math.round(R['25'] * R['26'])
+  // Not below the tax on New York income without the income taxed elsewhere.
+  const without = Math.max(0, nysTax(Math.max(0, L['38'] - R['22b']), Math.max(0, nyagi - R['22b']), fs) - L['40'])
+  R['28'] = Math.max(0, Math.min(R['24'], R['27'], R['25'] - without))
+  R['29'] = 0
+  R['30'] = R['28'] + R['29']
+  R['31'] = L['39']
+  R['32'] = L['40']
+  R['33'] = Math.max(0, R['31'] - R['32'])
+  R['34'] = Math.min(R['30'], R['33'])
+  R['35'] = Math.round(d.prepayments); R['36'] = Math.round(d.overpayment); R['37'] = Math.round(d.balanceDue)
+  return R
 }
 
 export function computeNewYork(ret: TaxReturnInput, res: TaxReturnResult): NyResult {
@@ -316,7 +364,9 @@ export function computeNewYork(ret: TaxReturnInput, res: TaxReturnResult): NyRes
   L['39'] = nysTax(L['38'], nyagi, fs)
   const people = ret.dependents.length + 1 + (joint ? 1 : 0)
   L['40'] = ret.canBeClaimedAsDependent ? 0 : householdCredit(NYS_HH_SINGLE, NYS_HH, fs, fagi, people)
-  L['41'] = r(pos(d.residentCredit))
+  // Line 41: resident credit from Form IT-112-R (figured here when the other state is entered).
+  const R = d.it112r.state.trim() ? it112r(ret, L, nyagi, fs) : null
+  L['41'] = R ? R['34'] : r(pos(d.residentCredit))
   L['42'] = r(pos(d.otherNonrefundableCredits))
   L['43'] = L['40'] + L['41'] + L['42']
   L['44'] = pos(L['39'] - L['43'])
@@ -438,6 +488,7 @@ export function computeNewYork(ret: TaxReturnInput, res: TaxReturnResult): NyRes
   if (L['23'] > 0 || L['31'] > 0) attach.push('Form IT-225, New York State modifications')
   if (method === 'itemized') attach.push('Form IT-196, New York itemized deductions')
   if (L['41'] > 0) attach.push('Form IT-112-R, resident credit for tax paid to another state')
+  if (R && R['28'] < Math.min(R['24'], R['27'])) issues.push(`IT-112-R line 28 is limited to ${R['28'].toLocaleString('en-US')} so New York tax is not reduced below the tax on income without the amount taxed by ${d.it112r.state.trim().toUpperCase()}.`)
   if (L['42'] > 0 || L['45'] > 0 || L['71'] > 0) attach.push('Form IT-201-ATT, other credits and taxes')
   if (L['64'] > 0) attach.push('Form IT-216, child and dependent care credit')
   if (L['67'] > 0) attach.push('Form IT-214, real property tax credit')
@@ -460,6 +511,7 @@ export function computeNewYork(ret: TaxReturnInput, res: TaxReturnResult): NyRes
 
   return {
     lines: L,
+    it112r: R,
     deduction: { method, standard, itemized, it196 },
     care,
     elimination,

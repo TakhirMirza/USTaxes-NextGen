@@ -67,6 +67,7 @@ export function NewYorkStep({ ret, set, result, preparer }: StepProps & { prepar
   const ny = useMemo(() => computeNewYork(ret, result), [ret, result])
   const [pdf, setPdf] = useState<{ busy: boolean; note: string }>({ busy: false, note: '' })
   const put = (p: Partial<NyInput>): void => set((r) => ({ ...r, ny: { ...r.ny, ...p } }))
+  const r112 = (p: Partial<NyInput['it112r']>): void => set((r) => ({ ...r, ny: { ...r.ny, it112r: { ...r.ny.it112r, ...p } } }))
   const joint = ret.filingStatus === 'mfj'
   const owners: Owner[] = joint ? ['taxpayer', 'spouse'] : ['taxpayer']
   const names: Record<Owner, string> = { taxpayer: firstName(ret.taxpayer, 'You'), spouse: firstName(ret.spouse, 'Spouse') }
@@ -161,11 +162,46 @@ export function NewYorkStep({ ret, set, result, preparer }: StepProps & { prepar
           )}
           <MoneyField label="Real property tax credit (Form IT-214)" value={d.realPropertyCredit} onChange={(n) => put({ realPropertyCredit: n })} />
           <MoneyField label="College tuition credit (Form IT-272)" value={d.collegeTuitionCredit} onChange={(n) => put({ collegeTuitionCredit: n })} />
-          <MoneyField label="Resident credit for tax paid to another state (IT-112-R)" value={d.residentCredit} onChange={(n) => put({ residentCredit: n })} />
+          {!ny.it112r && <MoneyField label="Resident credit for tax paid to another state, if you figured it yourself" hint="Or fill in Form IT-112-R below" value={d.residentCredit} onChange={(n) => put({ residentCredit: n })} />}
           <MoneyField label="Other NYS nonrefundable credits (IT-201-ATT)" value={d.otherNonrefundableCredits} onChange={(n) => put({ otherNonrefundableCredits: n })} />
           <MoneyField label="Other refundable credits (IT-201-ATT)" value={d.otherRefundableCredits} onChange={(n) => put({ otherRefundableCredits: n })} />
           <MoneyField label="Other NYS taxes (IT-201-ATT)" value={d.otherTaxes} onChange={(n) => put({ otherTaxes: n })} />
         </div>
+        <details className="explain" open={!!ny.it112r}>
+          <summary>{ny.it112r ? `Form IT-112-R: resident credit ${usd(ny.it112r['34'])} (IT-201 line 41)` : 'Form IT-112-R (credit for income tax paid to another state, locality or D.C.)'}</summary>
+          <div className="grid">
+            <TextField label="Other state (two letters)" hint="Line 23" value={d.it112r.state} onChange={(v) => r112({ state: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2) })} />
+            <TextField label="Locality name, if a local tax" value={d.it112r.locality} onChange={(v) => r112({ locality: v })} />
+          </div>
+          {d.it112r.state.trim() && (
+            <>
+              <p className="why">Column B: the income that the other jurisdiction sourced to itself and taxed. Column A comes from this return.</p>
+              <div className="grid">
+              <MoneyField label="Wages" hint="Column B, line 1" value={d.it112r.b['1'] ?? 0} onChange={(n) => r112({ b: { ...d.it112r.b, '1': n } })} />
+              <MoneyField label="Taxable interest" hint="Column B, line 2" value={d.it112r.b['2'] ?? 0} onChange={(n) => r112({ b: { ...d.it112r.b, '2': n } })} />
+              <MoneyField label="Ordinary dividends" hint="Column B, line 3" value={d.it112r.b['3'] ?? 0} onChange={(n) => r112({ b: { ...d.it112r.b, '3': n } })} />
+              <MoneyField label="Business income or loss" hint="Column B, line 6" value={d.it112r.b['6'] ?? 0} onChange={(n) => r112({ b: { ...d.it112r.b, '6': n } })} />
+              <MoneyField label="Capital gain or loss" hint="Column B, line 7" value={d.it112r.b['7'] ?? 0} onChange={(n) => r112({ b: { ...d.it112r.b, '7': n } })} />
+              <MoneyField label="Other gains or losses" hint="Column B, line 8" value={d.it112r.b['8'] ?? 0} onChange={(n) => r112({ b: { ...d.it112r.b, '8': n } })} />
+              <MoneyField label="IRA distributions" hint="Column B, line 9" value={d.it112r.b['9'] ?? 0} onChange={(n) => r112({ b: { ...d.it112r.b, '9': n } })} />
+              <MoneyField label="Pensions and annuities" hint="Column B, line 10" value={d.it112r.b['10'] ?? 0} onChange={(n) => r112({ b: { ...d.it112r.b, '10': n } })} />
+              <MoneyField label="Rental, royalties, partnerships, S corporations" hint="Column B, line 11" value={d.it112r.b['11'] ?? 0} onChange={(n) => r112({ b: { ...d.it112r.b, '11': n } })} />
+              <MoneyField label="Other income" hint="Column B, line 15" value={d.it112r.b['15'] ?? 0} onChange={(n) => r112({ b: { ...d.it112r.b, '15': n } })} />
+              <MoneyField label="Federal adjustments to income" hint="Column B, line 17" value={d.it112r.b['17'] ?? 0} onChange={(n) => r112({ b: { ...d.it112r.b, '17': n } })} />
+              <MoneyField label="Capital gain portion of lump-sum distributions" hint="Column B, line 21" value={d.it112r.b['21'] ?? 0} onChange={(n) => r112({ b: { ...d.it112r.b, '21': n } })} />
+              </div>
+              <div className="grid">
+                <MoneyField label="Income tax imposed by the other jurisdiction" hint="Line 24a: tax on its return, not what was withheld" value={d.it112r.taxpayerTax} onChange={(n) => r112({ taxpayerTax: n })} />
+                <MoneyField label="Pass-through entity tax paid for you (similar to NY PTET)" hint="Line 24b" value={d.it112r.entityTax} onChange={(n) => r112({ entityTax: n })} />
+                <MoneyField label="Withholding and estimated payments to the other jurisdiction" hint="Line 35" value={d.it112r.prepayments} onChange={(n) => r112({ prepayments: n })} />
+                <MoneyField label="Overpayment on the other return" hint="Line 36" value={d.it112r.overpayment} onChange={(n) => r112({ overpayment: n })} />
+                <MoneyField label="Balance due on the other return" hint="Line 37" value={d.it112r.balanceDue} onChange={(n) => r112({ balanceDue: n })} />
+                {d.it112r.composite && <TextField label="Group return EIN" value={d.it112r.groupEin} onChange={(v) => r112({ groupEin: v })} />}
+              </div>
+              <div className="checks"><Check label="The tax was paid on a group (composite) return" checked={d.it112r.composite} onChange={(on) => r112({ composite: on })} /></div>
+            </>
+          )}
+        </details>
       </Section>
 
       <Section title="Sales or use tax and refund" intro="Line 59 cannot be left blank: enter the use tax you owe on purchases that were not taxed, or 0.">

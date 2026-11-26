@@ -101,10 +101,58 @@ export function ncPlaced(ret: TaxReturnInput, key: string, lines: [string, strin
   return { values, unplaced: total - placed }
 }
 
+/** D-400 Schedule A: N.C. itemized deductions (mortgage interest and property tax capped at $20,000). */
+export function scheduleNcA(ret: TaxReturnInput, res: TaxReturnResult, nc: NcResult): FormFill | null {
+  if (nc.deduction.method !== 'itemized') return null
+  const it = ret.itemized
+  const mortgage = Math.round(Math.max(0, it.mortgageInterest))
+  const propertyTax = Math.round(Math.max(0, it.realEstateTax))
+  const agi = Math.round(nc.lines['6'])
+  const medBefore = Math.round(Math.max(0, it.medical))
+  const medLimit = Math.round(agi * 0.075)
+  const charity = Math.round(res.scheduleA.charity)
+  const medical = Math.round(res.scheduleA.medical)
+  return {
+    id: 'ncd400a', file: 'ncd400a.pdf', title: 'North Carolina D-400 Schedule A', pages: [1],
+    values: {
+      y_d400_sch_a_wf_lname: upper(ret.taxpayer.lastName.trim()).slice(0, 10), y_d400_sch_a_wf_ssn: digits(ret.taxpayer.ssn),
+      y_d400_sch_a_wf_li1: amt(mortgage), y_d400_sch_a_wf_li2: amt(propertyTax), y_d400_sch_a_wf_li3: amt(mortgage + propertyTax),
+      y_d400_sch_a_wf_li4: '20000', y_d400_sch_a_wf_li5: amt(nc.deduction.mortgageAndTaxes),
+      y_d400_sch_a_wf_li6: amt(charity),
+      ...(medBefore > 0 ? { y_d400_sch_a_wf_li7a: amt(medBefore), y_d400_sch_a_wf_li7b: amt(agi), y_d400_sch_a_wf_li7c: amt(medLimit, true), y_d400_sch_a_wf_li7d: amt(medical, true) } : {}),
+      y_d400_sch_a_wf_li10: amt(nc.deduction.itemized)
+    }
+  }
+}
+
+/** Form D-400TC: credit for tax paid to another state, historic rehabilitation credits and the total on D-400 line 16. */
+export function formNcTc(ret: TaxReturnInput, nc: NcResult): FormFill | null {
+  const T = nc.tc
+  if (!T) return null
+  const v: Record<string, FieldValue> = { y_d400wf_lname2_PG2: upper(ret.taxpayer.lastName.trim()).slice(0, 10), y_d400tcwf_ssn: digits(ret.taxpayer.ssn) }
+  if (T['2'] > 0) {
+    for (const k of ['1', '2', '4', '5', '6', '7a']) v[`y_d400tcwf_li${k}_good`] = amt(T[k], true)
+    v.y_d400tcwf_li3_good = T['3'].toFixed(4)
+    v.y_d400tcwf_li7b_good = String(T['7b'])
+  }
+  for (const k of ['8', '9', '10a', '10b', '11a', '11b', '12', '13', '14', '16', '17', '18', '19', '20']) {
+    const val = amt(T[k], k === '16' || k === '17' || k === '18' || k === '20')
+    if (val) v[`y_d400tcwf_li${k}_good`] = val
+  }
+  return { id: 'ncd400tc', file: 'ncd400tc.pdf', title: 'North Carolina Form D-400TC', values: v, pages: [1] }
+}
+
 export function buildNcPacket(ret: TaxReturnInput, res: TaxReturnResult, nc: NcResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formD400(ret, res, nc, preparer)]
   if (nc.lines['7'] > 0 || nc.lines['9'] > 0) forms.push(scheduleS(ret, nc))
-  const notIncluded = nc.attach.filter((a) => a !== 'Form D-400 Schedule S, supplemental schedule')
+  const sa = scheduleNcA(ret, res, nc)
+  if (sa) forms.push(sa)
+  const tc = formNcTc(ret, nc)
+  if (tc) forms.push(tc)
+  const notIncluded = nc.attach.filter((a) => a !== 'Form D-400 Schedule S, supplemental schedule' && a !== 'Form D-400 Schedule A, NC itemized deductions' && !(tc && a === 'Form D-400TC, individual tax credits'))
+  if (nc.tc && nc.tc['7a'] > 0) notIncluded.push('A copy of the income tax return you filed with the other state or country (D-400TC Part 1)')
+  if (nc.tc && nc.tc['19'] > 0) notIncluded.push('Form NC-478 and its supporting schedules (D-400TC line 19)')
+  if (!tc && nc.lines['16'] > 0) notIncluded.push('Form D-400TC: enter its lines in the North Carolina section to fill it')
   const unA = ncPlaced(ret, 'nc.otherAdditions', NC_ADDITION_LINES, nc.scheduleS.additions.other).unplaced
   const unD = ncPlaced(ret, 'nc.otherDeductions', NC_DEDUCTION_LINES, nc.scheduleS.deductions.other).unplaced
   if (unA > 0 || unD > 0) notIncluded.push(`Schedule S: ${(unA + unD).toLocaleString('en-US')} of other additions or deductions is not on a line — list each item with its Schedule S line in the North Carolina section (the totals on lines 16 and 41 already include it)`)

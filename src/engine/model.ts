@@ -744,6 +744,8 @@ export interface NyInput {
   /** Form IT-196: job expenses and other miscellaneous deductions (lines 21–24, before the 2% floor). */
   itemizedMiscellaneous: number
   residentCredit: number
+  /** Form IT-112-R (when `state` is set, IT-201 line 41 comes from it instead of `residentCredit`). */
+  it112r: NyIt112r
   otherNonrefundableCredits: number
   otherTaxes: number
   nycNonrefundableCredits: number
@@ -760,12 +762,23 @@ export interface NyInput {
   /** Dependent id → MM/DD/YYYY, for item H and IT-213. */
   dependentBirthDates: Record<string, string>
 }
+export interface NyIt112r {
+  /** Line 23: the other state (two letters) and locality, if any. */
+  state: string; locality: string
+  /** Column B: income sourced to and taxed by the other jurisdiction, by IT-112-R line (1–15, 17, 19, 21). */
+  b: Record<string, number>
+  /** Line 24a (can be negative), group (composite) return box and EIN; line 24b: substantially similar PTET. */
+  taxpayerTax: number; composite: boolean; groupEin: string; entityTax: number
+  /** Part 4: lines 35–37 from the other return. */
+  prepayments: number; overpayment: number; balanceDue: number
+}
+export const emptyNyIt112r = (): NyIt112r => ({ state: '', locality: '', b: {}, taxpayerTax: 0, composite: false, groupEin: '', entityTax: 0, prepayments: 0, overpayment: 0, balanceDue: 0 })
 export const emptyNy = (): NyInput => ({
   birthDate: { taxpayer: '', spouse: '' }, locality: 'none', county: '', schoolDistrict: '', schoolDistrictCode: '',
   withholding: 0, nycWithholding: 0, yonkersWithholding: 0, estimatedPayments: 0, stateRefundInFagi: 0, otherStateBondInterest: 0,
   pension414h: 0, nys529Distributions: 0, otherAdditions: 0, govPensions: { taxpayer: 0, spouse: 0 }, usBondInterest: 0,
   pensionExclusionOverride: { taxpayer: null, spouse: null }, nys529Contributions: 0, nys529Earnings: 0, otherSubtractions: 0, itemizedMiscellaneous: 0,
-  residentCredit: 0, otherNonrefundableCredits: 0, otherTaxes: 0, nycNonrefundableCredits: 0, careExpensesUnder4: null, realPropertyCredit: 0,
+  residentCredit: 0, it112r: emptyNyIt112r(), otherNonrefundableCredits: 0, otherTaxes: 0, nycNonrefundableCredits: 0, careExpensesUnder4: null, realPropertyCredit: 0,
   collegeTuitionCredit: 0, otherRefundableCredits: 0, salesTaxChart: false, salesTax: 0, contributions: 0, creditForward: 0,
   dependentBirthDates: {}
 })
@@ -869,14 +882,25 @@ export interface NcInput {
   noUseTaxDue: boolean
   creditForward: number
   contributions: number
+  /** Form D-400TC inputs (when any is set, line 16 comes from D-400TC instead of `taxCredits`). */
+  tc: NcTcInput
   /** Page 1: veteran information (each spouse) and whether a federal extension was filed. */
   veteran: { taxpayer: boolean; spouse: boolean }
   federalExtension: boolean
 }
+export interface NcTcInput {
+  /** Part 1: income taxed by another state or country (line 2), net tax paid there (line 6), number of states (line 7b). */
+  otherIncome: number; otherTax: number; otherCount: number
+  /** Part 2: historic rehabilitation credits, lines 8, 9, 10b, 11b, 12 and 13 (10a/11a are the expenses for 10b/11b). */
+  h8: number; h9: number; h10a: number; h10b: number; h11a: number; h11b: number; h12: number; h13: number
+  /** Line 14: credits carried over from earlier years; line 19: business incentive and energy credits (Form NC-478). */
+  carryover: number; business: number
+}
+export const emptyNcTc = (): NcTcInput => ({ otherIncome: 0, otherTax: 0, otherCount: 1, h8: 0, h9: 0, h10a: 0, h10b: 0, h11a: 0, h11b: 0, h12: 0, h13: 0, carryover: 0, business: 0 })
 export const emptyNc = (): NcInput => ({
   county: '', withholding: { taxpayer: 0, spouse: 0 }, estimatedPayments: 0, extensionPayment: 0, stateRefundInFagi: 0, otherStateBondInterest: 0,
   usObligationInterest: 0, baileyRetirement: 0, militaryRetirement: 0, otherAdditions: 0, otherDeductions: 0, spouseItemizes: false, taxCredits: 0,
-  useTax: 0, noUseTaxDue: true, creditForward: 0, contributions: 0, veteran: { taxpayer: false, spouse: false }, federalExtension: false
+  useTax: 0, noUseTaxDue: true, creditForward: 0, contributions: 0, veteran: { taxpayer: false, spouse: false }, federalExtension: false, tc: emptyNcTc()
 })
 
 /** State copy of a W-2 or 1099-R: the IDs and state amounts a withholding schedule asks for. */
@@ -3188,10 +3212,10 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     maryland: normalizeMaryland(r.maryland),
     dc: { ...emptyDc(), ...(r.dc ?? {}), birthDate: { ...emptyDc().birthDate, ...(r.dc?.birthDate ?? {}) }, landlord: { ...emptyDc().landlord, ...(r.dc?.landlord ?? {}) }, ssl: { ...emptyDc().ssl, ...(r.dc?.ssl ?? {}) }, dependentBirthDates: { ...(r.dc?.dependentBirthDates ?? {}) } },
     ca: { ...emptyCa(), ...(r.ca ?? {}), birthDate: { ...emptyCa().birthDate, ...(r.ca?.birthDate ?? {}) }, specialCredit: { ...emptyCa().specialCredit, ...(r.ca?.specialCredit ?? {}) }, contribution: { ...emptyCa().contribution, ...(r.ca?.contribution ?? {}) }, dependentBirthDates: { ...(r.ca?.dependentBirthDates ?? {}) }, stateWages: typeof r.ca?.stateWages === 'number' ? r.ca.stateWages : null },
-    ny: { ...emptyNy(), ...(r.ny ?? {}), birthDate: { ...emptyNy().birthDate, ...(r.ny?.birthDate ?? {}) }, govPensions: { ...emptyNy().govPensions, ...(r.ny?.govPensions ?? {}) }, pensionExclusionOverride: { ...emptyNy().pensionExclusionOverride, ...(r.ny?.pensionExclusionOverride ?? {}) }, dependentBirthDates: { ...(r.ny?.dependentBirthDates ?? {}) } },
+    ny: { ...emptyNy(), ...(r.ny ?? {}), birthDate: { ...emptyNy().birthDate, ...(r.ny?.birthDate ?? {}) }, govPensions: { ...emptyNy().govPensions, ...(r.ny?.govPensions ?? {}) }, pensionExclusionOverride: { ...emptyNy().pensionExclusionOverride, ...(r.ny?.pensionExclusionOverride ?? {}) }, dependentBirthDates: { ...(r.ny?.dependentBirthDates ?? {}) }, it112r: { ...emptyNyIt112r(), ...(r.ny?.it112r ?? {}), b: { ...(r.ny?.it112r?.b ?? {}) } } },
     il: { ...emptyIl(), ...(r.il ?? {}), birthDate: { ...emptyIl().birthDate, ...(r.il?.birthDate ?? {}) }, dependentBirthDates: { ...(r.il?.dependentBirthDates ?? {}) } },
     pa: { ...emptyPa(), ...(r.pa ?? {}), tuitionContributions: { ...emptyPa().tuitionContributions, ...(r.pa?.tuitionContributions ?? {}) }, beneficiaries529: Array.isArray(r.pa?.beneficiaries529) ? r.pa.beneficiaries529.map((b: Partial<{ name: string; ssn: string; taxpayer: number; spouse: number }>) => ({ name: String(b?.name ?? ''), ssn: String(b?.ssn ?? ''), taxpayer: Number(b?.taxpayer) || 0, spouse: Number(b?.spouse) || 0 })) : [], compensation: typeof r.pa?.compensation === 'number' ? r.pa.compensation : null },
-    nc: { ...emptyNc(), ...(r.nc ?? {}), withholding: { ...emptyNc().withholding, ...(r.nc?.withholding ?? {}) }, veteran: { ...emptyNc().veteran, ...(r.nc?.veteran ?? {}) } },
+    nc: { ...emptyNc(), ...(r.nc ?? {}), withholding: { ...emptyNc().withholding, ...(r.nc?.withholding ?? {}) }, veteran: { ...emptyNc().veteran, ...(r.nc?.veteran ?? {}) }, tc: { ...emptyNcTc(), ...(r.nc?.tc ?? {}) } },
     mi: { ...emptyMi(), ...(r.mi ?? {}), publicPensions: { ...emptyMi().publicPensions, ...(r.mi?.publicPensions ?? {}) }, birthYear: { ...emptyMi().birthYear, ...(r.mi?.birthYear ?? {}) } },
     ga: { ...emptyGa(), ...(r.ga ?? {}), birthDate: { ...emptyGa().birthDate, ...(r.ga?.birthDate ?? {}) }, disabled: { ...emptyGa().disabled, ...(r.ga?.disabled ?? {}) }, disabilityDate: { ...emptyGa().disabilityDate, ...(r.ga?.disabilityDate ?? {}) }, militaryRetirement: { ...emptyGa().militaryRetirement, ...(r.ga?.militaryRetirement ?? {}) }, w2: normalizeStatements(r.ga?.w2), donations: { ...(r.ga?.donations ?? {}) } },
     oh: { ...emptyOh(), ...(r.oh ?? {}), w2: normalizeStatements(r.oh?.w2), r1099: normalizeStatements(r.oh?.r1099), donations: { ...(r.oh?.donations ?? {}) }, dependentBirthDates: { ...(r.oh?.dependentBirthDates ?? {}) } },

@@ -106,7 +106,9 @@ Oregon OR-ASC and Iowa IA 148 continue on extra sheets; the Ohio joint filing cr
 qualifying income statement.
 North Carolina Schedule S other additions and deductions go on their own lines, and page 1 has the veteran and
 federal extension answers; Nebraska page 1 has the foreign adversarial company answer; Pennsylvania Schedule O Part I
-lists each 529 beneficiary (limited to $19,000 per beneficiary per contributor). The blank forms live in `public/forms/2025` (official IRS PDFs).
+lists each 529 beneficiary (limited to $19,000 per beneficiary per contributor).
+Also filled: Kentucky Schedule KW-2 (every W-2, 1099 and W-2G with Kentucky withholding), North Carolina D-400
+Schedule A and Form D-400TC, and New York Form IT-112-R (the resident credit on IT-201 line 41 is figured from it). The blank forms live in `public/forms/2025` (official IRS PDFs).
 
 ## Tax years
 

@@ -190,9 +190,55 @@ export function formKyItc(ret: TaxReturnInput, res: TaxReturnResult, ky: KyResul
   return { id: 'ky-itc', file: 'ky-itc.pdf', title: 'Kentucky Schedule ITC', values: v, pages }
 }
 
+/**
+ * Schedule KW-2 (42A740-KW2, 10-25): every W-2 (Part I, ten rows) and 1099/W-2G (Part II, five rows) with Kentucky
+ * withholding; more statements continue on more KW-2s. Lines 11 and 17 total each sheet; line 18 (all sheets) is on the first.
+ */
+export function formsKyKw2(ret: TaxReturnInput, ky: KyResult): FormFill[] {
+  const owners = ret.filingStatus === 'mfj' ? ['taxpayer', 'spouse'] : ['taxpayer']
+  const person = (o: string) => (o === 'spouse' ? ret.spouse : ret.taxpayer)
+  const w2 = ret.w2s.filter((w) => owners.includes(w.owner) && (ret.ky.w2[w.id]?.stateTax ?? 0) > 0).map((w) => {
+    const st = ret.ky.w2[w.id]!
+    return { ssn: person(w.owner).ssn, ein: st.ein, state: 'KY', id: st.stateId, income: Math.round(st.stateIncome ?? w.wages), tax: Math.round(st.stateTax) }
+  })
+  const other = (ret.withholdingLists?.['ky.withholdingOther'] ?? []).filter((x) => x.tax > 0 && owners.includes(x.owner)).map((x) => ({ ssn: person(x.owner).ssn, ein: x.payerId, state: 'KY', id: x.stateId, income: Math.round(x.income), tax: Math.round(x.tax) }))
+  if (!w2.length && !other.length) return []
+  const n = Math.max(1, Math.ceil(w2.length / 10), Math.ceil(other.length / 5))
+  const out: FormFill[] = []
+  for (let k = 0; k < n; k++) {
+    const v: Record<string, FieldValue> = { 'KW2-NameOnReturn': shortName(ret), KW2PrimarySSN: digits(ret.taxpayer.ssn) }
+    if (ret.filingStatus === 'mfj') v.KW2SecondarySSN = digits(ret.spouse.ssn)
+    const rows = (list: typeof w2, from: number, count: number, part: string, first: number): number => {
+      const slice = list.slice(k * count, k * count + count)
+      slice.forEach((x, i) => {
+        const line = first + i
+        const c = part === 'II' && line === 13 ? 'c' : 'C'
+        v[`KW2Part${part}Line${line}A`] = digits(x.ssn)
+        v[`KW2Part${part}Line${line}B`] = digits(x.ein).slice(0, 9)
+        v[`KW2Part${part}Line${line}${c}`] = x.state
+        v[`KW2Part${part}Line${line}D`] = digits(x.id).slice(0, 9)
+        v[`KW2Part${part}Line${line}E`] = String(x.income)
+        v[`KW2Part${part}Line${line}F`] = String(x.tax)
+      })
+      void from
+      return slice.reduce((s, x) => s + x.tax, 0)
+    }
+    const t1 = rows(w2, 0, 10, 'I', 1)
+    const t2 = rows(other, 0, 5, 'II', 12)
+    if (t1) { v.KW2PartILine11F = String(t1); v.KW2PartILine11E = String(w2.slice(k * 10, k * 10 + 10).reduce((s, x) => s + x.income, 0)) }
+    if (t2) { v.KW2PartIILine17F = String(t2); v.KW2PartIILine17E = String(other.slice(k * 5, k * 5 + 5).reduce((s, x) => s + x.income, 0)) }
+    if (k === 0) v.KW2PartIIILine18F = String(w2.reduce((s, x) => s + x.tax, 0) + other.reduce((s, x) => s + x.tax, 0))
+    out.push({ id: k ? `kykw2-${k + 1}` : 'kykw2', file: 'ky-kw2.pdf', title: k ? `Kentucky Schedule KW-2 (sheet ${k + 1})` : 'Kentucky Schedule KW-2', values: v })
+  }
+  void ky
+  return out
+}
+
 export function buildKyPacket(ret: TaxReturnInput, res: TaxReturnResult, ky: KyResult, preparer?: PreparerInfo | null): FormPacket {
   const forms = [formKy740(ret, res, ky, preparer), formKySchM(ret, ky), formKySchA(ret, ky), formKyItc(ret, res, ky)]
   const out = forms.filter((x): x is FormFill => x !== null)
+  const kw2 = formsKyKw2(ret, ky)
+  out.push(...kw2)
   const M = ky.schM
   const add = (M.A['5'] ?? 0) + (M.B['5'] ?? 0)
   const sub = (M.A['14'] ?? 0) + (M.B['14'] ?? 0)
@@ -204,5 +250,9 @@ export function buildKyPacket(ret: TaxReturnInput, res: TaxReturnResult, ky: KyR
   const st = [...one('ky.otherAdditions', add, ret.ky.otherAdditionsText, '5'), ...one('ky.otherSubtractions', sub, ret.ky.otherSubtractionsText, '14')]
   out.push(...st)
   const missing = (add > 0 && !st.some((f) => f.id.startsWith('st-ky-otherAdditions'))) || (sub > 0 && !st.some((f) => f.id.startsWith('st-ky-otherSubtractions')))
-  return { forms: out, notIncluded: ky.attach.filter((a) => missing || !a.startsWith('A statement explaining the other additions')) }
+  const otherListed = (ret.withholdingLists?.['ky.withholdingOther'] ?? []).some((x) => x.tax > 0)
+  const notIncluded = ky.attach.filter((a) => (missing || !a.startsWith('A statement explaining the other additions')) && !(kw2.length && a.startsWith('Schedule KW-2')))
+  if (kw2.length) notIncluded.push('Your W-2s, 1099s and W-2Gs with Kentucky withholding (keep them with your records; Schedule KW-2 lists them)')
+  if (ret.ky.withholdingOther > 0 && !otherListed) notIncluded.push('Schedule KW-2 Part II: list each 1099 or W-2G with Kentucky withholding in the Kentucky section')
+  return { forms: out, notIncluded }
 }

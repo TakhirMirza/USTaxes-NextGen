@@ -227,6 +227,28 @@ export function formIT196(ret: TaxReturnInput, res: TaxReturnResult, ny: NyResul
   return { id: 'nyit196', file: 'nyit196.pdf', title: 'New York Form IT-196', values }
 }
 
+/** Form IT-112-R: resident credit for tax paid to another state, local government or D.C. */
+export function formIT112R(ret: TaxReturnInput, ny: NyResult): FormFill | null {
+  const R = ny.it112r
+  if (!R) return null
+  const d = ret.ny.it112r
+  const signed = (n: number | undefined, keepZero = false): string => (n !== undefined && n < 0 ? `-${Math.abs(Math.round(n))}` : amt(n, keepZero))
+  const v: Record<string, FieldValue> = { firstname: displayName(ret), ss: digits(ret.taxpayer.ssn) }
+  for (let k = 1; k <= 22; k++) {
+    v[`${k}a dollarsR`] = signed(R[`${k}a`], k === 16 || k === 18 || k === 20 || k === 22)
+    if (k !== 19 && R[`${k}b`] !== undefined) v[`${k}b dollarsR`] = signed(R[`${k}b`], k === 22)
+  }
+  v['line 23R'] = d.state.trim().toUpperCase().slice(0, 2)
+  if (d.locality.trim()) v.locality = d.locality.trim()
+  v['24a dollarsR'] = signed(R['24a'], true)
+  if (R['24b']) v['24b dollarsR'] = amt(R['24b'])
+  if (d.composite) { v['paid to other'] = true; v['group EIN'] = digits(d.groupEin) }
+  for (const k of ['24', '25', '27', '28', '29', '30', '31', '32', '33', '34']) v[`${k} dollarsR`] = signed(R[k], true)
+  v['26R left'] = R['26'].toFixed(4)
+  for (const k of ['35', '36', '37']) v[`${k} dollarsR`] = amt(R[k], true)
+  return { id: 'nyit112r', file: 'nyit112r.pdf', title: 'New York Form IT-112-R', values: v }
+}
+
 export function buildNyPacket(ret: TaxReturnInput, res: TaxReturnResult, ny: NyResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formIT201(ret, res, ny, preparer)]
   if (ny.escc.under4 + ny.escc.age4to16 > 0) forms.push(formIT213(ret, res, ny))
@@ -234,7 +256,9 @@ export function buildNyPacket(ret: TaxReturnInput, res: TaxReturnResult, ny: NyR
   if (ny.lines['64'] > 0) forms.push(formIT216(ret, res, ny))
   if (ny.lines['70a'] > 0) forms.push(formIT270(ret, res, ny))
   if (ny.deduction.method === 'itemized') forms.push(formIT196(ret, res, ny))
-  const filled = new Set(['Form IT-213, Empire State child credit', 'Form IT-215, earned income credit', 'Form IT-216, child and dependent care credit', 'Form IT-270, NYC income tax elimination credit', 'Form IT-196, New York itemized deductions'])
+  const r112 = formIT112R(ret, ny)
+  if (r112) forms.push(r112)
+  const filled = new Set([...(r112 ? ['Form IT-112-R, resident credit for tax paid to another state'] : []), 'Form IT-213, Empire State child credit', 'Form IT-215, earned income credit', 'Form IT-216, child and dependent care credit', 'Form IT-270, NYC income tax elimination credit', 'Form IT-196, New York itemized deductions'])
   const notIncluded = ny.attach.filter((a) => !filled.has(a))
   notIncluded.push('Item D1 on page 1: mark whether you had a financial account in a foreign country')
   if (ny.lines['64'] > 0) {

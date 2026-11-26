@@ -64,6 +64,8 @@ export interface NcResult {
   lines: Record<string, number>
   scheduleS: { additions: Record<string, number>; deductions: Record<string, number> }
   deduction: { method: 'standard' | 'itemized'; standard: number; itemized: number; mortgageAndTaxes: number }
+  /** Form D-400TC lines, when its inputs were entered. */
+  tc: Record<string, number> | null
   childDeduction: { children: number; perChild: number }
   issues: string[]
   attach: string[]
@@ -109,7 +111,30 @@ export function computeNorthCarolina(ret: TaxReturnInput, res: TaxReturnResult):
   L['12b'] = L['8'] - L['12a']
   L['14'] = pos(L['12b'])
   L['15'] = r(L['14'] * NC_RATE)
-  L['16'] = Math.min(r(pos(d.taxCredits)), L['15'])
+  // Line 16: tax credits from Form D-400TC (figured here when its inputs are entered).
+  const t = d.tc
+  const tcUsed = [t.otherIncome, t.otherTax, t.h8, t.h9, t.h10b, t.h11b, t.h12, t.h13, t.carryover, t.business].some((x) => x > 0)
+  let TC: Record<string, number> | null = null
+  if (tcUsed) {
+    TC = {}
+    TC['1'] = pos(L['8'] - L['9'])
+    TC['2'] = r(pos(t.otherIncome))
+    TC['3'] = TC['1'] > 0 ? Math.min(1, Math.round((TC['2'] / TC['1']) * 10000) / 10000) : 0
+    TC['4'] = L['15']
+    TC['5'] = r(TC['4'] * TC['3'])
+    TC['6'] = r(pos(t.otherTax))
+    TC['7a'] = TC['2'] > 0 ? Math.min(TC['5'], TC['6']) : 0
+    TC['7b'] = TC['7a'] > 0 ? Math.max(1, Math.round(t.otherCount)) : 0
+    for (const k of ['8', '9', '12', '13'] as const) TC[k] = r(pos(t[`h${k}`]))
+    TC['10a'] = r(pos(t.h10a)); TC['10b'] = r(pos(t.h10b)); TC['11a'] = r(pos(t.h11a)); TC['11b'] = r(pos(t.h11b))
+    TC['14'] = r(pos(t.carryover))
+    TC['16'] = TC['7a'] + TC['8'] + TC['9'] + TC['10b'] + TC['11b'] + TC['12'] + TC['13'] + TC['14']
+    TC['17'] = L['15']
+    TC['18'] = Math.min(TC['16'], TC['17'])
+    TC['19'] = Math.min(r(pos(t.business)), pos(L['15'] - TC['18']))
+    TC['20'] = TC['18'] + TC['19']
+  }
+  L['16'] = TC ? TC['20'] : Math.min(r(pos(d.taxCredits)), L['15'])
   L['17'] = L['15'] - L['16']
   L['18'] = r(pos(d.useTax))
   L['19'] = L['17'] + L['18']
@@ -148,7 +173,7 @@ export function computeNorthCarolina(ret: TaxReturnInput, res: TaxReturnResult):
 
   return {
     lines: L, scheduleS: { additions, deductions },
-    deduction: { method, standard, itemized, mortgageAndTaxes },
+    deduction: { method, standard, itemized, mortgageAndTaxes }, tc: TC,
     childDeduction: { children, perChild },
     issues, attach
   }

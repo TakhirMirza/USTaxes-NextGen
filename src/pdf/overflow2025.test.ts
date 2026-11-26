@@ -48,11 +48,14 @@ import { computeNebraska } from '../engine/ne2025.ts'
 import { buildNePacket } from './ne2025.ts'
 import { computePennsylvania } from '../engine/pa2025.ts'
 import { buildPaPacket } from './pa2025.ts'
+import { computeNewYork } from '../engine/ny2025.ts'
+import { buildNyPacket } from './ny2025.ts'
+import { emptyNcTc, emptyNyIt112r } from '../engine/model.ts'
 import { buildPdf, fillForm } from './fill.ts'
 import type { FillProblem } from './fill.ts'
 import type { FormFill } from './irs2025.ts'
 
-type St = 'al' | 'ga' | 'mn' | 'oh' | 'ms' | 'ut' | 'ct' | 'or' | 'co' | 'mo' | 'az' | 'ca' | 'ky' | 'il' | 'ia' | 'nc' | 'ne' | 'pa'
+type St = 'al' | 'ga' | 'mn' | 'oh' | 'ms' | 'ut' | 'ct' | 'or' | 'co' | 'mo' | 'az' | 'ca' | 'ky' | 'il' | 'ia' | 'nc' | 'ne' | 'pa' | 'ny'
 
 /** A single filer with `n` W-2s, each with state withholding. */
 const many = (st: St, n: number, patch: Partial<TaxReturnInput> = {}): TaxReturnInput => {
@@ -419,4 +422,61 @@ test('PA: 529 beneficiaries on Schedule O Part I, each capped at $19,000', async
   assert.equal(v['CONTRIBUTIONS BY TAXPAYER  (1)'], '19000')
   assert.ok(!p.notIncluded.some((x) => x.includes('beneficiary')))
   await fillsClean(p.forms, 'PAO')
+})
+
+test('KY: Schedule KW-2 lists W-2s (ten per sheet) and listed 1099s', async () => {
+  const base = many('ky', 11)
+  const ret = { ...base, ky: { ...base.ky, withholdingOther: 25 }, withholdingLists: { 'ky.withholdingOther': [wh('1099', 25, 1)] } }
+  const res = computeReturn(ret)
+  const ky = computeKentucky(ret, res)
+  const p = buildKyPacket(ret, res, ky)
+  const a = p.forms.find((f) => f.id === 'kykw2')!
+  assert.equal(a.values['KW2PartILine10F'], '150')
+  assert.equal(a.values['KW2PartILine11F'], '1500')
+  assert.equal(a.values['KW2PartIILine12F'], '25')
+  assert.equal(a.values['KW2PartIIILine18F'], String(ky.lines['31a']))
+  assert.equal(p.forms.find((f) => f.id === 'kykw2-2')!.values['KW2PartILine1F'], '150')
+  assert.ok(!p.notIncluded.some((x) => x.startsWith('Schedule KW-2 (')))
+  await fillsClean(p.forms, 'KYKW2')
+})
+
+test('NC: D-400 Schedule A and Form D-400TC (credit for tax paid to another state)', async () => {
+  const base = many('nc', 1, { w2s: [{ ...emptyW2('taxpayer'), employer: 'Big Co', wages: 150000, socialSecurityWages: 150000, medicareWages: 150000 }] })
+  const ret = { ...base, itemized: { ...base.itemized, mortgageInterest: 18000, realEstateTax: 6000, charityCash: 5000 },
+    nc: { ...base.nc, tc: { ...emptyNcTc(), otherIncome: 30000, otherTax: 1000, otherCount: 1, carryover: 50 } } }
+  const res = computeReturn(ret)
+  const nc = computeNorthCarolina(ret, res)
+  assert.equal(nc.deduction.method, 'itemized')
+  assert.equal(nc.deduction.mortgageAndTaxes, 20000)
+  assert.ok(nc.tc && nc.tc['7a'] > 0)
+  assert.equal(nc.lines['16'], nc.tc!['20'])
+  const p = buildNcPacket(ret, res, nc)
+  const a = p.forms.find((f) => f.id === 'ncd400a')!
+  assert.equal(a.values['y_d400_sch_a_wf_li5'], '20000')
+  assert.equal(a.values['y_d400_sch_a_wf_li6'], '5000')
+  const tc = p.forms.find((f) => f.id === 'ncd400tc')!
+  assert.equal(tc.values['y_d400tcwf_li2_good'], '30000')
+  assert.equal(tc.values['y_d400tcwf_li20_good'], String(nc.lines['16']))
+  assert.ok(!p.notIncluded.some((x) => x.includes('Schedule A, NC itemized') || x === 'Form D-400TC, individual tax credits'))
+  await fillsClean(p.forms, 'NCATC')
+})
+
+test('NY: Form IT-112-R figures the resident credit on IT-201 line 41', async () => {
+  const base = many('ny', 1, { w2s: [{ ...emptyW2('taxpayer'), employer: 'Big Co', wages: 100000, socialSecurityWages: 100000, medicareWages: 100000 }] })
+  const ret = { ...base, ny: { ...base.ny, it112r: { ...emptyNyIt112r(), state: 'NJ', b: { '1': 40000 }, taxpayerTax: 900, prepayments: 1000, overpayment: 100 } } }
+  const res = computeReturn(ret)
+  const ny = computeNewYork(ret, res)
+  const R = ny.it112r!
+  assert.equal(R['1a'], 100000)
+  assert.equal(R['22b'], 40000)
+  assert.equal(R['26'], Math.round((40000 / R['22a']) * 10000) / 10000)
+  assert.equal(R['28'], Math.min(900, R['27'], R['28']))
+  assert.equal(ny.lines['41'], R['34'])
+  assert.ok(ny.lines['41'] > 0 && ny.lines['41'] <= 900)
+  const p = buildNyPacket(ret, res, ny)
+  const f = p.forms.find((x) => x.id === 'nyit112r')!
+  assert.equal(f.values['line 23R'], 'NJ')
+  assert.equal(f.values['1b dollarsR'], '40000')
+  assert.ok(!p.notIncluded.some((x) => x.startsWith('Form IT-112-R')))
+  await fillsClean(p.forms, 'NY112')
 })

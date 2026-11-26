@@ -7,7 +7,7 @@ import { computeKentucky } from '../engine/ky2025.ts'
 import { buildKyPacket } from '../pdf/ky2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { Choice, MoneyField, Section, TextField, usd } from './fields'
-import { ExplainItems } from './creditrows'
+import { ExplainItems, WithholdingItems } from './creditrows'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -98,6 +98,7 @@ export function KentuckyStep({ ret, set, result, preparer }: StepProps & { prepa
           : <p className="why">No W-2s entered.</p>}
         <div className="grid">
           <MoneyField label="Kentucky tax withheld on 1099s" value={d.withholdingOther} onChange={(n) => put({ withholdingOther: n })} />
+          <WithholdingItems ret={ret} set={set} k="ky.withholdingOther" setTotal={(r, n) => ({ ...r, ky: { ...r.ky, withholdingOther: n } })} kinds={["1099", "W-2G"]} stateIdLabel="Payer’s Kentucky state ID" incomeLabel="Kentucky income amount" />
           <MoneyField label="2025 estimated and extension payments" value={d.estimatedPayments} onChange={(n) => put({ estimatedPayments: n })} />
         </div>
       </Section>

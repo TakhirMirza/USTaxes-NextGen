@@ -26,6 +26,7 @@ export function NorthCarolinaStep({ ret, set, result, preparer }: StepProps & { 
   const nc = useMemo(() => computeNorthCarolina(ret, result), [ret, result])
   const [pdf, setPdf] = useState<{ busy: boolean; note: string }>({ busy: false, note: '' })
   const put = (p: Partial<NcInput>): void => set((r) => ({ ...r, nc: { ...r.nc, ...p } }))
+  const tc = (p: Partial<NcInput['tc']>): void => set((r) => ({ ...r, nc: { ...r.nc, tc: { ...r.nc.tc, ...p } } }))
   const joint = ret.filingStatus === 'mfj'
   const owners: Owner[] = joint ? ['taxpayer', 'spouse'] : ['taxpayer']
   const names: Record<Owner, string> = { taxpayer: firstName(ret.taxpayer, 'You'), spouse: firstName(ret.spouse, 'Spouse') }
@@ -84,11 +85,29 @@ export function NorthCarolinaStep({ ret, set, result, preparer }: StepProps & { 
 
       <Section title="Credits, use tax and refund">
         <div className="grid">
-          <MoneyField label="Tax credits (Form D-400TC)" value={d.taxCredits} onChange={(n) => put({ taxCredits: n })} />
+          {!nc.tc && <MoneyField label="Tax credits (Form D-400TC), if you figured them yourself" hint="Or fill in Form D-400TC below" value={d.taxCredits} onChange={(n) => put({ taxCredits: n })} />}
           <MoneyField label="Consumer use tax" hint="On untaxed out-of-state purchases" value={d.useTax} onChange={(n) => put({ useTax: n })} />
           {L['28'] > 0 && <MoneyField label="Apply to 2026 estimated tax" value={d.creditForward} onChange={(n) => put({ creditForward: n })} />}
           {L['28'] > 0 && <MoneyField label="NC Nongame and Endangered Wildlife Fund" value={d.contributions} onChange={(n) => put({ contributions: n })} />}
         </div>
+        <details className="explain" open={!!nc.tc}>
+          <summary>{nc.tc ? `Form D-400TC: ${usd(nc.tc['20'])} of credits on line 16` : 'Form D-400TC (credit for tax paid to another state, historic rehabilitation, carryovers)'}</summary>
+          <div className="grid">
+            <MoneyField label="Income taxed by another state or country" hint="D-400TC line 2" value={d.tc.otherIncome} onChange={(n) => tc({ otherIncome: n })} />
+            <MoneyField label="Net tax paid to the other state or country" hint="Line 6" value={d.tc.otherTax} onChange={(n) => tc({ otherTax: n })} />
+            <TextField label="Number of states or countries" hint="Line 7b" value={String(d.tc.otherCount)} onChange={(s) => tc({ otherCount: Math.max(1, Number(s.replace(/\D/g, '')) || 1) })} />
+            <MoneyField label="Historic structure, income-producing (Article 3D)" hint="Line 8" value={d.tc.h8} onChange={(n) => tc({ h8: n })} />
+            <MoneyField label="Historic structure, nonincome-producing (Article 3D)" hint="Line 9" value={d.tc.h9} onChange={(n) => tc({ h9: n })} />
+            <MoneyField label="Historic mill, income-producing: expenses" hint="Line 10a" value={d.tc.h10a} onChange={(n) => tc({ h10a: n })} />
+            <MoneyField label="Historic mill, income-producing: credit" hint="Line 10b" value={d.tc.h10b} onChange={(n) => tc({ h10b: n })} />
+            <MoneyField label="Historic mill, nonincome-producing: expenses" hint="Line 11a" value={d.tc.h11a} onChange={(n) => tc({ h11a: n })} />
+            <MoneyField label="Historic mill, nonincome-producing: credit" hint="Line 11b" value={d.tc.h11b} onChange={(n) => tc({ h11b: n })} />
+            <MoneyField label="Historic structure, income-producing (Article 3L)" hint="Line 12" value={d.tc.h12} onChange={(n) => tc({ h12: n })} />
+            <MoneyField label="Historic structure, nonincome-producing (Article 3L)" hint="Line 13" value={d.tc.h13} onChange={(n) => tc({ h13: n })} />
+            <MoneyField label="Credits carried over from earlier years" hint="Line 14" value={d.tc.carryover} onChange={(n) => tc({ carryover: n })} />
+            <MoneyField label="Business incentive and energy credits (Form NC-478)" hint="Line 19" value={d.tc.business} onChange={(n) => tc({ business: n })} />
+          </div>
+        </details>
         {d.useTax === 0 && (
           <div className="checks"><Check label="I certify that no consumer use tax is due" checked={d.noUseTaxDue} onChange={(on) => put({ noUseTaxDue: on })} /></div>
         )}
