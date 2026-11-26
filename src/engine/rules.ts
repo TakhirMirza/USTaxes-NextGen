@@ -32,7 +32,7 @@ export const STATE_RETURNS_READY: Record<TaxYear, boolean> = { 2026: false, 2025
 export const isTaxYear = (y: unknown): y is TaxYear => typeof y === 'number' && y in BY_YEAR
 type Rules = typeof Y2025
 
-export let TAX_YEAR: Rules['TAX_YEAR'] = Y2025.TAX_YEAR
+export let TAX_YEAR: TaxYear = Y2025.TAX_YEAR
 export let BRACKETS: Rules['BRACKETS'] = Y2025.BRACKETS
 export let STANDARD_DEDUCTION: Rules['STANDARD_DEDUCTION'] = Y2025.STANDARD_DEDUCTION
 export let ADDITIONAL_STD_UNMARRIED: Rules['ADDITIONAL_STD_UNMARRIED'] = Y2025.ADDITIONAL_STD_UNMARRIED

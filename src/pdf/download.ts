@@ -100,7 +100,7 @@ async function save(forms: FormFill[], title: string, fileName: string): Promise
   }
   const { bytes, problems } = await buildPdf(lib, forms, load, title)
   if (problems.length) console.warn('Form fields not filled:', problems)
-  const blob = new Blob([bytes], { type: 'application/pdf' })
+  const blob = new Blob([bytes as BlobPart], { type: 'application/pdf' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
