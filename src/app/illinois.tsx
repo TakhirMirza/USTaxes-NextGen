@@ -3,10 +3,11 @@
  */
 import { ReactElement, useMemo, useState } from 'react'
 import type { IlInput, Owner, Person } from '../engine/model.ts'
-import { computeIllinois, ilUseTaxTable } from '../engine/il2025.ts'
-import { buildIlPacket } from '../pdf/il2025.ts'
+import { IL_SUBTRACTION_LINES_P2, IL_SUBTRACTION_LINES_P3, computeIllinois, ilUseTaxTable } from '../engine/il2025.ts'
+import { IL_GIFT, buildIlPacket } from '../pdf/il2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { Check, MoneyField, Section, TextField, usd } from './fields'
+import { ExplainItems } from './creditrows'
 import type { StepProps } from './steps'
 
 const LINES: [line: string, label: string][] = [
@@ -82,8 +83,11 @@ export function IllinoisStep({ ret, set, result, preparer }: StepProps & { prepa
           <MoneyField label="Illinois tax refund in federal income" value={d.stateRefundInFagi} onChange={(n) => put({ stateRefundInFagi: n })} />
           <MoneyField label="Interest on U.S. Treasury and agency obligations" hint="Schedule M line 22" value={d.usObligationInterest} onChange={(n) => put({ usObligationInterest: n })} />
           <MoneyField label="Bright Start / Bright Directions contributions" hint={`Up to ${joint ? '$20,000' : '$10,000'} (Schedule M line 13)`} value={d.collegeSavings} onChange={(n) => put({ collegeSavings: n })} />
+          <ExplainItems ret={ret} set={set} k="il.collegeSavings" setTotal={(r, n) => ({ ...r, il: { ...r.il, collegeSavings: n } })} lines={[IL_GIFT, "Your own or family account"]} lineLabel="Account" descriptionLabel="Account number" summary="List each account (fills line 13a)" />
           <MoneyField label="Other additions (Schedule M)" value={d.otherAdditions} onChange={(n) => put({ otherAdditions: n })} />
+          <ExplainItems ret={ret} set={set} k="il.otherAdditions" setTotal={(r, n) => ({ ...r, il: { ...r.il, otherAdditions: n } })} />
           <MoneyField label="Other subtractions (Schedule M)" value={d.otherSubtractions} onChange={(n) => put({ otherSubtractions: n })} />
+          <ExplainItems ret={ret} set={set} k="il.otherSubtractions" setTotal={(r, n) => ({ ...r, il: { ...r.il, otherSubtractions: n } })} lines={[...IL_SUBTRACTION_LINES_P2, ...IL_SUBTRACTION_LINES_P3, "Not on a Schedule M line"]} summary="List each item with its Schedule M line" />
         </div>
       </Section>
 

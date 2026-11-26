@@ -4,7 +4,7 @@
  * Business Income (4–5), Schedule of Credits (6–7), Schedule of Dependents (8–9) and Schedule of Ohio
  * Withholding (10–11). Amounts are whole dollars; negative amounts use the separate "-" box.
  */
-import type { Person, TaxReturnInput } from '../engine/model.ts'
+import type { OtherWithholding, Person, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { OhResult } from '../engine/oh2025.ts'
 import { OH_DONATION_LETTERS } from '../engine/oh2025.ts'
@@ -153,7 +153,30 @@ export function scheduleOhWithholding(ret: TaxReturnInput, oh: OhResult, copy = 
     values[`SchedW_C_L${n}_FITW`] = amt(x.federal, true)
     values[`SchedW_C_L${n}_OHTW`] = amt(x.tax, true)
   })
-  return { id: copy ? `ohwh-${copy + 1}` : 'ohwh', file: FILE, title: copy ? `Schedule of Ohio Withholding (additional page ${copy})` : 'Schedule of Ohio Withholding', values, pages: r.length > 0 ? [10, 11] : [10] }
+  const other = ohOtherWithholding(ret)
+  const d = other.w2g.slice(copy * 2, copy * 2 + 2)
+  d.forEach((x, i) => {
+    const n = i + 1
+    values[`SchedW_D_L${n}_PS`] = ps(x.owner)
+    values[`SchedW_D_L${n}_FEDID`] = digits(x.payerId).slice(0, 9)
+    values[`SchedW_D_L${n}_WIN`] = amt(x.fedIncome, true)
+    values[`SchedW_D_L${n}_FITW`] = amt(x.federal, true)
+    values[`SchedW_D_L${n}_OHID`] = digits(x.stateId).slice(0, 8)
+    values[`SchedW_D_L${n}_OHWIN`] = amt(x.income, true)
+    values[`SchedW_D_L${n}_OHTW`] = amt(x.tax, true)
+  })
+  const e = other.nec[copy]
+  if (e) Object.assign(values, { SchedW_E_L1_PS: ps(e.owner), SchedW_E_L1_TIN: digits(e.payerId).slice(0, 9), SchedW_E_L1_COMP: amt(e.fedIncome, true), SchedW_E_L1_FITW: amt(e.federal, true), SchedW_E_L1_OHID: digits(e.stateId).slice(0, 8), SchedW_E_L1_OHINC: amt(e.income, true), SchedW_E_L1_OHTW: amt(e.tax, true) })
+  const f = other.g[copy]
+  if (f) Object.assign(values, { SchedW_F_L1_PS: ps(f.owner), SchedW_F_L1_TIN: digits(f.payerId).slice(0, 9), SchedW_F_L1_COMP: amt(f.fedIncome, true), SchedW_F_L1_FITW: amt(f.federal, true), SchedW_F_L1_OHID: digits(f.stateId).slice(0, 8), SchedW_F_L1_OHTW: amt(f.tax, true) })
+  const page2 = r.length > 0 || d.length > 0 || !!e || !!f
+  return { id: copy ? `ohwh-${copy + 1}` : 'ohwh', file: FILE, title: copy ? `Schedule of Ohio Withholding (additional page ${copy})` : 'Schedule of Ohio Withholding', values, pages: page2 ? [10, 11] : [10] }
+}
+
+/** Listed W-2G, 1099-NEC and 1099-G statements behind the Ohio "other withholding" amount (Parts D, E and F). */
+export function ohOtherWithholding(ret: TaxReturnInput): { w2g: OtherWithholding[]; nec: OtherWithholding[]; g: OtherWithholding[] } {
+  const rows = (ret.withholdingLists?.['oh.otherWithholding'] ?? []).filter((x) => x.tax > 0)
+  return { w2g: rows.filter((x) => x.kind === 'W-2G'), nec: rows.filter((x) => x.kind === '1099-NEC'), g: rows.filter((x) => x.kind !== 'W-2G' && x.kind !== '1099-NEC') }
 }
 
 export function buildOhPacket(ret: TaxReturnInput, res: TaxReturnResult, oh: OhResult, preparer?: PreparerInfo | null): FormPacket {
@@ -165,12 +188,13 @@ export function buildOhPacket(ret: TaxReturnInput, res: TaxReturnResult, oh: OhR
   if (oh.lines['14'] > 0) {
     const w = oh.withholding.w2.filter((x) => x.tax > 0).length
     const r = oh.withholding.r1099.filter((x) => x.tax > 0).length
-    const n = Math.max(1, Math.ceil(w / 7), Math.ceil(r / 4))
+    const o = ohOtherWithholding(ret)
+    const n = Math.max(1, Math.ceil(w / 7), Math.ceil(r / 4), Math.ceil(o.w2g.length / 2), o.nec.length, o.g.length)
     for (let k = 0; k < n; k++) forms.push(scheduleOhWithholding(ret, oh, k))
   }
   const notIncluded = oh.attach.filter((a) => !/^Ohio Schedule of|^Schedule of Ohio Withholding/.test(a))
   if (oh.lines['14'] > 0) notIncluded.push('State copies of your W-2s and 1099s with Ohio withholding (place them after the last page)')
-  if (ret.oh.otherWithholding > 0) notIncluded.push('Schedule of Ohio Withholding Parts D–F: list your W-2G, 1099-NEC and 1099-G statements (their tax is in the Part A total)')
+  if (ret.oh.otherWithholding > 0 && !(ret.withholdingLists?.['oh.otherWithholding'] ?? []).some((x) => x.tax > 0)) notIncluded.push('Schedule of Ohio Withholding Parts D–F: list your W-2G, 1099-NEC and 1099-G statements (their tax is in the Part A total)')
   forms.push(...dependentsStatement(ret, 15, 'Schedule of Dependents (continued)', 'st-oh-deps'))
   return { forms, notIncluded }
 }

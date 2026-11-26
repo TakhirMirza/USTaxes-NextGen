@@ -35,11 +35,13 @@ import { computeCalifornia } from '../engine/ca2025.ts'
 import { buildCaPacket } from './ca2025.ts'
 import { computeKentucky } from '../engine/ky2025.ts'
 import { buildKyPacket } from './ky2025.ts'
+import { IL_SUBTRACTION_LINES_P2, IL_SUBTRACTION_LINES_P3, computeIllinois } from '../engine/il2025.ts'
+import { IL_GIFT, buildIlPacket } from './il2025.ts'
 import { buildPdf, fillForm } from './fill.ts'
 import type { FillProblem } from './fill.ts'
 import type { FormFill } from './irs2025.ts'
 
-type St = 'al' | 'ga' | 'mn' | 'oh' | 'ms' | 'ut' | 'ct' | 'or' | 'co' | 'mo' | 'az' | 'ca' | 'ky'
+type St = 'al' | 'ga' | 'mn' | 'oh' | 'ms' | 'ut' | 'ct' | 'or' | 'co' | 'mo' | 'az' | 'ca' | 'ky' | 'il'
 
 /** A single filer with `n` W-2s, each with state withholding. */
 const many = (st: St, n: number, patch: Partial<TaxReturnInput> = {}): TaxReturnInput => {
@@ -245,4 +247,72 @@ test('KY: the other-additions text makes the statement when no items are listed'
   assert.ok(p.forms.some((f) => f.id.startsWith('st-ky-otherAdditions')))
   assert.ok(!p.notIncluded.some((x) => x.startsWith('A statement explaining the other additions')))
   await fillsClean(p.forms, 'KYX')
+})
+
+const wh = (kind: string, tax: number, i = 0) => ({ owner: 'taxpayer' as const, kind, payerId: `98765432${i}`, stateId: `77${i}`, fedIncome: 1000, income: 900, federal: 100, tax })
+
+test('MN: listed 1099s fill Schedule M1W line 2, five per page', async () => {
+  const base = many('mn', 1)
+  const list = Array.from({ length: 6 }, (_, i) => wh('1099', 20, i))
+  const ret = { ...base, mn: { ...base.mn, withholding1099: 120 }, withholdingLists: { 'mn.withholding1099': list } }
+  const res = computeReturn(ret)
+  const p = buildMnPacket(ret, res, computeMinnesota(ret, res))
+  const first = p.forms.find((f) => f.id === 'mnm1w')!
+  assert.equal(first.values['d5_2'], '20')
+  assert.equal(first.values['b1_2'], '770')
+  assert.equal(p.forms.find((f) => f.id === 'mnm1w-2')!.values['d1_2'], '20')
+  assert.ok(!p.notIncluded.some((x) => x.includes('line 2')))
+  await fillsClean(p.forms, 'MNL2')
+})
+
+test('GA: listed 1099s and G2 forms take the income statement lines after the W-2s', async () => {
+  const base = many('ga', 1)
+  const ret = { ...base, ga: { ...base.ga, withholding1099: 30, otherWithholding: 40 }, withholdingLists: { 'ga.withholding1099': [wh('1099', 30, 1)], 'ga.otherWithholding': [wh('G2-LP', 40, 2)] } }
+  const res = computeReturn(ret)
+  const p = buildGaPacket(ret, res, computeGeorgia(ret, res))
+  const v = p.forms.find((f) => f.id === 'ga500')!.values
+  assert.equal(v['CB_WH_TYPE_B.0.0'], '1099s')
+  assert.equal(v['CB_WH_TYPE_C.0.0'], 'G2-LP')
+  assert.ok(!p.notIncluded.some((x) => x.includes('G2 forms')))
+  await fillsClean(p.forms, 'GAL')
+})
+
+test('OH: listed W-2G, 1099-NEC and 1099-G fill Parts D–F', async () => {
+  const base = many('oh', 1)
+  const list = [wh('W-2G', 10, 1), wh('W-2G', 11, 2), wh('W-2G', 12, 3), wh('1099-NEC', 13, 4), wh('1099-G', 14, 5)]
+  const ret = { ...base, oh: { ...base.oh, otherWithholding: 60 }, withholdingLists: { 'oh.otherWithholding': list } }
+  const res = computeReturn(ret)
+  const p = buildOhPacket(ret, res, computeOhio(ret, res))
+  const a = p.forms.find((f) => f.id === 'ohwh')!
+  assert.deepEqual(a.pages, [10, 11])
+  assert.equal(a.values['SchedW_D_L2_OHTW'], '11')
+  assert.equal(a.values['SchedW_E_L1_OHTW'], '13')
+  assert.equal(a.values['SchedW_F_L1_OHTW'], '14')
+  assert.equal(p.forms.find((f) => f.id === 'ohwh-2')!.values['SchedW_D_L1_OHTW'], '12')
+  assert.ok(!p.notIncluded.some((x) => x.includes('Parts D–F')))
+  await fillsClean(p.forms, 'OHL')
+})
+
+test('IL: college savings accounts on line 13a and other subtractions on their lines', async () => {
+  const base = many('il', 1)
+  const rr = IL_SUBTRACTION_LINES_P3.find((l) => l.startsWith('Railroad'))!
+  const mil = IL_SUBTRACTION_LINES_P2.find((l) => l.startsWith('Military'))!
+  const ret = {
+    ...base, il: { ...base.il, collegeSavings: 3000, otherSubtractions: 700 },
+    explain: {
+      'il.collegeSavings': [{ line: '', description: 'BS-12345', amount: 2000 }, { line: IL_GIFT, description: 'BD-999', amount: 1000 }],
+      'il.otherSubtractions': [{ line: rr, description: 'RRB', amount: 300 }, { line: mil, description: 'Guard pay', amount: 400 }]
+    }
+  }
+  const res = computeReturn(ret)
+  const il = computeIllinois(ret, res)
+  const p = buildIlPacket(ret, res, il)
+  const v = p.forms.find((f) => f.id === 'ilschm')!.values
+  assert.equal(v['Column A  Account Number'], 'BS-12345')
+  assert.equal(v['gift_2'], true)
+  assert.equal(v['Total - Add Column B, Lines 1-10 and enter here'], '3000')
+  assert.equal(v[rr], '300')
+  assert.equal(v[mil], '400')
+  assert.ok(!p.notIncluded.some((x) => x.includes('line 13a') || x.includes('not on a line')))
+  await fillsClean(p.forms, 'ILM')
 })

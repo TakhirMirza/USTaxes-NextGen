@@ -7,9 +7,10 @@ import type { Person, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import { eicChild } from '../engine/compute.ts'
 import type { IlResult } from '../engine/il2025.ts'
+import { IL_SUBTRACTION_LINES_P2, IL_SUBTRACTION_LINES_P3 } from '../engine/il2025.ts'
 import { parseBirthDate } from '../engine/va2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
-import { dependentsStatement } from './statement.ts'
+import { dependentsStatement, explainStatement, money0, statementForms } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const amt = (n: number | undefined, keepZero = false): string => {
@@ -89,11 +90,50 @@ export function scheduleM(ret: TaxReturnInput, il: IlResult): FormFill {
       'Other income  Identify each item': m.additions ? 'SEE STATEMENT' : '', 'Other income': amt(m.additions), 'Total Additions. Add Lines 1 through 11': amt(m.additions),
       'Enter the lesser amount from Page 1, Line 13a or $10,000 ($20,000 if married filing a joint return': amt(m.collegeSavings),
       'U.S. Treasury bonds, bills, notes, savings bonds, and U.S. agency interest from federal Form 1040 or 1040-SR': amt(m.usInterest),
-      'Add Lines 13 through 31 and enter the amount here': amt(m.collegeSavings + m.usInterest),
-      'Enter the amount from Page 2, Line 32': amt(m.collegeSavings + m.usInterest),
-      'Add Lines 33 through 41': amt(m.subtractions)
+      'Add Lines 13 through 31 and enter the amount here': amt(m.collegeSavings + m.usInterest + ilSubtractionItems(ret, il).p2Total),
+      'Enter the amount from Page 2, Line 32': amt(m.collegeSavings + m.usInterest + ilSubtractionItems(ret, il).p2Total),
+      ...ilSubtractionItems(ret, il).values,
+      'Add Lines 33 through 41': amt(m.subtractions),
+      ...collegeRows(ret)
     }
   }
+}
+
+/** Listed "other subtractions" on their own Schedule M lines. Whatever is not on a line is `unplaced`. */
+export function ilSubtractionItems(ret: TaxReturnInput, il: IlResult): { values: Record<string, FieldValue>; p2Total: number; unplaced: number } {
+  const total = il.scheduleM.otherSubtractions
+  const by = new Map<string, number>()
+  for (const x of ret.explain?.['il.otherSubtractions'] ?? []) {
+    if (IL_SUBTRACTION_LINES_P2.includes(x.line) || IL_SUBTRACTION_LINES_P3.includes(x.line)) by.set(x.line, (by.get(x.line) ?? 0) + Math.round(x.amount))
+  }
+  let placed = 0
+  let p2Total = 0
+  const values: Record<string, FieldValue> = {}
+  for (const [f, n] of by) {
+    if (n <= 0) continue
+    const use = Math.min(n, total - placed)
+    if (use <= 0) break
+    values[f] = amt(use)
+    placed += use
+    if (IL_SUBTRACTION_LINES_P2.includes(f)) p2Total += use
+  }
+  return { values, p2Total, unplaced: total - placed }
+}
+
+/** Schedule M line 13a: each Bright Start / Bright Directions account (ten rows; the rest on a statement). */
+export const IL_GIFT = 'Gift to someone else’s account'
+function collegeRows(ret: TaxReturnInput): Record<string, FieldValue> {
+  const rows = (ret.explain?.['il.collegeSavings'] ?? []).filter((x) => x.description.trim() || x.amount > 0)
+  if (!rows.length) return {}
+  const v: Record<string, FieldValue> = {}
+  rows.slice(0, 10).forEach((x, i) => {
+    const n = i + 1
+    v[n === 1 ? 'Column A  Account Number' : `Column A  Account Number${n}`] = x.description.trim().slice(0, 20)
+    v[`Column B  Contribution Amount${n}`] = amt(x.amount)
+    v[`gift_${n}`] = x.line === IL_GIFT
+  })
+  v['Total - Add Column B, Lines 1-10 and enter here'] = amt(rows.reduce((s, x) => s + Math.round(x.amount), 0))
+  return v
 }
 
 export function scheduleILE(ret: TaxReturnInput, res: TaxReturnResult, il: IlResult): FormFill {
@@ -145,7 +185,20 @@ export function buildIlPacket(ret: TaxReturnInput, res: TaxReturnResult, il: IlR
   if (il.lines['10d'] > 0 || il.lines['29'] > 0) forms.push(scheduleILE(ret, res, il))
   const filled = new Set(['Schedule M, other additions and subtractions', 'Schedule IL-E/EITC, exemptions and earned income credit'])
   const notIncluded = il.attach.filter((a) => !filled.has(a))
-  if (il.scheduleM.collegeSavings > 0) notIncluded.push('Schedule M line 13a: list each college savings account number and contribution')
+  const college = (ret.explain?.['il.collegeSavings'] ?? []).filter((x) => x.description.trim() || x.amount > 0)
+  if (il.scheduleM.collegeSavings > 0 && !college.length) notIncluded.push('Schedule M line 13a: list each college savings account number and contribution in the Illinois section')
+  if (college.length > 10) forms.push(...statementForms(ret, {
+    id: 'st-il-13a', attachTo: 'Schedule M, line 13a (continued)', title: 'College savings accounts after the tenth',
+    columns: [{ label: 'Account number', width: 200 }, { label: 'Gift', width: 60 }, { label: 'Contribution', width: 110, right: true }],
+    rows: college.slice(10).map((x) => [x.description, x.line === IL_GIFT ? 'Yes' : '', money0(Math.round(x.amount))])
+  }))
+  {
+    const st = explainStatement(ret, 'il.otherAdditions', il.scheduleM.additions, { id: 'st-il-otherAdditions', attachTo: 'Schedule M, line 11 (other income)', title: 'Other income' })
+    forms.push(...st)
+    if (il.scheduleM.additions > 0 && !st.length) notIncluded.push('Schedule M line 11: attach a statement identifying each item of other income (list them in the Illinois section)')
+  }
+  const unplaced = ilSubtractionItems(ret, il).unplaced
+  if (unplaced > 0) notIncluded.push(`Schedule M: ${unplaced.toLocaleString('en-US')} of other subtractions is not on a line — list each item with its Schedule M line in the Illinois section`)
   forms.push(...dependentsStatement(ret, 10, 'Schedule IL-E/EITC (continued)', 'st-il-deps'))
   return { forms, notIncluded }
 }

@@ -7,6 +7,7 @@ import { computeMinnesota } from '../engine/mn2025.ts'
 import { buildMnPacket } from '../pdf/mn2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { Check, MoneyField, Section, TextField, usd } from './fields'
+import { WithholdingItems } from './creditrows'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -86,6 +87,7 @@ export function MinnesotaStep({ ret, set, result, preparer }: StepProps & { prep
           : <p className="why">No W-2s entered.</p>}
         <div className="grid">
           <MoneyField label="Minnesota tax withheld on 1099s" value={d.withholding1099} onChange={(n) => put({ withholding1099: n })} />
+          <WithholdingItems ret={ret} set={set} k="mn.withholding1099" setTotal={(r, n) => ({ ...r, mn: { ...r.mn, withholding1099: n } })} kinds={["1099", "W-2G", "1042-S"]} stateIdLabel="Payer’s Minnesota tax ID" incomeLabel="State income" />
           <MoneyField label="2025 estimated and extension payments" value={d.estimatedPayments} onChange={(n) => put({ estimatedPayments: n })} />
         </div>
       </Section>

@@ -97,7 +97,10 @@ Schedule E line 4G, Virginia Form 760C and Delaware PIT-UND underpayments paid o
 line 10).
 "Other additions/subtractions" amounts can be broken into items (California, Colorado, Georgia, South Carolina,
 Kentucky, Iowa, Arizona): the items fill the explanation statement the state asks for, and in Arizona each item goes on
-its own line of Form 140 pages 5–6. The blank forms live in `public/forms/2025` (official IRS PDFs).
+its own line of Form 140 pages 5–6.
+Illinois Schedule M takes each college savings account on line 13a and each other subtraction on its own line. Statements
+with state withholding other than W-2s can be listed one by one: Minnesota Schedule M1W line 2, Georgia income statements
+(1099s and G2 forms) and Ohio Schedule of Withholding Parts D–F (W-2G, 1099-NEC, 1099-G). The blank forms live in `public/forms/2025` (official IRS PDFs).
 
 ## Tax years
 

@@ -6,7 +6,7 @@ import type { GaInput, Owner, Person } from '../engine/model.ts'
 import { computeGeorgia, GA_DONATION_LINES } from '../engine/ga2025.ts'
 import { buildGaPacket } from '../pdf/ga2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
-import { ExplainItems } from './creditrows'
+import { ExplainItems, WithholdingItems } from './creditrows'
 import { Check, MoneyField, NumberField, Section, TextField, usd } from './fields'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
@@ -85,7 +85,9 @@ export function GeorgiaStep({ ret, set, result, preparer }: StepProps & { prepar
           : <p className="why">No W-2s entered.</p>}
         <div className="grid">
           <MoneyField label="Georgia tax withheld on 1099s" value={d.withholding1099} onChange={(n) => put({ withholding1099: n })} />
+          <WithholdingItems ret={ret} set={set} k="ga.withholding1099" setTotal={(r, n) => ({ ...r, ga: { ...r.ga, withholding1099: n } })} kinds={["1099"]} stateIdLabel="Payer’s Georgia withholding ID" incomeLabel="Georgia income" />
           <MoneyField label="Georgia tax withheld on G2-A, G2-FL, G2-LP or G2-RP" value={d.otherWithholding} onChange={(n) => put({ otherWithholding: n })} />
+          <WithholdingItems ret={ret} set={set} k="ga.otherWithholding" setTotal={(r, n) => ({ ...r, ga: { ...r.ga, otherWithholding: n } })} kinds={["G2-A", "G2-FL", "G2-LP", "G2-RP"]} stateIdLabel="Payer’s Georgia withholding ID" incomeLabel="Georgia income" />
           <MoneyField label="2025 estimated tax paid (and IT-560)" value={d.estimatedPayments} onChange={(n) => put({ estimatedPayments: n })} />
         </div>
       </Section>

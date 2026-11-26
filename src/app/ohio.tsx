@@ -7,6 +7,7 @@ import { computeOhio, OH_DONATION_LETTERS } from '../engine/oh2025.ts'
 import { buildOhPacket } from '../pdf/oh2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { MoneyField, Section, TextField, usd } from './fields'
+import { WithholdingItems } from './creditrows'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -76,6 +77,7 @@ export function OhioStep({ ret, set, result, preparer }: StepProps & { preparer:
         {r1099.length > 0 && <StatementRows kind="1099r" state="Ohio" items={r1099.map((x) => ({ id: x.id, title: `1099-R: ${x.payer.trim() || 'payer'} (${names[x.owner]})`, federal: x.grossDistribution }))} value={d.r1099} onChange={(r) => put({ r1099: r })} />}
         <div className="grid">
           <MoneyField label="Other Ohio tax withheld" hint="W-2G, 1099-NEC, 1099-G" value={d.otherWithholding} onChange={(n) => put({ otherWithholding: n })} />
+          <WithholdingItems ret={ret} set={set} k="oh.otherWithholding" setTotal={(r, n) => ({ ...r, oh: { ...r.oh, otherWithholding: n } })} kinds={["W-2G", "1099-NEC", "1099-G"]} federal stateIdLabel="Payer’s Ohio ID number" incomeLabel="Ohio income or winnings" />
         </div>
       </Section>
 

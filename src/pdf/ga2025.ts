@@ -76,15 +76,14 @@ export function formGa500(ret: TaxReturnInput, res: TaxReturnResult, ga: GaResul
     values[`L7_DEP${n}_REL`] = listed ? '' : rel.slice(0, 17)
   })
   for (let n = ret.dependents.length + 1; n <= 4; n++) { values[`L7_DEP${n}_REL_LST`] = ''; values[`L7_DEP${n}_REL`] = '' }
-  // Income statements A–F: W-2s with Georgia withholding.
-  const statements = ga.statements.filter((x) => x.tax > 0)
-  statements.slice(0, 6).forEach((x, i) => {
+  // Income statements A–F: W-2s, then listed 1099s and G2 forms with Georgia withholding.
+  gaIncomeStatements(ret, ga).slice(0, 6).forEach((x, i) => {
     const s = 'ABCDEF'[i]
-    values[`CB_WH_TYPE_${s}.0.0`] = 'W-2s'
+    values[`CB_WH_TYPE_${s}.0.0`] = x.type
     values[`CB_ID_TYPE_${s}`] = 'FEIN'
-    values[`ID_${s}`] = digits(x.ein).slice(0, 9)
+    values[`ID_${s}`] = digits(x.id).slice(0, 9)
     values[`WH_ID_${s}`] = upper(x.stateId).replace(/[^0-9A-Z]/g, '').slice(0, 10)
-    values[`WAGES_INCOME_${s}`] = amt(x.wages, true)
+    values[`WAGES_INCOME_${s}`] = amt(x.income, true)
     values[`TAX_WH_${s}`] = amt(x.tax, true)
   })
   const phone = digits(c.phone).slice(-10)
@@ -148,6 +147,15 @@ export function formGaIndCr(ret: TaxReturnInput, res: TaxReturnResult, ga: GaRes
   return { id: 'gaindcr', file: FILE, title: 'Georgia Form IND-CR 202 and Summary Worksheet', values, pages: [8, 9] }
 }
 
+const GA_G2 = ['G2-A', 'G2-LP', 'G2-FL', 'G2-RP']
+/** Income statements in the order they go on Form 500: W-2s, then 1099s, then G2 forms. */
+export function gaIncomeStatements(ret: TaxReturnInput, ga: GaResult): { type: string; name: string; id: string; stateId: string; income: number; tax: number }[] {
+  const w2 = ga.statements.filter((x) => x.tax > 0).map((x) => ({ type: 'W-2s', name: x.employer, id: x.ein, stateId: x.stateId, income: x.wages, tax: x.tax }))
+  const r1099 = (ret.withholdingLists?.['ga.withholding1099'] ?? []).filter((x) => x.tax > 0).map((x) => ({ type: '1099s', name: x.kind || '1099', id: x.payerId, stateId: x.stateId, income: Math.round(x.income), tax: Math.round(x.tax) }))
+  const g2 = (ret.withholdingLists?.['ga.otherWithholding'] ?? []).filter((x) => x.tax > 0).map((x) => ({ type: GA_G2.includes(x.kind) ? x.kind : 'G2-A', name: x.kind, id: x.payerId, stateId: x.stateId, income: Math.round(x.income), tax: Math.round(x.tax) }))
+  return [...w2, ...r1099, ...g2]
+}
+
 export function buildGaPacket(ret: TaxReturnInput, res: TaxReturnResult, ga: GaResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formGa500(ret, res, ga, preparer)]
   const S = ga.schedule1
@@ -155,15 +163,16 @@ export function buildGaPacket(ret: TaxReturnInput, res: TaxReturnResult, ga: GaR
   if (ga.indCr.care > 0) forms.push(formGaIndCr(ret, res, ga))
   const notIncluded = ga.attach.filter((a) => !a.startsWith('Form 500 Schedule 1') && !a.startsWith('Schedule 1 page') && !a.startsWith('Form IND-CR 202'))
   if (ga.indCr.other > 0) notIncluded.push('The IND-CR schedules for your other Georgia credits (the summary line 13 total is on Form 500 line 20)')
-  const gaMore = ga.statements.filter((x) => x.tax > 0).slice(6)
+  const gaMore = gaIncomeStatements(ret, ga).slice(6)
   if (gaMore.length) forms.push(...statementForms(ret, {
     id: 'st-ga-wh', attachTo: 'Form 500, income statements (continued)', title: 'Georgia income statements after F',
     columns: [{ label: 'Type', width: 50 }, { label: 'Employer', width: 160 }, { label: 'FEIN', width: 80 }, { label: 'GA withholding ID', width: 90 }, { label: 'GA wages', width: 72, right: true }, { label: 'GA tax withheld', width: 72, right: true }],
-    rows: gaMore.map((x) => ['W-2', x.employer, x.ein, x.stateId, money0(x.wages), money0(x.tax)]),
-    total: ['Total', '', '', '', money0(gaMore.reduce((s, x) => s + x.wages, 0)), money0(gaMore.reduce((s, x) => s + x.tax, 0))],
+    rows: gaMore.map((x) => [x.type, x.name, x.id, x.stateId, money0(x.income), money0(x.tax)]),
+    total: ['Total', '', '', '', money0(gaMore.reduce((s, x) => s + x.income, 0)), money0(gaMore.reduce((s, x) => s + x.tax, 0))],
     note: 'These statements are included in the Georgia withholding on Form 500.',
   }))
-  if (ret.ga.withholding1099 > 0 || ret.ga.otherWithholding > 0) notIncluded.push('Income statements for 1099s and G2 forms with Georgia withholding (only W-2s are filled in)')
+  const listed = (k: string): boolean => (ret.withholdingLists?.[k] ?? []).some((x) => x.tax > 0)
+  if ((ret.ga.withholding1099 > 0 && !listed('ga.withholding1099')) || (ret.ga.otherWithholding > 0 && !listed('ga.otherWithholding'))) notIncluded.push('Income statements for 1099s and G2 forms with Georgia withholding: list them in the Georgia section to fill lines A–F')
   {
     const st = explainStatement(ret, 'ga.otherAdditions', S['5'], { id: 'st-ga-otherAdditions', attachTo: 'Form 500, Schedule 1, line 5', title: 'Other additions' })
     if (st.length) forms.push(...st)
