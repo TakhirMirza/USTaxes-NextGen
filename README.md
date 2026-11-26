@@ -109,7 +109,7 @@ federal extension answers; Nebraska page 1 has the foreign adversarial company a
 lists each 529 beneficiary (limited to $19,000 per beneficiary per contributor).
 Also filled: Kentucky Schedule KW-2 (every W-2, 1099 and W-2G with Kentucky withholding), North Carolina D-400
 Schedule A and Form D-400TC, and New York Form IT-112-R (the resident credit on IT-201 line 41 is figured from it).
-Maryland Form 502CG (the 2% tax on capital gain over $350,000 federal AGI) is filled line by line. The blank forms live in `public/forms/2025` (official IRS PDFs).
+Maryland Form 502CG (the 2% tax on capital gain over $350,000 federal AGI) is filled line by line, as are Form 502R (retirement income by source and the pension exclusion) and Form 502CR (Part M senior credit, Part AA/BB summaries and the refundable Maryland Child Tax Credit). Wisconsin Schedules SB, AD and WD (30% long-term gain exclusion, $500 loss limit, Part IV adjustment and Part V carryovers) are filled line by line; Schedules CR and OS carry the credit totals entered, for the filer to itemize from their source schedules. The blank forms live in `public/forms/2025` (official IRS PDFs).
 
 ## Tax years
 

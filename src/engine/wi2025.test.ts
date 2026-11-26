@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import * as lib from 'pdf-lib'
 import { computeReturn } from './compute.ts'
-import { empty1099Div, emptyDependent, emptyReturn, emptySocialSecurity, emptyW2 } from './model.ts'
+import { empty1099Div, emptyDependent, emptyReturn, emptySocialSecurity, emptyTransaction, emptyW2 } from './model.ts'
 import type { TaxReturnInput, WiInput } from './model.ts'
 import { computeWisconsin, wiHomeownerCredit, wiRenterCredit, wiStandardDeduction, wiTax } from './wi2025.ts'
 import { buildWiPacket } from '../pdf/wi2025.ts'
@@ -111,4 +111,43 @@ test('WI Form 1: every value lands on one field and the PDF builds', async () =>
   assert.deepEqual(problems, [])
   const { bytes } = await buildPdf(lib, packet.forms, load, '2025 WI')
   if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-WI.pdf`, bytes)
+})
+
+test('WI Schedules SB, AD, WD, CR and OS print on the official forms', async () => {
+  const formsDir = new URL('../../public/forms/2025/', import.meta.url)
+  const load = (file: string): Promise<Uint8Array> => readFile(new URL(file, formsDir))
+  // Gain case: Social Security, retirement subtraction (age 68), 30% exclusion on long-term gains, other state credit, CR credits.
+  const ss = { ...emptySocialSecurity(), owner: 'taxpayer' as const, netBenefits: 30000 }
+  const div = { ...empty1099Div(), payer: 'Fund', ordinaryDividends: 10000, capitalGainDistributions: 10000 }
+  const g = wi(base({ taxpayer: { ...base({}).taxpayer, age: 68, age65OrOlder: true }, w2s: [w2(40000)], socialSecurity: [ss], dividends: [div] }),
+    { retirementSubtraction: 5000, otherSubtractions: 700, otherStateBondInterest: 400, nonrefundableCredits: 150, otherStateCredit: 300, otherStateCode: 'mn' })
+  const p = buildWiPacket(g.ret, g.res, g.wi)
+  const ids = p.forms.map((f) => f.id)
+  for (const id of ['wi-sb', 'wi-ad', 'wi-wd', 'wi-cr', 'wi-os']) assert.ok(ids.includes(id), ids.join(', '))
+  const sb = p.forms.find((f) => f.id === 'wi-sb')!.values
+  assert.equal(sb.line4, String(g.wi.sb['socialSecurity']))
+  assert.equal(sb.line5, '3000')
+  assert.equal(sb.line16, '5000')
+  assert.equal(sb.line49d, '700')
+  assert.equal(sb.line50, String(g.wi.lines['6']))
+  const wd = p.forms.find((f) => f.id === 'wi-wd')!.values
+  assert.equal(wd['14'], '10000')
+  assert.equal(wd['20'], '3000')
+  assert.equal(wd['29d'], '3000') // matches Schedule SB line 5
+  const os = p.forms.find((f) => f.id === 'wi-os')!.values
+  assert.equal(os.sta1, 'M'); assert.equal(os.sta1a, 'N'); assert.equal(os.state41, '300')
+  assert.ok(!p.notIncluded.some((n) => /^Schedule (AD|SB|WD) \(/.test(n)), p.notIncluded.join('; '))
+  // Loss case: $500 limit; the add-back lands on Schedule AD line 2 and WD line 29h; Part V carryovers.
+  const l = wi(base({ w2s: [w2(40000)], capitalTransactions: [{ ...emptyTransaction(), description: 'XYZ', term: 'long', dateAcquired: '01/02/2020', dateSold: '05/01/2025', proceeds: 2000, costBasis: 10000 }] }))
+  const pl = buildWiPacket(l.ret, l.res, l.wi)
+  const ad = pl.forms.find((f) => f.id === 'wi-ad')!.values
+  assert.equal(ad.line2, '2500')
+  const wdl = pl.forms.find((f) => f.id === 'wi-wd')!.values
+  assert.equal(wdl['28'], '500'); assert.equal(wdl['29e'], '3000'); assert.equal(wdl['29h'], '2500'); assert.equal(wdl['39'], '7500')
+  for (const packet of [p, pl]) {
+    const problems: FillProblem[] = []
+    for (const f of packet.forms) await fillForm(lib, await load(f.file), { ...f }, problems)
+    assert.deepEqual(problems, [])
+  }
+  if (process.env.WRITE_PDF) await (await import('node:fs/promises')).writeFile(`${process.env.WRITE_PDF}-WI-sched.pdf`, (await buildPdf(lib, [...p.forms, ...pl.forms.slice(1)], load, 'WI')).bytes)
 })

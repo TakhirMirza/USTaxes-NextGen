@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import * as lib from 'pdf-lib'
 import { computeReturn } from '../engine/compute.ts'
-import { emptyDependent, emptyMdEntry, emptyReturn, emptyW2 } from '../engine/model.ts'
+import { empty1099R, emptyDependent, emptyMdEntry, emptyReturn, emptySocialSecurity, emptyW2 } from '../engine/model.ts'
 import type { TaxReturnInput } from '../engine/model.ts'
 import { computeMaryland } from '../engine/md2025.ts'
 import { buildMarylandPacket } from './md2025.ts'
@@ -99,4 +99,41 @@ test('the Maryland PDF builds', async () => {
   const doc = await lib.PDFDocument.load(bytes)
   assert.equal(doc.getPageCount(), 4 + 2 + 3)
   if (process.env.WRITE_PDF) await writeFile(process.env.WRITE_PDF, bytes)
+})
+
+test('Form 502R (retirement income by source) and Form 502CR (senior credit, child tax credit)', async () => {
+  const base = family()
+  const ret: TaxReturnInput = {
+    ...base,
+    taxpayer: { ...base.taxpayer, age: 67, age65OrOlder: true },
+    spouse: { ...base.spouse, age: 66, age65OrOlder: true },
+    dependents: [{ ...base.dependents[0], age: 4 }],
+    w2s: [],
+    retirement: [
+      { ...empty1099R('taxpayer'), payer: 'State Pension', grossDistribution: 30000, taxableAmount: 30000, code: '7' },
+      { ...empty1099R('spouse'), payer: 'IRA Co', grossDistribution: 8000, taxableAmount: 8000, code: '7', ira: true },
+      { ...empty1099R('spouse'), payer: 'Roth Co', grossDistribution: 2000, taxableAmount: 0, code: 'Q', ira: true }
+    ],
+    socialSecurity: [{ ...emptySocialSecurity('taxpayer'), netBenefits: 24000 }, { ...emptySocialSecurity('spouse'), netBenefits: 12000 }],
+    maryland: { ...base.maryland, subtractions: [], usObligationInterest: 0, withholding: 500 }
+  }
+  const { md, packet, problems } = await filled(ret)
+  assert.deepEqual(problems, [])
+  const ids = packet.forms.map((f) => f.id)
+  assert.ok(ids.includes('md502r') && ids.includes('md502cr'), ids.join(', '))
+  const r = packet.forms.find((f) => f.id === 'md502r')!.values
+  assert.equal(r['Text Field 11'], '30000')
+  assert.equal(r['Text Field 37'], '8000')
+  assert.equal(r['Text Field 25'], '38000')
+  assert.equal(r['Text Field 26'], '24000')
+  assert.equal(r['Text Field 43'], '12000')
+  assert.equal(r['Text Field 9'], '67')
+  assert.equal(r['Text Field 30'], md.pension.taxpayer > 0 ? String(md.pension.taxpayer) : '')
+  const cr = packet.forms.find((f) => f.id === 'md502cr')!.values
+  assert.ok(md.credits.senior > 0)
+  assert.equal(cr['Text Field 1051'], String(md.credits.senior))
+  assert.equal(cr['Text Field 1038'], String(md.lines['24']))
+  if (md.credits.childTaxCredit > 0) assert.equal(cr['Text Field 1030'], String(md.credits.childTaxCredit))
+  assert.ok(!packet.notIncluded.some((n) => n.startsWith('Form 502R') || n.startsWith('Form 502CR (')), packet.notIncluded.join('; '))
+  if (process.env.WRITE_PDF) await writeFile(`${process.env.WRITE_PDF}-md-retire.pdf`, (await buildPdf(lib, packet.forms, load)).bytes)
 })

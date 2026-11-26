@@ -175,13 +175,80 @@ export function form502cg(ret: TaxReturnInput, md: MdResult): FormFill | null {
   return { id: 'md502cg', file: 'md502cg.pdf', title: 'Maryland Form 502CG', values: v, pages: [0] }
 }
 
+const ROTH = /[JQT]/i
+
+/** Form 502R: retirement income by source (Parts 1–6). */
+export function form502r(ret: TaxReturnInput, md: MdResult): FormFill | null {
+  if (!ret.retirement.length && !ret.socialSecurity.length && md.lines['10a'] <= 0) return null
+  const joint = md.status === 2
+  const [tf, tmi] = firstAndInitial(ret.taxpayer)
+  const [sf, smi] = firstAndInitial(ret.spouse)
+  const v: Record<string, FieldValue> = {
+    'Text Field 1': tf, 'Text Field 2': tmi, 'Text Field 3': ret.taxpayer.lastName.trim(), 'Text Field 4': digits(ret.taxpayer.ssn),
+    'Text Field 9': ret.taxpayer.age ? String(ret.taxpayer.age) : '', 'Check Box 1': !!ret.maryland.totallyDisabled.taxpayer
+  }
+  if (joint) Object.assign(v, {
+    'Text Field 5': sf, 'Text Field 6': smi, 'Text Field 7': ret.spouse.lastName.trim(), 'Text Field 8': digits(ret.spouse.ssn),
+    'Text Field 10': ret.spouse.age ? String(ret.spouse.age) : '', 'Check Box 2': !!ret.maryland.totallyDisabled.spouse
+  })
+  // Part 4 lines 1, 2, 5 (You / Spouse field numbers). SEP and rollover-only IRAs can't be told apart from 1099-R data; they go on line 2.
+  const cols: Record<string, [number, number]> = { plan: [11, 36], ira: [13, 37], roth: [20, 40] }
+  const sums: Record<string, Record<'taxpayer' | 'spouse', number>> = { plan: { taxpayer: 0, spouse: 0 }, ira: { taxpayer: 0, spouse: 0 }, roth: { taxpayer: 0, spouse: 0 } }
+  for (const x of ret.retirement) {
+    const kind = ROTH.test(x.code) ? 'roth' : x.ira ? 'ira' : 'plan'
+    const o = joint ? x.owner : 'taxpayer'
+    sums[kind][o] += Math.max(0, x.taxableAmount)
+  }
+  let total = 0
+  for (const [k, [you, sp]] of Object.entries(cols)) {
+    v[`Text Field ${you}`] = amt(sums[k].taxpayer); v[`Text Field ${sp}`] = amt(sums[k].spouse)
+    total += sums[k].taxpayer + sums[k].spouse
+  }
+  v['Text Field 25'] = amt(total, true)
+  const ss = (o: 'taxpayer' | 'spouse'): number => ret.socialSecurity.filter((x) => (joint ? x.owner : 'taxpayer') === o).reduce((t, x) => t + Math.max(0, x.netBenefits), 0)
+  v['Text Field 26'] = amt(ss('taxpayer')); v['Text Field 43'] = amt(ss('spouse'))
+  // Line 10: military (u) and public safety (v) subtractions. Form 502SU does not split them by person, so they go in the You column.
+  const mil = md.subtractions.filter((x) => x.code === 'u' || x.code === 'v').reduce((t, x) => t + x.amount, 0)
+  v['Text Field 34'] = amt(mil)
+  v['Text Field 30'] = amt(md.pension.taxpayer); v['Text Field 45'] = amt(md.pension.spouse)
+  return { id: 'md502r', file: 'md502r.pdf', title: 'Maryland Form 502R', values: v, pages: [0] }
+}
+
+/** Form 502CR: Part M (senior tax credit), Part AA summary, Part BB local credit and Part CC refundable credits. */
+export function form502cr(ret: TaxReturnInput, md: MdResult): FormFill | null {
+  const L = md.lines
+  const { senior, childTaxCredit } = md.credits
+  if (L['24'] <= 0 && L['31'] <= 0 && L['45'] <= 0) return null
+  const joint = md.status === 2
+  const [tf, tmi] = firstAndInitial(ret.taxpayer)
+  const [sf, smi] = firstAndInitial(ret.spouse)
+  const v: Record<string, FieldValue> = {
+    'Text Field 1': digits(ret.taxpayer.ssn), 'Text Field 3': tf, 'Text Field 4': tmi, 'Text Field 5': ret.taxpayer.lastName.trim()
+  }
+  if (joint) Object.assign(v, { 'Text Field 2': digits(ret.spouse.ssn), 'Text Field 6': sf, 'Text Field 7': smi, 'Text Field 8': ret.spouse.lastName.trim() })
+  if (senior > 0) { v['Text Field 1051'] = amt(senior); v['Text Field 1039'] = amt(senior) }
+  if (L['24'] > 0) v['Text Field 1038'] = amt(L['24'])
+  if (L['31'] > 0) v['Text Field 1037'] = amt(L['31'])
+  if (childTaxCredit > 0) v['Text Field 1030'] = amt(childTaxCredit)
+  if (L['45'] > 0) v['Text Field 1028'] = amt(L['45'])
+  return { id: 'md502cr', file: 'md502cr.pdf', title: 'Maryland Form 502CR', values: v, pages: [0, 1, 2, 3] }
+}
+
 export function buildMarylandPacket(ret: TaxReturnInput, res: TaxReturnResult, md: MdResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [form502(ret, res, md, preparer)]
   if (ret.dependents.length && md.status !== 6) forms.push(form502b(ret, md))
   if (md.subtractions.length) forms.push(form502su(ret, md))
   const cg = form502cg(ret, md)
   if (cg) forms.push(cg)
-  const notIncluded = md.attach.filter((a) => !(cg && a.startsWith('Form 502CG')))
+  const r502 = form502r(ret, md)
+  if (r502) forms.push(r502)
+  const cr = form502cr(ret, md)
+  if (cr) forms.push(cr)
+  const m = ret.maryland
+  const notIncluded = md.attach.filter((a) => !(cg && a.startsWith('Form 502CG')) && !(r502 && a.startsWith('Form 502R')) && !(cr && a.startsWith('Form 502CR')))
+  if (cr && m.otherCredits > 0) notIncluded.push('Form 502CR: enter your other credits (included in Part AA line 14) on their own parts (A–L)')
+  if (cr && m.localCredits > 0) notIncluded.push('Form 502CR Part A: credit for tax paid to another state (Part BB line 1 shows the local credit total)')
+  if (cr && m.refundableCredits > 0) notIncluded.push('Form 502CR Part CC: enter your other refundable credits on their lines (included in line 10)')
   if (md.subtractions.some((s) => !SU_FIELD[s.code])) notIncluded.push('Form 502SU lines for codes the app does not recognize')
   if (md.county?.rate === 'anne-arundel' || md.county?.rate === 'frederick') notIncluded.push(`Local tax: ${md.county.name} uses its own brackets; line 28 is figured with its 2025 rates (the rate box is left blank).`)
   forms.push(...dependentsStatement(ret, 12, 'Form 502B (continued)', 'st-md-deps'))
