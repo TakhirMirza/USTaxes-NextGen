@@ -122,7 +122,7 @@ test('KY schedules: Schedule M, Schedule A and Schedule ITC with Worksheet A', a
   assert.equal(k.itc.F['6'], 400); assert.equal(k.itc.F['25'], 600); assert.equal(k.colB['15'], 600)
   assert.equal(k.colB['17'], 40)
   const packet = buildKyPacket(ret, res, k)
-  assert.deepEqual(packet.forms.map((f) => f.id), ['ky740', 'ky-schm', 'ky-scha', 'ky-itc'])
+  assert.deepEqual(packet.forms.map((f) => f.id).filter((x) => !x.startsWith('st-')), ['ky740', 'ky-schm', 'ky-scha', 'ky-itc'])
   assert.deepEqual(packet.forms[3].pages, [0, 1, 2])
   assert.equal(packet.forms[1].values['SchMWkstColB(d)'], '40000')
   const formsDir = new URL('../../public/forms/2025/', import.meta.url)

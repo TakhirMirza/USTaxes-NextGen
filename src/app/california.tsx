@@ -6,6 +6,7 @@ import type { CaInput, Owner, Person } from '../engine/model.ts'
 import { CA_COUNTIES, caQualifyingChild, computeCalifornia } from '../engine/ca2025.ts'
 import { CA_CONTRIBUTION_CODES, buildCaPacket } from '../pdf/ca2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
+import { ExplainItems } from './creditrows'
 import { Check, MoneyField, Section, TextField, usd } from './fields'
 import { SelectField } from './steps'
 import type { StepProps } from './steps'
@@ -135,8 +136,11 @@ export function CaliforniaStep({ ret, set, result, preparer }: StepProps & { pre
           <MoneyField label="Interest on U.S. obligations" hint="Treasury bills, notes, savings bonds" value={d.usObligationInterest} onChange={(n) => put({ usObligationInterest: n })} />
           <MoneyField label="Other states’ municipal bond interest" hint="California bonds stay exempt" value={d.otherStateBondInterest} onChange={(n) => put({ otherStateBondInterest: n })} />
           <MoneyField label="Other subtractions (Schedule CA)" value={d.otherSubtractions} onChange={(n) => put({ otherSubtractions: n })} />
+          <ExplainItems ret={ret} set={set} k="ca.otherSubtractions" setTotal={(r, n) => ({ ...r, ca: { ...r.ca, otherSubtractions: n } })} />
           <MoneyField label="Other additions (Schedule CA)" value={d.otherAdditions} onChange={(n) => put({ otherAdditions: n })} />
+          <ExplainItems ret={ret} set={set} k="ca.otherAdditions" setTotal={(r, n) => ({ ...r, ca: { ...r.ca, otherAdditions: n } })} />
           <MoneyField label="Other itemized deduction adjustments" hint="Schedule CA, Part II, line 27 (+ or −)" allowNegative value={d.itemizedAdjustment} onChange={(n) => put({ itemizedAdjustment: n })} />
+          <ExplainItems ret={ret} set={set} k="ca.itemizedAdjustment" setTotal={(r, n) => ({ ...r, ca: { ...r.ca, itemizedAdjustment: n } })} />
         </div>
       </Section>
 

@@ -94,7 +94,10 @@ Montana Schedule III, South Carolina SC1040TC, Connecticut Supplemental Schedule
 Mississippi 80-160 and 80-401), and a statement page otherwise (Alabama Schedules W-2, B, D and E,
 Georgia income statements, Connecticut CT-EITC rows, California FTB 3514 and 3506, Arkansas AR2441 and AR1000TC, Louisiana
 Schedule E line 4G, Virginia Form 760C and Delaware PIT-UND underpayments paid off in parts, Colorado DR 0347 providers, Virginia Schedule ADJ
-line 10). The blank forms live in `public/forms/2025` (official IRS PDFs).
+line 10).
+"Other additions/subtractions" amounts can be broken into items (California, Colorado, Georgia, South Carolina,
+Kentucky, Iowa, Arizona): the items fill the explanation statement the state asks for, and in Arizona each item goes on
+its own line of Form 140 pages 5–6. The blank forms live in `public/forms/2025` (official IRS PDFs).
 
 ## Tax years
 

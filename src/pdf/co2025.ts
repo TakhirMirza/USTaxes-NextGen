@@ -7,7 +7,7 @@ import type { Person, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { CoResult } from '../engine/co2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
-import { money0, statementForms } from './statement.ts'
+import { explainStatement, money0, statementForms } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const amt = (n: number | undefined, keepZero = false): string => {
@@ -172,7 +172,16 @@ export function buildCoPacket(ret: TaxReturnInput, res: TaxReturnResult, co: CoR
   if (co.cr['34'] > 0 && co.cr['29'] === undefined) notIncluded.push('DR 0104CR Part II (lines 27–33): enter the other state’s figures in the Colorado section to fill them in; only the line 34 credit is entered')
   if (ret.co.nonrefundableCredits > 0 && !Object.keys(co.crUsed).length) notIncluded.push('DR 0104CR Part III: list your other nonrefundable credits by line in the Colorado section (only the line 65 total is filled in)')
   if (ret.co.refundableCredits > 0 && !Object.values(ret.co.cr.refundable).some((x) => x > 0)) notIncluded.push('DR 0104CR: enter your other refundable credits on their own lines (lines 7–25) in the Colorado section')
-  if (co.lines['9'] > 0 || co.ad['20'] > 0) notIncluded.push('A statement explaining other additions (line 9) or other subtractions (DR 0104AD line 20)')
+  {
+    const st = explainStatement(ret, 'co.otherAdditions', ret.co.otherAdditions, { id: 'st-co-otherAdditions', attachTo: 'Form DR 0104, line 9', title: 'Other additions' })
+    if (st.length) forms.push(...st)
+    else if (ret.co.otherAdditions > 0) notIncluded.push('A statement explaining other additions (DR 0104 line 9)')
+  }
+  {
+    const st = explainStatement(ret, 'co.otherSubtractions', ret.co.otherSubtractions, { id: 'st-co-otherSubtractions', attachTo: 'Form DR 0104AD, line 20', title: 'Other subtractions' })
+    if (st.length) forms.push(...st)
+    else if (ret.co.otherSubtractions > 0) notIncluded.push('A statement explaining other subtractions (DR 0104AD line 20)')
+  }
   if (co.cr['2'] > 0) notIncluded.push('A copy of federal Form 2441 (with DR 0347); on DR 0347 add each child’s care expenses (only the total on line 2(e) is filled in)')
   const moreProviders = ret.dependentCare.providers.slice(2)
   if (moreProviders.length && forms.some((f) => f.id === 'co0347')) forms.push(...statementForms(ret, {

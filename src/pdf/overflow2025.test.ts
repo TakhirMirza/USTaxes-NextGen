@@ -29,11 +29,17 @@ import { buildOrPacket } from './or2025.ts'
 import { buildCoPacket } from './co2025.ts'
 import { computeMissouri } from '../engine/mo2025.ts'
 import { buildMoPacket } from './mo2025.ts'
+import { AZ_OTHER_SUBTRACTION_LINES, computeArizona } from '../engine/az2025.ts'
+import { buildAzPacket } from './az2025.ts'
+import { computeCalifornia } from '../engine/ca2025.ts'
+import { buildCaPacket } from './ca2025.ts'
+import { computeKentucky } from '../engine/ky2025.ts'
+import { buildKyPacket } from './ky2025.ts'
 import { buildPdf, fillForm } from './fill.ts'
 import type { FillProblem } from './fill.ts'
 import type { FormFill } from './irs2025.ts'
 
-type St = 'al' | 'ga' | 'mn' | 'oh' | 'ms' | 'ut' | 'ct' | 'or' | 'co' | 'mo'
+type St = 'al' | 'ga' | 'mn' | 'oh' | 'ms' | 'ut' | 'ct' | 'or' | 'co' | 'mo' | 'az' | 'ca' | 'ky'
 
 /** A single filer with `n` W-2s, each with state withholding. */
 const many = (st: St, n: number, patch: Partial<TaxReturnInput> = {}): TaxReturnInput => {
@@ -202,4 +208,41 @@ test('MS: another Form 80-401 for credits after the fourth', async () => {
   const p = buildMsPacket(ret, res, ms)
   assert.equal(p.forms.find((f) => f.id === 'ms80401-2')!.values['Code1'], '05')
   await fillsClean(p.forms, 'MS401')
+})
+
+test('AZ: listed other subtractions go on their own page 6 lines', async () => {
+  const base = many('az', 2)
+  const ltc = AZ_OTHER_SUBTRACTION_LINES.find((l) => l.startsWith('Long-Term Care'))!
+  const ret = { ...base, az: { ...base.az, otherSubtractions: 900 }, explain: { 'az.otherSubtractions': [{ line: ltc, description: 'LTC premiums', amount: 600 }, { line: '', description: 'Something else', amount: 200 }] } }
+  const res = computeReturn(ret)
+  const az = computeArizona(ret, res)
+  const p = buildAzPacket(ret, res, az)
+  const v = p.forms[0].values
+  assert.equal(v[ltc], '600')
+  assert.equal(v[AZ_OTHER_SUBTRACTION_LINES[AZ_OTHER_SUBTRACTION_LINES.length - 1]], '300')
+  assert.ok(!p.notIncluded.some((x) => x.startsWith('Page 6')))
+  await fillsClean(p.forms, 'AZX')
+})
+
+test('CA: other Schedule CA additions listed on a statement', async () => {
+  const base = many('ca', 1)
+  const ret = { ...base, ca: { ...base.ca, otherAdditions: 1500 }, explain: { 'ca.otherAdditions': [{ line: '', description: 'HSA contributions deducted federally', amount: 1500 }] } }
+  const res = computeReturn(ret)
+  const ca = computeCalifornia(ret, res)
+  const p = buildCaPacket(ret, res, ca)
+  const st = p.forms.find((f) => f.id.startsWith('st-ca-otherAdditions'))!
+  assert.ok(st.draw!.some((d) => d.text === 'HSA contributions deducted federally'))
+  assert.ok(!p.notIncluded.some((x) => x.includes('column C')))
+  await fillsClean(p.forms, 'CAX')
+})
+
+test('KY: the other-additions text makes the statement when no items are listed', async () => {
+  const base = many('ky', 1)
+  const ret = { ...base, ky: { ...base.ky, otherAdditions: 700, otherAdditionsText: 'Nonqualified 529 withdrawal' } }
+  const res = computeReturn(ret)
+  const ky = computeKentucky(ret, res)
+  const p = buildKyPacket(ret, res, ky)
+  assert.ok(p.forms.some((f) => f.id.startsWith('st-ky-otherAdditions')))
+  assert.ok(!p.notIncluded.some((x) => x.startsWith('A statement explaining the other additions')))
+  await fillsClean(p.forms, 'KYX')
 })

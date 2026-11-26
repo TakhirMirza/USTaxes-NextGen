@@ -7,7 +7,7 @@ import type { TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { ScResult } from '../engine/sc2025.ts'
 import type { FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
-import { dependentsStatement } from './statement.ts'
+import { dependentsStatement, explainStatement } from './statement.ts'
 
 type Draw = NonNullable<FormFill['draw']>[number]
 const digits = (v: string): string => v.replace(/\D/g, '')
@@ -124,7 +124,16 @@ export function buildScPacket(ret: TaxReturnInput, res: TaxReturnResult, sc: ScR
   const forms: FormFill[] = [formSc1040(ret, res, sc), ...formSc1040tc(ret, sc)]
   const notIncluded = [...sc.attach]
   if (sc.dependents.count > 0) notIncluded.push('Page 1: each dependent’s full date of birth (only the year is printed)')
-  if (sc.lines['e'] > 0) notIncluded.push('Line e: attach an explanation of other additions')
+  {
+    const st = explainStatement(ret, 'sc.otherSubtractions', ret.sc.otherSubtractions, { id: 'st-sc-otherSubtractions', attachTo: 'SC1040, line v', title: 'Other subtractions' })
+    if (st.length) forms.push(...st)
+    else if (ret.sc.otherSubtractions > 0) notIncluded.push('Line v: attach an explanation of other subtractions')
+  }
+  {
+    const st = explainStatement(ret, 'sc.otherAdditions', ret.sc.otherAdditions, { id: 'st-sc-otherAdditions', attachTo: 'SC1040, line e', title: 'Other additions' })
+    if (st.length) forms.push(...st)
+    else if (ret.sc.otherAdditions > 0) notIncluded.push('Line e: attach an explanation of other additions')
+  }
   if (sc.lines['13'] > 0 && !sc.tc) notIncluded.push('SC1040TC: list your credits in the South Carolina section to fill it in (only the line 13 total is entered)')
   if (sc.tc && ret.sc.tc.otherStates.filter((o) => o.state.trim() && (o.income > 0 || o.tax > 0)).length > 0) notIncluded.push('With SC1040TC, a copy of each return filed with the other state and a complete copy of your federal return')
   forms.push(...dependentsStatement(ret, 4, 'SC1040, Dependents (continued)', 'st-sc-deps'))

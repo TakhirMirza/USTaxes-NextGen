@@ -6,6 +6,7 @@ import type { GaInput, Owner, Person } from '../engine/model.ts'
 import { computeGeorgia, GA_DONATION_LINES } from '../engine/ga2025.ts'
 import { buildGaPacket } from '../pdf/ga2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
+import { ExplainItems } from './creditrows'
 import { Check, MoneyField, NumberField, Section, TextField, usd } from './fields'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
@@ -124,7 +125,9 @@ export function GeorgiaStep({ ret, set, result, preparer }: StepProps & { prepar
           <MoneyField label="Interest on U.S. obligations" value={d.usObligationInterest} onChange={(n) => put({ usObligationInterest: n })} />
           <MoneyField label="Path2College 529 contributions" hint="Up to $4,000 per beneficiary ($8,000 joint)" value={d.path2College} onChange={(n) => put({ path2College: n })} />
           <MoneyField label="Other additions (Schedule 1)" value={d.otherAdditions} onChange={(n) => put({ otherAdditions: n })} />
+          <ExplainItems ret={ret} set={set} k="ga.otherAdditions" setTotal={(r, n) => ({ ...r, ga: { ...r.ga, otherAdditions: n } })} />
           <MoneyField label="Other subtractions (Schedule 1)" value={d.otherSubtractions} onChange={(n) => put({ otherSubtractions: n })} />
+          <ExplainItems ret={ret} set={set} k="ga.otherSubtractions" setTotal={(r, n) => ({ ...r, ga: { ...r.ga, otherSubtractions: n } })} />
           {ga.deduction.method === 'itemized' && <MoneyField label="Itemized adjustments (line 12b)" hint="Income taxes paid to other states included in federal Schedule A" value={d.itemizedAdjustment} onChange={(n) => put({ itemizedAdjustment: n })} />}
         </div>
         <p className="why">{ga.deduction.method === 'itemized' ? `You itemize on your federal return, so Georgia uses your itemized deductions (${usd(L['12c'])}) and gives a $300 itemizer credit per taxpayer.` : `Using the Georgia standard deduction: ${usd(L['11'])}.`}</p>

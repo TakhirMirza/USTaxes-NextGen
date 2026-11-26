@@ -9,7 +9,7 @@ import type { GaResult } from '../engine/ga2025.ts'
 import { GA_DONATION_LINES } from '../engine/ga2025.ts'
 import { STATES } from '../engine/states.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
-import { dependentsStatement, money0, statementForms } from './statement.ts'
+import { dependentsStatement, explainStatement, money0, statementForms } from './statement.ts'
 
 const FILE = 'ga500.pdf'
 const digits = (v: string): string => v.replace(/\D/g, '')
@@ -164,7 +164,16 @@ export function buildGaPacket(ret: TaxReturnInput, res: TaxReturnResult, ga: GaR
     note: 'These statements are included in the Georgia withholding on Form 500.',
   }))
   if (ret.ga.withholding1099 > 0 || ret.ga.otherWithholding > 0) notIncluded.push('Income statements for 1099s and G2 forms with Georgia withholding (only W-2s are filled in)')
-  if (S['5'] > 0 || S['12'] > 0) notIncluded.push('A statement listing your other Schedule 1 additions or subtractions')
+  {
+    const st = explainStatement(ret, 'ga.otherAdditions', S['5'], { id: 'st-ga-otherAdditions', attachTo: 'Form 500, Schedule 1, line 5', title: 'Other additions' })
+    if (st.length) forms.push(...st)
+    else if (S['5'] > 0) notIncluded.push('A statement listing your other Schedule 1 additions (line 5)')
+  }
+  {
+    const st = explainStatement(ret, 'ga.otherSubtractions', S['12'], { id: 'st-ga-otherSubtractions', attachTo: 'Form 500, Schedule 1, line 12', title: 'Other subtractions' })
+    if (st.length) forms.push(...st)
+    else if (S['12'] > 0) notIncluded.push('A statement listing your other Schedule 1 subtractions (line 12)')
+  }
   forms.push(...dependentsStatement(ret, 4, 'Form 500, line 7d (continued)', 'st-ga-deps'))
   return { forms, notIncluded }
 }

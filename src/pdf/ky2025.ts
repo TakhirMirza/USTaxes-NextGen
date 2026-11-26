@@ -8,6 +8,7 @@ import type { TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { KyResult } from '../engine/ky2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { explainStatement, money0, statementForms } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const upper = (s: string): string => s.trim().toUpperCase()
@@ -191,5 +192,17 @@ export function formKyItc(ret: TaxReturnInput, res: TaxReturnResult, ky: KyResul
 
 export function buildKyPacket(ret: TaxReturnInput, res: TaxReturnResult, ky: KyResult, preparer?: PreparerInfo | null): FormPacket {
   const forms = [formKy740(ret, res, ky, preparer), formKySchM(ret, ky), formKySchA(ret, ky), formKyItc(ret, res, ky)]
-  return { forms: forms.filter((x): x is FormFill => x !== null), notIncluded: [...ky.attach] }
+  const out = forms.filter((x): x is FormFill => x !== null)
+  const M = ky.schM
+  const add = (M.A['5'] ?? 0) + (M.B['5'] ?? 0)
+  const sub = (M.A['14'] ?? 0) + (M.B['14'] ?? 0)
+  const one = (key: string, amount: number, text: string, line: string): FormFill[] => {
+    const st = explainStatement(ret, key, amount, { id: `st-${key.replace('.', '-')}`, attachTo: `Schedule M, line ${line}`, title: line === '5' ? 'Other additions' : 'Other subtractions' })
+    if (st.length || !(amount > 0) || !text.trim()) return st
+    return statementForms(ret, { id: `st-${key.replace('.', '-')}`, attachTo: `Schedule M, line ${line}`, title: line === '5' ? 'Other additions' : 'Other subtractions', columns: [{ label: 'Description', width: 400 }, { label: 'Amount', width: 110, right: true }], rows: [[text.trim(), money0(amount)]] })
+  }
+  const st = [...one('ky.otherAdditions', add, ret.ky.otherAdditionsText, '5'), ...one('ky.otherSubtractions', sub, ret.ky.otherSubtractionsText, '14')]
+  out.push(...st)
+  const missing = (add > 0 && !st.some((f) => f.id.startsWith('st-ky-otherAdditions'))) || (sub > 0 && !st.some((f) => f.id.startsWith('st-ky-otherSubtractions')))
+  return { forms: out, notIncluded: ky.attach.filter((a) => missing || !a.startsWith('A statement explaining the other additions')) }
 }

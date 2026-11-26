@@ -6,6 +6,7 @@ import type { CoInput, Owner, Person } from '../engine/model.ts'
 import { computeColorado } from '../engine/co2025.ts'
 import { buildCoPacket } from '../pdf/co2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
+import { ExplainItems } from './creditrows'
 import { Check, MoneyField, NumberField, Section, TextField, usd } from './fields'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
@@ -128,8 +129,10 @@ export function ColoradoStep({ ret, set, result, preparer }: StepProps & { prepa
           {d.collegeInvest + d.coloradoAble > 0 && <NumberField label="Beneficiaries of those contributions" max={20} value={d.beneficiaries} onChange={(n) => put({ beneficiaries: n })} />}
           <MoneyField label="Colorado FAMLI benefits in federal income" hint="Not unemployment" value={d.famliBenefits} onChange={(n) => put({ famliBenefits: n })} />
           <MoneyField label="Other subtractions" value={d.otherSubtractions} onChange={(n) => put({ otherSubtractions: n })} />
+          <ExplainItems ret={ret} set={set} k="co.otherSubtractions" setTotal={(r, n) => ({ ...r, co: { ...r.co, otherSubtractions: n } })} />
           <MoneyField label="Interest on non-Colorado state and local bonds" hint="Added back on line 9" value={d.otherStateBondInterest} onChange={(n) => put({ otherStateBondInterest: n })} />
           <MoneyField label="Other additions" value={d.otherAdditions} onChange={(n) => put({ otherAdditions: n })} />
+          <ExplainItems ret={ret} set={set} k="co.otherAdditions" setTotal={(r, n) => ({ ...r, co: { ...r.co, otherAdditions: n } })} />
         </div>
         <table className="lines"><tbody>
           {AD.filter(([k]) => k === '22' || (A[k] ?? 0) !== 0).map(([k, label]) => (

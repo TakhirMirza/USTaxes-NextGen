@@ -7,6 +7,7 @@ import type { IaCredit148, IaFuel, IaFuelRow, IaInput, IaOutOfState, IaRetiremen
 import { computeIowa } from '../engine/ia2025.ts'
 import { buildIaPacket } from '../pdf/ia2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
+import { ExplainItems } from './creditrows'
 import { Check, Choice, MoneyField, NumberField, Section, TextField, usd } from './fields'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
@@ -143,10 +144,13 @@ export function IowaStep({ ret, set, result, preparer }: StepProps & { preparer:
           <MoneyField label="Iowa capital gains deduction" hint="Line 16, from IA 100" value={d.capitalGainsDeduction} onChange={(n) => put({ capitalGainsDeduction: n })} />
           <TextField label="Other income addition: code" hint="Line 11, column A" autoComplete="off" value={d.otherAddition.code} onChange={(s) => put({ otherAddition: { ...d.otherAddition, code: s.slice(0, 3) } })} />
           <MoneyField label="Other income addition: amount" value={d.otherAddition.amount} onChange={(n) => put({ otherAddition: { ...d.otherAddition, amount: n } })} />
+          <ExplainItems ret={ret} set={set} k="ia.otherAddition" setTotal={(r, n) => ({ ...r, ia: { ...r.ia, otherAddition: { ...r.ia.otherAddition, amount: n } } })} />
           <TextField label="Other income subtraction: code" hint="Line 11, column B" autoComplete="off" value={d.otherSubtraction.code} onChange={(s) => put({ otherSubtraction: { ...d.otherSubtraction, code: s.slice(0, 3) } })} />
           <MoneyField label="Other income subtraction: amount" value={d.otherSubtraction.amount} onChange={(n) => put({ otherSubtraction: { ...d.otherSubtraction, amount: n } })} />
+          <ExplainItems ret={ret} set={set} k="ia.otherSubtraction" setTotal={(r, n) => ({ ...r, ia: { ...r.ia, otherSubtraction: { ...r.ia.otherSubtraction, amount: n } } })} />
           <TextField label="Other adjustment: code" hint="Line 19" autoComplete="off" value={d.otherAdjustment.code} onChange={(s) => put({ otherAdjustment: { ...d.otherAdjustment, code: s.slice(0, 3) } })} />
           <MoneyField label="Other adjustment: amount" value={d.otherAdjustment.amount} onChange={(n) => put({ otherAdjustment: { ...d.otherAdjustment, amount: n } })} />
+          <ExplainItems ret={ret} set={set} k="ia.otherAdjustment" setTotal={(r, n) => ({ ...r, ia: { ...r.ia, otherAdjustment: { ...r.ia.otherAdjustment, amount: n } } })} />
         </div>
         {sch.length > 0 && (
           <table className="lines"><tbody>

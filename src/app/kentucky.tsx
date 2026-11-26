@@ -7,6 +7,7 @@ import { computeKentucky } from '../engine/ky2025.ts'
 import { buildKyPacket } from '../pdf/ky2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { Choice, MoneyField, Section, TextField, usd } from './fields'
+import { ExplainItems } from './creditrows'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
 
@@ -110,12 +111,14 @@ export function KentuckyStep({ ret, set, result, preparer }: StepProps & { prepa
           <MoneyField label="Federal net operating loss" hint="Line 4" value={d.schM.federalNol} onChange={(n) => putM({ federalNol: n })} />
           <MoneyField label="Kentucky net operating loss deduction" hint="Line 16; Schedule KNOL" value={d.schM.knol} onChange={(n) => putM({ knol: n })} />
           <MoneyField label="Other additions" hint="Line 5" value={d.otherAdditions} onChange={(n) => put({ otherAdditions: n })} />
+          <ExplainItems ret={ret} set={set} k="ky.otherAdditions" setTotal={(r, n) => ({ ...r, ky: { ...r.ky, otherAdditions: n } })} />
           {d.otherAdditions > 0 && <TextField label="What the other additions are" autoComplete="off" value={d.otherAdditionsText} onChange={(s) => put({ otherAdditionsText: s })} />}
           <MoneyField label="State income tax refund included in federal AGI" hint="Line 7" value={d.schM.stateRefund} onChange={(n) => putM({ stateRefund: n })} />
           <MoneyField label="Interest on U.S. government bonds" hint="Line 8" value={d.usObligationInterest} onChange={(n) => put({ usObligationInterest: n })} />
           <MoneyField label="Resident adjustment from Kentucky Schedule K-1: subtraction" hint="Line 11" value={d.schM.k1Subtractions} onChange={(n) => putM({ k1Subtractions: n })} />
           <MoneyField label="Active duty military pay" hint="Line 13" value={d.militaryPay} onChange={(n) => put({ militaryPay: n })} />
           <MoneyField label="Other subtractions" hint="Line 14" value={d.otherSubtractions} onChange={(n) => put({ otherSubtractions: n })} />
+          <ExplainItems ret={ret} set={set} k="ky.otherSubtractions" setTotal={(r, n) => ({ ...r, ky: { ...r.ky, otherSubtractions: n } })} />
           {d.otherSubtractions > 0 && <TextField label="What the other subtractions are" autoComplete="off" value={d.otherSubtractionsText} onChange={(s) => put({ otherSubtractionsText: s })} />}
         </div>
         {mRows.length > 0 && (

@@ -10,7 +10,7 @@ import type { CaResult } from '../engine/ca2025.ts'
 import { careQualifyingPerson } from '../engine/compute.ts'
 import { parseBirthDate } from '../engine/va2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
-import { careProvidersStatement, dependentsStatement, peopleStatement } from './statement.ts'
+import { careProvidersStatement, dependentsStatement, explainStatement, peopleStatement } from './statement.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const amt = (n: number | undefined, keepZero = false): string => {
@@ -294,8 +294,23 @@ export function buildCaPacket(ret: TaxReturnInput, res: TaxReturnResult, ca: CaR
     notIncluded.push('FTB 3506: the care provider’s phone number and the address where care was given (Part 2), and each person’s percentage of physical custody (Part 3)')
     if (ret.dependentCare.employerBenefits > 0) notIncluded.push('FTB 3506 Part 4 (dependent care benefits) — fill it in from your federal Form 2441 Part III')
   }
-  if (ca.deduction.method === 'itemized' && ret.ca.itemizedAdjustment) notIncluded.push('A statement explaining the other itemized deduction adjustments (Schedule CA, Part II, line 27)')
-  if (ret.ca.otherSubtractions || ret.ca.otherAdditions) notIncluded.push('A statement explaining the other Schedule CA adjustments (line 8z)')
+  if (ca.deduction.method === 'itemized') {
+  {
+    const st = explainStatement(ret, 'ca.itemizedAdjustment', Math.abs(ret.ca.itemizedAdjustment), { id: 'st-ca-itemizedAdjustment', attachTo: 'Schedule CA (540), Part II, line 27', title: 'Other itemized deduction adjustments' })
+    if (st.length) forms.push(...st)
+    else if (Math.abs(ret.ca.itemizedAdjustment) > 0) notIncluded.push('A statement explaining the other itemized deduction adjustments (Schedule CA, Part II, line 27)')
+  }
+  }
+  {
+    const st = explainStatement(ret, 'ca.otherSubtractions', ret.ca.otherSubtractions, { id: 'st-ca-otherSubtractions', attachTo: 'Schedule CA (540), Part I, line 8z, column B', title: 'Other subtractions (column B)' })
+    if (st.length) forms.push(...st)
+    else if (ret.ca.otherSubtractions > 0) notIncluded.push('A statement explaining the other Schedule CA subtractions (line 8z, column B)')
+  }
+  {
+    const st = explainStatement(ret, 'ca.otherAdditions', ret.ca.otherAdditions, { id: 'st-ca-otherAdditions', attachTo: 'Schedule CA (540), Part I, line 8z, column C', title: 'Other additions (column C)' })
+    if (st.length) forms.push(...st)
+    else if (ret.ca.otherAdditions > 0) notIncluded.push('A statement explaining the other Schedule CA additions (line 8z, column C)')
+  }
   forms.push(...dependentsStatement(ret, 3, 'Form 540, Dependents (continued)', 'st-ca-deps'))
   if (forms.some((f) => f.id === 'ca3514')) forms.push(...peopleStatement(ret, ret.dependents.filter(caQualifyingChild).map((k) => ({ name: k.name, ssn: k.ssn, extra: ret.ca.dependentBirthDates[k.id] ?? '' })), 3, { id: 'st-ca-3514', attachTo: 'FTB 3514, Part III qualifying children (continued)', title: 'Qualifying children after the third', extraLabel: 'Date of birth' }))
   if (forms.some((f) => f.id === 'ca3506')) {

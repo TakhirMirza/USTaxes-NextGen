@@ -3,9 +3,10 @@
  */
 import { ReactElement, useMemo, useState } from 'react'
 import type { AzInput, Owner, Person } from '../engine/model.ts'
-import { AZ_DONATION_LINES, computeArizona } from '../engine/az2025.ts'
+import { AZ_DONATION_LINES, AZ_OTHER_ADDITION_LINES, AZ_OTHER_SUBTRACTION_LINES, computeArizona } from '../engine/az2025.ts'
 import { buildAzPacket } from '../pdf/az2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
+import { ExplainItems } from './creditrows'
 import { Check, MoneyField, NumberField, Section, TextField, usd } from './fields'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
@@ -105,7 +106,9 @@ export function ArizonaStep({ ret, set, result, preparer }: StepProps & { prepar
           <MoneyField label="ABLE account contributions" value={d.contributionsAble} onChange={(n) => put({ contributionsAble: n })} />
           {d.contributions529 + d.contributionsAble > 0 && <NumberField label="Beneficiaries of those contributions" max={20} value={d.beneficiaries} onChange={(n) => put({ beneficiaries: n })} />}
           <MoneyField label="Other additions (page 5)" value={d.otherAdditions} onChange={(n) => put({ otherAdditions: n })} />
+          <ExplainItems ret={ret} set={set} k="az.otherAdditions" setTotal={(r, n) => ({ ...r, az: { ...r.az, otherAdditions: n } })} lines={AZ_OTHER_ADDITION_LINES} />
           <MoneyField label="Other subtractions (page 6)" hint="For example long-term care premiums or adoption expenses" value={d.otherSubtractions} onChange={(n) => put({ otherSubtractions: n })} />
+          <ExplainItems ret={ret} set={set} k="az.otherSubtractions" setTotal={(r, n) => ({ ...r, az: { ...r.az, otherSubtractions: n } })} lines={AZ_OTHER_SUBTRACTION_LINES} />
         </div>
       </Section>
 

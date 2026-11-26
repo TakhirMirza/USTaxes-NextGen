@@ -170,7 +170,6 @@ export function computeSouthCarolina(ret: TaxReturnInput, res: TaxReturnResult):
   if (L['13'] > 0) attach.push('SC1040TC and the credit schedules (and other state returns for that credit)')
   if (L['21'] > 0) attach.push('I-319 (tuition tax credit)')
   if (L['28'] > 0) attach.push('I-330 (check-off contributions)')
-  if (L['e'] > 0) attach.push('An explanation of other additions (line e)')
   if (res.deduction.used === 'itemized' || ret.businesses.length > 0 || sd.net !== 0) attach.push('A complete copy of your federal return')
   if (L['e'] > 0 && f['13a'] > 0) issues.push(`South Carolina adds back the federal QBI deduction (${r(f['13a']).toLocaleString('en-US')}, line e).`)
   if (L['a'] > 0) issues.push(`State tax addback (line a): ${L['a'].toLocaleString('en-US')} of the income or sales tax on Schedule A.`)

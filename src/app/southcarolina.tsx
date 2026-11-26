@@ -7,7 +7,7 @@ import { computeSouthCarolina } from '../engine/sc2025.ts'
 import { buildScPacket } from '../pdf/sc2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { MoneyField, NumberField, Section, TextField, usd } from './fields'
-import { RowList } from './creditrows'
+import { ExplainItems, RowList } from './creditrows'
 import { OtherStatesList } from './otherstates'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
@@ -93,8 +93,10 @@ export function SouthCarolinaStep({ ret, set, result, preparer }: StepProps & { 
           <MoneyField label="Future Scholar or tuition prepayment contributions" value={d.collegeSavings} onChange={(n) => put({ collegeSavings: n })} />
           <NumberField label="Workdays for the subsistence allowance" hint="Police, firefighters, EMS: $16 a day" max={366} value={d.subsistenceDays} onChange={(n) => put({ subsistenceDays: n })} />
           <MoneyField label="Other subtractions" value={d.otherSubtractions} onChange={(n) => put({ otherSubtractions: n })} />
+          <ExplainItems ret={ret} set={set} k="sc.otherSubtractions" setTotal={(r, n) => ({ ...r, sc: { ...r.sc, otherSubtractions: n } })} />
           <MoneyField label="Interest on other states’ bonds" hint="Taxed in South Carolina" value={d.otherStateBondInterest} onChange={(n) => put({ otherStateBondInterest: n })} />
           <MoneyField label="Other additions" value={d.otherAdditions} onChange={(n) => put({ otherAdditions: n })} />
+          <ExplainItems ret={ret} set={set} k="sc.otherAdditions" setTotal={(r, n) => ({ ...r, sc: { ...r.sc, otherAdditions: n } })} />
         </div>
       </Section>
 

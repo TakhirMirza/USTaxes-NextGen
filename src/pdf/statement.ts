@@ -127,3 +127,20 @@ export function peopleStatement(ret: TaxReturnInput, people: { name: string; ssn
     ...(o.note ? { note: o.note } : {})
   })
 }
+
+/**
+ * Statement listing the items behind an "other" amount (ret.explain[key]). Empty when no items were listed.
+ * If the items do not add up to the amount on the form, the difference shows as "Other (not listed)".
+ */
+export function explainStatement(ret: TaxReturnInput, key: string, amount: number, o: { id: string; attachTo: string; title: string }): FormFill[] {
+  const items = (ret.explain?.[key] ?? []).filter((x) => x.description.trim() || x.amount)
+  if (!items.length || !(amount > 0)) return []
+  const rows = items.map((x) => [x.line ? `${x.line}: ${x.description}` : x.description, money0(Math.round(x.amount))])
+  const listed = items.reduce((s, x) => s + Math.round(x.amount), 0)
+  if (Math.round(amount) !== listed) rows.push(['Other (not listed)', money0(Math.round(amount) - listed)])
+  return statementForms(ret, {
+    id: o.id, attachTo: o.attachTo, title: o.title,
+    columns: [{ label: 'Description', width: 400 }, { label: 'Amount', width: 110, right: true }],
+    rows, total: ['Total', money0(Math.round(amount))]
+  })
+}

@@ -2702,6 +2702,9 @@ export interface StateGenericInput {
 }
 export const emptyStateGeneric = (): StateGenericInput => ({ withholding: 0, estimatedPayments: 0, localRate: 0, adjustments: 0, otherCredits: 0 })
 
+/** One item behind an "other additions/subtractions" amount, listed on a supporting statement. `line` names a line of the form when the state lists categories (Arizona Form 140 pages 5–6). */
+export interface ExplainItem { line: string; description: string; amount: number }
+
 export interface TaxReturnInput {
   version: 1
   /** The tax year this return is for (2025 return filed in 2026, 2026 return filed in 2027, ...). */
@@ -2754,6 +2757,8 @@ export interface TaxReturnInput {
   itemized: ItemizedDeductions
   deductionChoice: DeductionChoice
   dependentCare: { expenses: number; employerBenefits: number; providers: CareProvider[] }
+  /** Items behind "other" amounts on state returns, keyed `<state>.<field>` (e.g. `ca.otherAdditions`). */
+  explain: Record<string, ExplainItem[]>
   students: Student[]
   savings: { taxpayer: RetirementSavings; spouse: RetirementSavings }
   priorYear: PriorYear
@@ -3011,6 +3016,7 @@ export const emptyReturn = (): TaxReturnInput => ({
   },
   deductionChoice: 'auto',
   dependentCare: { expenses: 0, employerBenefits: 0, providers: [] },
+  explain: {},
   students: [],
   savings: { taxpayer: emptySavings(), spouse: emptySavings() },
   priorYear: { tax: null, agi: 0, noLiability: false },
@@ -3112,6 +3118,7 @@ export function normalizeReturn(raw: unknown): TaxReturnInput {
     socialSecurity: arr(r.socialSecurity, emptySocialSecurity),
     students: arr(r.students, emptyStudent),
     dependentCare: { ...base.dependentCare, ...(r.dependentCare ?? {}), providers: arr(r.dependentCare?.providers, emptyProvider) },
+    explain: r.explain && typeof r.explain === 'object' ? Object.fromEntries(Object.entries(r.explain as Record<string, unknown>).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, (v as Partial<ExplainItem>[]).map((x) => ({ line: String(x?.line ?? ''), description: String(x?.description ?? ''), amount: Number(x?.amount) || 0 }))])) : {},
     contact: { ...base.contact, ...(r.contact ?? {}) },
     refundDeposit: { ...base.refundDeposit, ...(r.refundDeposit ?? {}) },
     designee: { ...base.designee, ...(r.designee ?? {}) },

@@ -6,7 +6,7 @@
 import type { Person, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { AzResult } from '../engine/az2025.ts'
-import { AZ_DONATION_LINES } from '../engine/az2025.ts'
+import { AZ_DONATION_LINES, AZ_OTHER_ADDITION_LINES, AZ_OTHER_SUBTRACTION_LINES } from '../engine/az2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
 import { dependentsStatement } from './statement.ts'
 
@@ -138,8 +138,8 @@ export function formAz140(ret: TaxReturnInput, res: TaxReturnResult, az: AzResul
       'Multiply line 6C by 34% (.34) and enter the result': amt(C['7C'], true)
     })
   }
-  if (L['18'] > 0) Object.assign(values, { 'Other Adjustments': amt(L['18']), 'Total Other Additions:  Add all amounts and enter the total here and on page 1, line 18': amt(L['18']) })
-  if (L['36'] > 0) Object.assign(values, { 'Other Adjustments .See instructions and MCTCP worksheet': amt(L['36']), 'Total Other Subtractions:  Add all amounts and enter the total here and on page 2, line 36': amt(L['36']) })
+  if (L['18'] > 0) Object.assign(values, spreadAzLines(ret.explain?.['az.otherAdditions'] ?? [], L['18'], AZ_OTHER_ADDITION_LINES), { 'Total Other Additions:  Add all amounts and enter the total here and on page 1, line 18': amt(L['18']) })
+  if (L['36'] > 0) Object.assign(values, spreadAzLines(ret.explain?.['az.otherSubtractions'] ?? [], L['36'], AZ_OTHER_SUBTRACTION_LINES), { 'Total Other Subtractions:  Add all amounts and enter the total here and on page 2, line 36': amt(L['36']) })
   const pages = [0, 1]
   if (L['44'] > 0) pages.push(2)
   if (az.dependents.length > 3) pages.push(3)
@@ -193,13 +193,28 @@ export function formAz140ptc(ret: TaxReturnInput, az: AzResult): FormFill | null
   return { id: 'az140ptc', file: 'az-140ptc.pdf', title: 'Arizona Form 140PTC (filed separately)', values: v }
 }
 
+/** Items on their page 5/6 lines; whatever is not on a named line (or the difference from the total) goes on "Other adjustments". */
+function spreadAzLines(items: { line: string; amount: number }[], total: number, lines: string[]): Record<string, FieldValue> {
+  const other = lines[lines.length - 1]
+  const by = new Map<string, number>()
+  for (const x of items) {
+    const f = lines.includes(x.line) ? x.line : other
+    by.set(f, (by.get(f) ?? 0) + Math.round(x.amount))
+  }
+  const listed = [...by.values()].reduce((s, n) => s + n, 0)
+  if (listed !== total) by.set(other, (by.get(other) ?? 0) + total - listed)
+  const out: Record<string, FieldValue> = {}
+  for (const [f, n] of by) if (n) out[f] = n < 0 ? `(${Math.abs(n)})` : String(n)
+  return out
+}
+
 export function buildAzPacket(ret: TaxReturnInput, res: TaxReturnResult, az: AzResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formAz140(ret, res, az, preparer)]
   const ptc = formAz140ptc(ret, az)
   if (ptc) forms.push(ptc)
   const notIncluded = az.attach.filter((a) => !a.startsWith('Form 140 page'))
-  if (az.lines['18'] > 0) notIncluded.push('Page 5: the total is on line S (other adjustments); move amounts to their own lettered lines if they fit one')
-  if (az.lines['36'] > 0) notIncluded.push('Page 6: the total is on line V (other adjustments); move amounts to their own lettered lines if they fit one')
+  if (az.lines['18'] > 0 && !(ret.explain?.['az.otherAdditions'] ?? []).length) notIncluded.push('Page 5: the total is on the Other adjustments line; list the items in the Arizona section to put each on its own line')
+  if (az.lines['36'] > 0 && !(ret.explain?.['az.otherSubtractions'] ?? []).length) notIncluded.push('Page 6: the total is on the Other adjustments line; list the items in the Arizona section to put each on its own line')
   if (az.counts.parents > 0) notIncluded.push('Names, SSNs and details of the qualifying parents or grandparents (lines 11b–11c and page 4, Part 2)')
   if (az.counts.other > 0) notIncluded.push('Page 4, Part 3: the people you claim as other exemptions')
   forms.push(...dependentsStatement(ret, 14, 'Form 140, page 4, Dependents (continued)', 'st-az-deps'))
