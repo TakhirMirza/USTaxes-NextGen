@@ -88,7 +88,7 @@ import { buildPacket2026 } from './irs2026.ts'
 import type { FormFill, PreparerInfo } from './irs2025.ts'
 import { buildVirginiaPacket } from './va2025.ts'
 import { buildPdf } from './fill.ts'
-import { TAX_YEAR } from '../engine/rules.ts'
+import { TAX_YEAR, stateDraft } from '../engine/rules.ts'
 
 /** Fills the forms and saves the PDF. Nothing leaves the device: the blank forms are static files of this site. */
 async function save(forms: FormFill[], title: string, fileName: string): Promise<{ pages: number; problems: number }> {
@@ -118,7 +118,9 @@ export function downloadIrsForms(ret: TaxReturnInput, res: TaxReturnResult, prep
 }
 
 export function downloadVirginiaForms(ret: TaxReturnInput, res: TaxReturnResult, va: VaResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
-  return save(buildVirginiaPacket(ret, res, va, preparer).forms, '2025 Virginia Form 760 — USTaxes NextGen', `2025-Virginia-760-${slug(ret)}.pdf`)
+  const y = TAX_YEAR
+  const draft = stateDraft('VA', y) ? ' (draft forms — do not file)' : ''
+  return save(buildVirginiaPacket(ret, res, va, preparer).forms, `${y} Virginia Form 760${draft} — USTaxes NextGen`, `${y}-Virginia-760${draft ? '-draft' : ''}-${slug(ret)}.pdf`)
 }
 
 export function downloadMarylandForms(ret: TaxReturnInput, res: TaxReturnResult, md: MdResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {

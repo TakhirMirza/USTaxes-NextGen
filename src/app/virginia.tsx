@@ -12,6 +12,7 @@ import { buildVirginiaPacket } from '../pdf/va2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
 import { Check, DocList, MoneyField, Section, TextField, usd } from './fields'
 import { SelectField } from './steps'
+import { currentTaxYear } from '../engine/rules.ts'
 import type { StepProps } from './steps'
 
 const LINES: [line: string, label: string][] = [
@@ -33,13 +34,13 @@ const LINES: [line: string, label: string][] = [
   ['19a', 'Your Virginia withholding'],
   ['19b', 'Spouse’s Virginia withholding'],
   ['20', 'Estimated payments'],
-  ['21', '2024 overpayment applied'],
+  ['21', 'Prior-year overpayment applied'],
   ['22', 'Extension payment'],
   ['23', 'Low-income or earned income credit'],
   ['24', 'Credit for tax paid to another state'],
   ['25', 'Schedule CR credits'],
   ['26', 'Total payments and credits'],
-  ['29', 'Credited to 2026'],
+  ['29', 'Credited to next year’s estimated tax'],
   ['30', 'Commonwealth Savers contributions (VAC)'],
   ['31', 'Other contributions (VAC)'],
   ['32', 'Addition to tax, penalty, interest'],
@@ -57,7 +58,7 @@ const SCH_A: [line: string, label: string, always?: boolean][] = [
   ['18', 'Less state and local income tax', true],
   ['19', 'Virginia itemized deductions', true]
 ]
-const PERIODS = ['By May 1, 2025', 'By June 15, 2025', 'By Sept. 15, 2025', 'By Jan. 15, 2026']
+const periods = (y: number): string[] => [`By May 1, ${y}`, `By June 15, ${y}`, `By Sept. 15, ${y}`, `By Jan. 15, ${y + 1}`]
 const ALWAYS = new Set(['1', '9', '15', '16', '18', '26'])
 const KEY = new Set(['9', '15', '18', '35', '36'])
 
@@ -110,6 +111,7 @@ function Lines({ va }: { va: VaResult }): ReactElement {
 }
 
 export function VirginiaStep({ ret, set, result, preparer }: StepProps & { preparer: PreparerInfo | null }): ReactElement {
+  const Y = currentTaxYear()
   const v = ret.virginia
   const va = useMemo(() => computeVirginia(ret, result), [ret, result])
   const [pdf, setPdf] = useState<{ busy: boolean; note: string }>({ busy: false, note: '' })
@@ -153,7 +155,7 @@ export function VirginiaStep({ ret, set, result, preparer }: StepProps & { prepa
       <Section title="Virginia return"
         intro={`Filing status ${va.status} (${va.status === 1 ? 'single' : va.status === 2 ? 'married filing jointly' : 'married filing separately'})${va.hoh ? ', federal head of household' : ''}, taken from your federal return.`}>
         <div className="grid">
-          <SelectField label="City or county on January 1, 2026" value={v.localityCode}
+          <SelectField label={`City or county on January 1, ${Y + 1}`} value={v.localityCode}
             onChange={(code) => put({ localityCode: code })}
             options={[{ value: '', label: 'Choose your locality' }, ...VA_LOCALITIES.map(([code, name]) => ({ value: code, label: `${name} (${code})` }))]} />
           {owners.map((o) => (
@@ -169,13 +171,13 @@ export function VirginiaStep({ ret, set, result, preparer }: StepProps & { prepa
           {owners.map((o) => (
             <MoneyField key={o} label={owners.length > 1 ? `${names[o]}’s Virginia withholding` : 'Virginia income tax withheld'} value={v.withholding[o]} onChange={(n) => per('withholding', o, n)} />
           ))}
-          <MoneyField label="2024 overpayment applied to 2025" value={v.priorOverpayment} onChange={(n) => put({ priorOverpayment: n })} />
+          <MoneyField label={`${Y - 1} overpayment applied to ${Y}`} value={v.priorOverpayment} onChange={(n) => put({ priorOverpayment: n })} />
           <MoneyField label="Paid with an extension" hint="Form 760IP" value={v.extensionPayments} onChange={(n) => put({ extensionPayments: n })} />
         </div>
-        <h3 className="va-sub">2025 estimated payments (Form 760ES)</h3>
+        <h3 className="va-sub">{Y} estimated payments (Form 760ES)</h3>
         <p className="why">By date paid: a payment made late belongs to the next date. The dates decide whether an addition to tax is due (Form 760C).</p>
         <div className="grid is-four">
-          {PERIODS.map((label, i) => (
+          {periods(Y).map((label, i) => (
             <MoneyField key={label} label={label} value={v.estimatedByPeriod[i]}
               onChange={(n) => set((r) => {
                 const q = [...r.virginia.estimatedByPeriod] as VirginiaInput['estimatedByPeriod']
@@ -195,7 +197,7 @@ export function VirginiaStep({ ret, set, result, preparer }: StepProps & { prepa
             <MoneyField key={o} label={owners.length > 1 ? `${names[o]}’s disability income subtraction` : 'Disability income subtraction'}
               hint="Up to $20,000; takes the place of the age deduction" value={v.disability[o]} onChange={(n) => per('disability', o, n)} />
           ))}
-          <MoneyField label="Other conformity additions" hint="Bonus depreciation on 2025 assets is added automatically" value={v.otherConformityAddition} onChange={(n) => put({ otherConformityAddition: n })} />
+          <MoneyField label="Other conformity additions" hint={`Bonus depreciation on ${Y} assets is added automatically`} value={v.otherConformityAddition} onChange={(n) => put({ otherConformityAddition: n })} />
           <MoneyField label="Conformity subtractions" hint="Extra Virginia depreciation on assets that got bonus in earlier years" value={v.conformitySubtraction} onChange={(n) => put({ conformitySubtraction: n })} />
         </div>
         {(va.adj.bonusAddition > 0 || autoSubs.length > 0) && (
@@ -245,7 +247,7 @@ export function VirginiaStep({ ret, set, result, preparer }: StepProps & { prepa
         )}
         <h3 className="va-sub">Commonwealth Savers (Virginia529) contributions</h3>
         <p className="why">Up to $4,000 per account each year; the rest carries forward. Owners 70 or older deduct everything they put in.</p>
-        <DocList items={savers} addLabel="Add an account" emptyText="No contributions in 2025."
+        <DocList items={savers} addLabel="Add an account" emptyText={`No contributions in ${Y}.`}
           title={(x, i) => x.account.trim() || `Account ${i + 1}`}
           onAdd={() => setSavers([...savers, emptyVaSavers()])}
           onRemove={(id) => setSavers(savers.filter((x) => x.id !== id))}
@@ -254,7 +256,7 @@ export function VirginiaStep({ ret, set, result, preparer }: StepProps & { prepa
             return (
               <>
                 <TextField label="Account (beneficiary or plan)" value={x.account} onChange={(s) => patch({ account: s })} />
-                <MoneyField label="Contributed in 2025" value={x.contributed} onChange={(n) => patch({ contributed: n })} />
+                <MoneyField label={`Contributed in ${Y}`} value={x.contributed} onChange={(n) => patch({ contributed: n })} />
                 <MoneyField label="Not yet deducted from earlier years" value={x.carryforward} onChange={(n) => patch({ carryforward: n })} />
                 {owners.length > 1 && <SelectField label="Account owner" value={x.owner} onChange={(o) => patch({ owner: o as Owner })} options={owners.map((o) => ({ value: o, label: names[o] }))} />}
               </>
@@ -306,7 +308,7 @@ export function VirginiaStep({ ret, set, result, preparer }: StepProps & { prepa
 
       <Section title="Refund, contributions and other amounts">
         <div className="grid">
-          {va.lines['28'] > 0 && <MoneyField label="Apply to 2026 estimated tax" value={v.creditForward} onChange={(n) => put({ creditForward: n })} />}
+          {va.lines['28'] > 0 && <MoneyField label={`Apply to ${Y + 1} estimated tax`} value={v.creditForward} onChange={(n) => put({ creditForward: n })} />}
           <MoneyField label="Commonwealth Savers / ABLE contributions" hint="Schedule VAC Section I" value={v.vacSavers} onChange={(n) => put({ vacSavers: n })} />
           <MoneyField label="Other voluntary contributions" hint="Schedule VAC Section II" value={v.vacOther} onChange={(n) => put({ vacOther: n })} />
           <MoneyField label="Consumer’s use tax" hint="Untaxed online and out-of-state purchases" value={v.useTax} onChange={(n) => put({ useTax: n })} />
@@ -316,11 +318,11 @@ export function VirginiaStep({ ret, set, result, preparer }: StepProps & { prepa
       <Section title="Underpaid estimated tax (Form 760C)" aside={<span className="pill">{usd(va.lines['32'])}</span>}
         intro="Virginia charges 9% a year on each quarter’s shortfall from its due date until it is paid. Withholding counts as paid evenly through the year.">
         <div className="grid">
-          <MoneyField label="Your 2024 Virginia tax" hint="Form 760 line 18 for 2024, less credits. Keeping pace with it voids the addition."
+          <MoneyField label={`Your ${Y - 1} Virginia tax`} hint={`Form 760 line 18 for ${Y - 1}, less credits. Keeping pace with it voids the addition.`}
             value={v.priorYearTax ?? 0} onChange={(n) => put({ priorYearTax: n || (v.priorYearTax === 0 ? 0 : null) })} />
         </div>
         <div className="checks">
-          <Check label="I owed no Virginia tax for 2024" checked={v.priorYearTax === 0} onChange={(on) => put({ priorYearTax: on ? 0 : null })} />
+          <Check label={`I owed no Virginia tax for ${Y - 1}`} checked={v.priorYearTax === 0} onChange={(on) => put({ priorYearTax: on ? 0 : null })} />
           <Check label="Enter the addition to tax myself" hint="Farmers, fishermen and merchant seamen (Form 760F), or Form 760C exceptions 2–4 (annualized income)"
             checked={v.additionToTaxManual} onChange={(on) => put({ additionToTaxManual: on, additionToTax: on ? va.lines['32'] : 0 })} />
         </div>
@@ -330,7 +332,7 @@ export function VirginiaStep({ ret, set, result, preparer }: StepProps & { prepa
           </div>
         ) : (
           <>
-            <p className="why">{va.underpayment.safe ? `No addition to tax: ${va.underpayment.reason.charAt(0).toLowerCase()}${va.underpayment.reason.slice(1)}` : `Required each quarter: ${usd(va.form760c.columns[0].required)} (the smaller of 90% of your 2025 tax and 100% of your 2024 tax, divided by four).`}</p>
+            <p className="why">{va.underpayment.safe ? `No addition to tax: ${va.underpayment.reason.charAt(0).toLowerCase()}${va.underpayment.reason.slice(1)}` : `Required each quarter: ${usd(va.form760c.columns[0].required)} (the smaller of 90% of your ${Y} tax and 100% of your ${Y - 1} tax, divided by four).`}</p>
             {!va.underpayment.safe && (
               <table className="lines va-760c">
                 <thead>
@@ -339,7 +341,7 @@ export function VirginiaStep({ ret, set, result, preparer }: StepProps & { prepa
                 <tbody>
                   {va.form760c.columns.map((c, i) => (
                     <tr key={c.due}>
-                      <th scope="row">{PERIODS[i]}</th>
+                      <th scope="row">{periods(Y)[i]}</th>
                       <td>{usd(c.required)}</td>
                       <td>{usd(c.line13)}</td>
                       <td>{c.exceptionMet ? 'Exception 1' : usd(c.underpayment)}</td>
@@ -378,7 +380,7 @@ export function VirginiaStep({ ret, set, result, preparer }: StepProps & { prepa
         </div>
         {pdf.note && <p className="note" role="status">{pdf.note}</p>}
         <div className="why">
-          <p>Sign page 2 and attach copies of W-2s and 1099s that show Virginia withholding. Virginia returns are due May 1, 2026.</p>
+          <p>Sign page 2 and attach copies of W-2s and 1099s that show Virginia withholding. Virginia returns are due May 1, {Y + 1}.</p>
           <p>Mail to the Virginia Department of Taxation: refund or no payment, P.O. Box 1498, Richmond, VA 23218-1498; with a payment, P.O. Box 760, Richmond, VA 23218-0760.
             {locality && locality[2].length && !locality[2][0].startsWith('Refund') ? ` Or to your Commissioner of the Revenue (${locality[1]}): ${locality[2].join(' ')}.` : ''}</p>
         </div>

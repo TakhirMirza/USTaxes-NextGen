@@ -1,6 +1,9 @@
 /**
  * Maps a computed Virginia return onto the Virginia Department of Taxation fillable PDFs:
  * Form 760 (2025) and Schedule ADJ (2025), stored as public/forms/2025/va760.pdf and va760adj.pdf.
+ * For 2026, public/forms/2026 holds Virginia's early-release drafts of Form 760, Schedule ADJ and Schedule A
+ * carrying the 2025 fields (the drafts are flat; their boxes sit where the 2025 ones did, and the Schedule A
+ * worksheet fields were moved to the redrawn page 2), so the same field names fill both years.
  *
  * Virginia's forms print ".00" after each box, so amounts are whole dollars without commas.
  * A negative amount is printed as a positive number with the "loss" oval filled.
@@ -9,6 +12,7 @@ import type { Person, TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { VaResult } from '../engine/va2025.ts'
 import { parseBirthDate } from '../engine/va2025.ts'
+import { currentTaxYear } from '../engine/rules.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
 import { statementForms } from './statement.ts'
 const usd2 = (n: number): string => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -300,15 +304,18 @@ export function buildVirginiaPacket(ret: TaxReturnInput, res: TaxReturnResult, v
   const forms: FormFill[] = [form760(ret, res, va, preparer)]
   if (va.adj.needed) forms.push(scheduleAdj(ret, va))
   if (va.itemized.used && !va.itemized.override) forms.push(scheduleA(ret, va))
-  if (va.needs760c) forms.push(form760c(ret, va))
   const notIncluded: string[] = []
+  // 2026: Virginia has released drafts of Form 760, Schedule ADJ and Schedule A only.
+  const has760c = currentTaxYear() === 2025
+  if (va.needs760c && has760c) forms.push(form760c(ret, va))
+  if (va.needs760c && !has760c) notIncluded.push(`Form 760C (the ${currentTaxYear()} form is not released yet; its addition to tax, $${usd2(va.form760c.addition)}, is already on Schedule ADJ line 18)`)
   if (va.itemized.used && va.itemized.override) notIncluded.push('Your Virginia Schedule A (its line 19 is on Form 760 line 10)')
   if (va.adj.overflow.length) notIncluded.push('Schedule ADJS for coded additions, subtractions or deductions that do not fit on Schedule ADJ')
   if (va.lines['24'] > 0) notIncluded.push('Schedule OSC and a copy of the other state’s return (line 24)')
   if (va.lines['25'] > 0) notIncluded.push('Schedule CR (line 25)')
   if (va.lines['30'] + va.lines['31'] > 0) notIncluded.push('Schedule VAC (lines 30–31)')
   if (va.lines['32'] > 0 && !va.needs760c) notIncluded.push('Form 760C or 760F showing the addition to tax you entered (line 32)')
-  if (va.needs760c && va.form760c.columns.some((c) => c.pieces.length > 1)) {
+  if (va.needs760c && has760c && va.form760c.columns.some((c) => c.pieces.length > 1)) {
     const rows: string[][] = []
     va.form760c.columns.forEach((c, i) => {
       if (c.pieces.length > 1) c.pieces.forEach((p) => rows.push([`(${'ABCD'[i]}) due ${isoToUs(c.due)}`, usd2(p.amount), isoToUs(p.paid), String(p.days), (p.days * 0.00025).toFixed(5), usd2(p.addition)]))
@@ -317,7 +324,7 @@ export function buildVirginiaPacket(ret: TaxReturnInput, res: TaxReturnResult, v
       id: 'st-va-760c', attachTo: 'Form 760C, lines 21–24 (columns marked "See stmt")', title: 'Underpayments paid off in parts',
       columns: [{ label: 'Installment', width: 110 }, { label: 'Part of underpayment', width: 90, right: true }, { label: 'Line 21: paid on', width: 80 }, { label: 'Line 22: days', width: 60, right: true }, { label: 'Line 23: rate', width: 70, right: true }, { label: 'Addition (part x rate)', width: 100, right: true }],
       rows,
-      note: 'Line 24 of each column is the sum of its parts (9% a year, 0.025% a day). An underpayment is paid off first by later payments, in date order; the rest on the earlier of the date paid or May 1, 2026.'
+      note: `Line 24 of each column is the sum of its parts (9% a year, 0.025% a day). An underpayment is paid off first by later payments, in date order; the rest on the earlier of the date paid or May 1, ${currentTaxYear() + 1}.`
     }))
   }
   if (va.status === 2 && va.lines['17'] > 0) notIncluded.push('Spouse Tax Adjustment worksheet (keep with your records)')

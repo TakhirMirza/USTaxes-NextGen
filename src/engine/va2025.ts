@@ -1,8 +1,10 @@
 /**
- * Virginia Form 760, full-year resident individual income tax return, tax year 2025.
+ * Virginia Form 760, full-year resident individual income tax return, tax years 2025 and 2026.
  *
  * Source: 2025 Form 760 Resident Individual Income Tax Booklet (Virginia Department of Taxation),
- * Form 760, Schedule ADJ. Line numbers below are Form 760 lines unless marked "ADJ".
+ * Form 760, Schedule ADJ; for 2026 the early-release drafts of Form 760, Schedule ADJ, Schedule A and
+ * the 2026 Form 760 instructions (What's New: $1,000 underpayment threshold, poverty table, Schedule A
+ * thresholds, educator deduction code 118). Line numbers below are Form 760 lines unless marked "ADJ".
  *
  * Virginia starts from federal adjusted gross income (Form 1040 line 11), so everything here builds
  * on the computed federal return. Amounts are whole dollars, as the form requires.
@@ -13,10 +15,14 @@ import { assetDepreciation, midQuarterApplies } from './depreciation.ts'
 import { parseDate } from './capital.ts'
 import { compute760c } from './va760c.ts'
 import type { Va760cResult } from './va760c.ts'
+import { currentTaxYear } from './rules.ts'
+
+/** Tax year being prepared (2025 or 2026). */
+const vaYear = (): number => currentTaxYear()
 
 const usdPlain = (n: number): string => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-// ── 2025 parameters ──────────────────────────────────────────────────────────
+// ── 2025 parameters (unchanged for 2026 unless keyed by year below) ──────────────────────────────────────────────────────────
 export const VA_STANDARD_DEDUCTION = { 1: 8750, 2: 17500, 3: 8750 } as const
 export const VA_PERSONAL_EXEMPTION = 930
 export const VA_AGE_BLIND_EXEMPTION = 800
@@ -27,8 +33,14 @@ export const VA_STA_MAX = 259
 export const VA_LOW_INCOME_PER_EXEMPTION = 300
 export const VA_EITC_RATE = 0.20
 /** Poverty guidelines for 1–8 exemptions; add $5,500 for each one after 8. */
-export const VA_POVERTY = [15650, 21150, 26650, 32150, 37650, 43150, 48650, 54150]
-export const VA_POVERTY_EXTRA = 5500
+export const VA_POVERTY_BY_YEAR: Record<number, { table: number[]; extra: number }> = {
+  2025: { table: [15650, 21150, 26650, 32150, 37650, 43150, 48650, 54150], extra: 5500 },
+  2026: { table: [15960, 21640, 27320, 33000, 38680, 44360, 50040, 55720], extra: 5680 }
+}
+export const VA_POVERTY = VA_POVERTY_BY_YEAR[2025].table
+export const VA_POVERTY_EXTRA = VA_POVERTY_BY_YEAR[2025].extra
+/** Underpayment of estimated tax: no addition when the tax or underpayment is at most this (2026: raised to $1,000). */
+export const vaUnderpaymentThreshold = (year: number = vaYear()): number => (year >= 2026 ? 1000 : 150)
 export const VA_DISABILITY_MAX = 20000
 export const VA_SAVERS_LIMIT = 4000
 export const VA_MILITARY_BASIC_PAY_MAX = 15000
@@ -84,6 +96,9 @@ export const VA_DEDUCTION_CODES: Record<string, string> = {
   '112': 'Virginia bank franchise tax',
   '115': 'ABLEnow account contributions',
   '116': 'Business interest deduction',
+  '117': 'Business interest deduction recovery',
+  '118': 'Eligible educator expenses (2026; up to $500 per educator)',
+  '119': 'Utility interconnect triggering project expense (2026)',
   '199': 'Other deduction'
 }
 /** Subtractions that rule out the Credit for Low-Income Individuals and the Virginia EIC. */
@@ -103,13 +118,15 @@ export function vaTax(taxable: number): number {
   return r(tax)
 }
 
-export const povertyGuideline = (people: number): number =>
-  people <= 0 ? 0 : people <= 8 ? VA_POVERTY[people - 1] : VA_POVERTY[7] + (people - 8) * VA_POVERTY_EXTRA
+export const povertyGuideline = (people: number, year: number = vaYear()): number => {
+  const p = VA_POVERTY_BY_YEAR[year] ?? VA_POVERTY_BY_YEAR[2025]
+  return people <= 0 ? 0 : people <= 8 ? p.table[people - 1] : p.table[7] + (people - 8) * p.extra
+}
 
 export interface VaLine { code: string; label: string; amount: number; auto: boolean; owner?: Owner }
 
 export interface VaAgeDeduction {
-  /** Per person: 'full' (born on or before 1/1/1939), 'income' (born 1/2/1939–1/1/1961), 'none'. */
+  /** Per person: 'full' (born on or before 1/1/1939), 'income' (born 1/2/1939–1/1/1961 for 2025, 1/1/1962 for 2026), 'none'. */
   kind: Record<Owner, 'full' | 'income' | 'none'>
   claimants: number; fagi: number; conformityAdd: number; conformitySub: number; taxableSs: number
   afagi: number; limit: number; excess: number; amount: Record<Owner, number>; total: number
@@ -173,16 +190,16 @@ export function parseBirthDate(v: string | undefined): Date | null {
   return parseDate(`${+m[1]}/${+m[2]}/${m[3]}`)
 }
 
-/** Age on December 31, 2025 from a birth date. */
-const ageAtYearEnd = (d: Date): number => 2025 - d.getUTCFullYear()
+/** Age on December 31 of the tax year from a birth date. */
+const ageAtYearEnd = (d: Date): number => vaYear() - d.getUTCFullYear()
 
-/** Birth date → 'full' if on or before 1/1/1939, 'income' if 1/2/1939–1/1/1961, 'none' after. Falls back to the age entered. */
+/** Birth date → 'full' if on or before 1/1/1939, 'income' if 1/2/1939–1/1/(year − 64), 'none' after. Falls back to the age entered. */
 function ageKind(birth: string, age: number, age65: boolean): { kind: 'full' | 'income' | 'none'; missing: boolean } {
   const d = parseBirthDate(birth)
   if (d) {
     const t = d.getTime()
     if (t <= Date.UTC(1939, 0, 1)) return { kind: 'full', missing: false }
-    if (t <= Date.UTC(1961, 0, 1)) return { kind: 'income', missing: false }
+    if (t <= Date.UTC(vaYear() - 64, 0, 1)) return { kind: 'income', missing: false }
     return { kind: 'none', missing: false }
   }
   // Without a birth date: 65 or older counts as income-based (the full deduction needs a birth date on or before 1/1/1939).
@@ -190,14 +207,14 @@ function ageKind(birth: string, age: number, age65: boolean): { kind: 'full' | '
   return { kind: 'none', missing: false }
 }
 
-/** 65 or older on or before January 1, 2026. */
+/** 65 or older on or before January 1 of the following year. */
 function is65(birth: string, age: number, age65: boolean): boolean {
   const d = parseBirthDate(birth)
-  if (d) return d.getTime() <= Date.UTC(1961, 0, 2)
+  if (d) return d.getTime() <= Date.UTC(vaYear() - 64, 0, 2)
   return age >= 65 || age65
 }
 
-/** Bonus depreciation taken federally on assets placed in service in 2025, recomputed without it (ADJ line 2a, part A). */
+/** Bonus depreciation taken federally on assets placed in service in the tax year, recomputed without it (ADJ line 2a, part A). */
 export function vaBonusAddition(ret: TaxReturnInput): number {
   const owners: Owner[] = ret.filingStatus === 'mfj' ? ['taxpayer', 'spouse'] : ['taxpayer']
   const businesses = ret.businesses.filter((b) => owners.includes(b.owner))
@@ -226,7 +243,7 @@ export function vaSaversDeduction(ret: TaxReturnInput): { deduction: number; car
   for (const s of ret.virginia.savers) {
     const p = s.owner === 'spouse' ? ret.spouse : ret.taxpayer
     const birth = parseBirthDate(ret.virginia.birthDate[s.owner])
-    const age70 = birth ? birth.getTime() <= Date.UTC(1955, 11, 31) : p.age >= 70
+    const age70 = birth ? birth.getTime() <= Date.UTC(vaYear() - 70, 11, 31) : p.age >= 70
     const available = pos(s.contributed) + pos(s.carryforward)
     const allowed = age70 ? available : Math.min(VA_SAVERS_LIMIT, available)
     deduction += allowed
@@ -252,11 +269,15 @@ const labelled = (table: Record<string, string>, e: VaAdjEntry): VaLine => ({
 })
 
 /** Virginia Schedule A: Pease-type limitation thresholds by federal filing status. */
-export const VA_ITEMIZED_THRESHOLD: Record<TaxReturnInput['filingStatus'], number> = { single: 332700, mfj: 399200, qss: 399200, hoh: 365950, mfs: 199600 }
+export const VA_ITEMIZED_THRESHOLD_BY_YEAR: Record<number, Record<TaxReturnInput['filingStatus'], number>> = {
+  2025: { single: 332700, mfj: 399200, qss: 399200, hoh: 365950, mfs: 199600 },
+  2026: { single: 340750, mfj: 408900, qss: 408900, hoh: 374800, mfs: 204450 }
+}
+export const VA_ITEMIZED_THRESHOLD = VA_ITEMIZED_THRESHOLD_BY_YEAR[2025]
 const SCHEDULE_A_STATUS: Record<TaxReturnInput['filingStatus'], number> = { single: 1, mfj: 2, mfs: 3, hoh: 4, qss: 5 }
 
 /**
- * Virginia Schedule A (2025). Starts from the federal Schedule A entries with Virginia's rules: medical
+ * Virginia Schedule A (2025, 2026). Starts from the federal Schedule A entries with Virginia's rules: medical
  * expenses over 10% of conformity FAGI, no SALT cap except on sales tax and in the limited computation,
  * state and local income tax removed on line 18, and the overall (Pease) limitation for high incomes.
  */
@@ -300,7 +321,7 @@ function vaItemized(ret: TaxReturnInput, res: TaxReturnResult, conformityAdd: nu
   let worksheet: Record<string, number> | null = null
   L['17'] = full
   L['18'] = incomeTax + L['6']
-  const threshold = VA_ITEMIZED_THRESHOLD[fs]
+  const threshold = (VA_ITEMIZED_THRESHOLD_BY_YEAR[vaYear()] ?? VA_ITEMIZED_THRESHOLD)[fs]
   if (conformity['5'] > threshold) {
     // Limited Itemized Deduction Worksheet: line 5a counts at no more than the SALT cap.
     const capped5a = v.salesTaxElected ? L['5a'] : Math.min(L['5a'], saltCap)
@@ -390,7 +411,19 @@ function computePath(ret: TaxReturnInput, res: TaxReturnResult, opt: PathOptions
   if (savers.deduction > 0) autoDed.push({ code: '104', label: VA_DEDUCTION_CODES['104'], amount: savers.deduction, auto: true })
   const autoCodes = new Set(autoDed.map((d) => d.code))
   const deductions = byCode([...autoDed, ...v.deductions.filter((e) => !autoCodes.has(e.code.trim())).map((e) => labelled(VA_DEDUCTION_CODES, e))])
+  // Code 118 (eligible educators): not allowed for 2025; from 2026 up to $500 for each eligible educator.
+  const educator = deductions.find((d) => d.code === '118')
+  let educatorNote = ''
+  if (educator) {
+    const cap = vaYear() >= 2026 ? 500 * people.length : 0
+    if (educator.amount > cap) {
+      educatorNote = cap === 0 ? 'Deduction code 118 (eligible educators) is not available for 2025, so it is left out.' : `Deduction code 118 is limited to $500 for each eligible educator: ${educator.amount.toLocaleString('en-US')} was reduced to ${cap.toLocaleString('en-US')}.`
+      educator.amount = cap
+      if (cap === 0) deductions.splice(deductions.indexOf(educator), 1)
+    }
+  }
   adj['9'] = deductions.reduce((s, x) => s + x.amount, 0)
+  if (educatorNote) issues.push(educatorNote)
 
   const lines: Record<string, number> = {}
   lines['1'] = r(f['11a'])
@@ -568,11 +601,12 @@ function computePath(ret: TaxReturnInput, res: TaxReturnResult, opt: PathOptions
   // ── Form 760C: addition to tax for underpaid estimated tax (Schedule ADJ line 18) ──
   const taxAfterNonref = pos(lines['18'] - (li.option === 'nonrefundable' ? li.line17 : 0) - lines['24'] - lines['25'])
   const est = v.estimatedByPeriod.some((n) => n > 0) ? v.estimatedByPeriod : [v.estimatedPayments, 0, 0, 0] as [number, number, number, number]
-  const form760c = compute760c({ tax: taxAfterNonref, priorYearTax: v.priorYearTax, withholding: lines['19a'] + lines['19b'], priorOverpayment: lines['21'], estimated: est })
+  const form760c = compute760c({ tax: taxAfterNonref, priorYearTax: v.priorYearTax, withholding: lines['19a'] + lines['19b'], priorOverpayment: lines['21'], estimated: est, year: vaYear() })
   let underpayment: VaResult['underpayment']
-  if (lines['27'] <= 150) underpayment = { safe: true, reason: 'You owe $150 or less with your return.', required: form760c.line4 }
+  const owedLimit = vaUnderpaymentThreshold()
+  if (lines['27'] <= owedLimit) underpayment = { safe: true, reason: `You owe $${owedLimit.toLocaleString('en-US')} or less with your return.`, required: form760c.line4 }
   else if (form760c.notRequired || form760c.addition === 0) underpayment = { safe: true, reason: form760c.reason || 'Withholding and estimated payments covered each installment on time.', required: form760c.line4 }
-  else underpayment = { safe: false, reason: `Withholding and estimated payments fell short of the required installments: Form 760C figures an addition to tax of ${usdPlain(form760c.addition)} (9% a year until May 1, 2026). It is on Schedule ADJ line 18 and Form 760 line 32.`, required: form760c.line4 }
+  else underpayment = { safe: false, reason: `Withholding and estimated payments fell short of the required installments: Form 760C figures an addition to tax of ${usdPlain(form760c.addition)} (9% a year until May 1, ${vaYear() + 1}). It is on Schedule ADJ line 18 and Form 760 line 32.`, required: form760c.line4 }
   const auto760c = underpayment.safe ? 0 : r(form760c.addition)
   adj['18'] = v.additionToTaxManual ? r(pos(v.additionToTax)) : auto760c
   adj['21'] = adj['18']
@@ -602,20 +636,20 @@ function computePath(ret: TaxReturnInput, res: TaxReturnResult, opt: PathOptions
     const who = o === 'spouse' ? 'your spouse’s' : 'your'
     const d = parseBirthDate(raw)
     if (raw && !d) issues.push(`Enter ${who} birth date as MM/DD/YYYY (for example 08/14/1959). As typed it cannot be read, so the age deduction and the 65-or-older exemption are left out.`)
-    if (d && p.age > 0 && Math.abs(ageAtYearEnd(d) - p.age) > 1) issues.push(`${o === 'spouse' ? 'Your spouse’s' : 'Your'} birth date (age ${ageAtYearEnd(d)} at the end of 2025) does not match the age on the About you step (${p.age}). The federal return uses that age for the standard deduction and credits: correct whichever is wrong.`)
+    if (d && p.age > 0 && Math.abs(ageAtYearEnd(d) - p.age) > 1) issues.push(`${o === 'spouse' ? 'Your spouse’s' : 'Your'} birth date (age ${ageAtYearEnd(d)} at the end of ${vaYear()}) does not match the age on the About you step (${p.age}). The federal return uses that age for the standard deduction and credits: correct whichever is wrong.`)
   }
   if (birthDateMissing) issues.push('Enter birth dates for anyone 65 or older: the age deduction and the 65-or-older exemption depend on them, and Form 760 asks for them.')
-  if (!v.localityCode.trim()) issues.push('Enter your three-digit locality code (city or county where you lived on January 1, 2026; listed in the Form 760 instructions).')
+  if (!v.localityCode.trim()) issues.push(`Enter your three-digit locality code (city or county where you lived on January 1, ${vaYear() + 1}; listed in the Form 760 instructions).`)
   if (itemized.used && !itemized.override && ret.itemized.other > 0) issues.push('Other itemized deductions from your federal Schedule A are on Virginia Schedule A line 16b. If they include investment interest, gambling losses or a disaster casualty loss, they belong on lines 9, 16a or 15 instead, which changes the Virginia overall limitation; enter your own Schedule A line 19 in that case.')
   if (itemized.limited) issues.push(`Your income is over the Virginia threshold, so itemized deductions are reduced by ${(itemized.worksheet?.['9'] ?? 0).toLocaleString('en-US')} (Limited Itemized Deduction Worksheet).`)
   if (bonusAddition > 0) issues.push(`Virginia does not allow bonus depreciation: ${bonusAddition.toLocaleString('en-US')} is added back on Schedule ADJ line 2a. Keep a record so you can subtract the extra Virginia depreciation in later years.`)
   const priorBonus = [...ret.businesses.flatMap((b) => b.assets ?? []), ...ret.rentals.flatMap((p) => p.assets ?? [])]
-    .some((a) => a.priorSpecial > 0 && (parseDate(a.placedInService)?.getUTCFullYear() ?? 2025) < 2025)
-  if (priorBonus) issues.push('Assets placed in service before 2025 that received federal bonus depreciation have a different Virginia basis. Enter the extra Virginia depreciation as a conformity subtraction (Schedule ADJ line 6a).')
-  if (savers.carryforward > 0) issues.push(`Commonwealth Savers contributions over $4,000 per account carry forward: ${savers.carryforward.toLocaleString('en-US')} to 2026.`)
+    .some((a) => a.priorSpecial > 0 && (parseDate(a.placedInService)?.getUTCFullYear() ?? vaYear()) < vaYear())
+  if (priorBonus) issues.push(`Assets placed in service before ${vaYear()} that received federal bonus depreciation have a different Virginia basis. Enter the extra Virginia depreciation as a conformity subtraction (Schedule ADJ line 6a).`)
+  if (savers.carryforward > 0) issues.push(`Commonwealth Savers contributions over $4,000 per account carry forward: ${savers.carryforward.toLocaleString('en-US')} to ${vaYear() + 1}.`)
   if (overflow.length) issues.push(`Schedule ADJ has room for two additions, three subtractions and three deductions. Attach Schedule ADJS for ${overflow.join(', ')}.`)
   if (!underpayment.safe && !v.additionToTaxManual) issues.push(underpayment.reason)
-  if (!underpayment.safe && form760c.columns.some((c) => !c.exceptionMet) && v.priorYearTax === null) issues.push('Enter your 2024 Virginia tax: paying 25%, 50%, 75% and 100% of it by the due dates voids the addition to tax (Form 760C Exception 1).')
+  if (!underpayment.safe && form760c.columns.some((c) => !c.exceptionMet) && v.priorYearTax === null) issues.push(`Enter your ${vaYear() - 1} Virginia tax: paying 25%, 50%, 75% and 100% of it by the due dates voids the addition to tax (Form 760C Exception 1).`)
   if (status === 3) issues.push('Filing status 3: report only your own income, deductions and exemptions. Dependents and itemized deductions that cannot be separated must be split by each spouse’s share of federal AGI.')
   if (status === 3 && claimants > 0 && !v.spouseFagiIfSeparate) issues.push('For the age deduction, married taxpayers filing separately must test combined income: enter your spouse’s federal AGI.')
   if (lines['24'] > 0) issues.push('Attach Schedule OSC and a copy of the other state’s return for the credit on line 24.')

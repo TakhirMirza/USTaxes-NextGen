@@ -72,7 +72,7 @@ import './app.css'
 const STEPS = [
   { path: 'about', title: 'About you', blurb: 'Filing status and household' },
   { path: 'income', title: 'Income', blurb: 'W-2, 1099, retirement, business, rentals, K-1' },
-  { path: 'deductions', title: 'Deductions', blurb: `HSA, adjustments, ${TAX_YEAR} deductions, Schedule A` },
+  { path: 'deductions', title: 'Deductions', blurb: 'HSA, adjustments, new deductions, Schedule A' },
   { path: 'payments', title: 'Credits & payments', blurb: 'EIC, child, care, education, saver’s credits' },
   { path: 'state', title: 'State', blurb: 'State return' },
   { path: 'review', title: 'Review', blurb: 'Form 1040, IRS forms, letter' },
@@ -82,6 +82,7 @@ type StepPath = (typeof STEPS)[number]['path']
 
 /** The state step is named after the chosen state. */
 function stepLabel(s: (typeof STEPS)[number], ret: TaxReturnInput): { title: string; blurb: string } {
+  if (s.path === 'deductions') return { title: s.title, blurb: `HSA, adjustments, ${TAX_YEAR} deductions, Schedule A` }
   if (s.path !== 'state') return s
   const info = stateInfo(ret.residentState)
   if (!info) return s

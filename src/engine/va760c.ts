@@ -15,6 +15,11 @@ export const VA_760C_DAILY_RATE = 0.00025
 export const VA_760C_DUE = ['2025-05-01', '2025-06-15', '2025-09-15', '2026-01-15'] as const
 export const VA_760C_RETURN_DUE = '2026-05-01'
 export const VA_760C_EXCEPTION1 = [0.25, 0.5, 0.75, 1]
+/** Installment due dates and the return due date for a tax year. */
+export const va760cDates = (year: number): { due: string[]; returnDue: string } =>
+  ({ due: [`${year}-05-01`, `${year}-06-15`, `${year}-09-15`, `${year + 1}-01-15`], returnDue: `${year + 1}-05-01` })
+/** No addition when the tax or the underpayments are at most this: $150, raised to $1,000 from 2026. */
+export const va760cThreshold = (year: number): number => (year >= 2026 ? 1000 : 150)
 
 const r = (n: number): number => Math.round(n)
 const pos = (n: number): number => Math.max(0, n)
@@ -30,6 +35,8 @@ export interface Va760cInput {
   priorOverpayment: number
   /** Estimated payments made by each due date (May 1, June 15, Sept. 15, Jan. 15). */
   estimated: [number, number, number, number]
+  /** Tax year (default 2025): sets the due dates and the $150 / $1,000 threshold. */
+  year?: number
 }
 
 export interface Va760cColumn {
@@ -60,6 +67,10 @@ export interface Va760cResult {
 }
 
 export function compute760c(input: Va760cInput): Va760cResult {
+  const year = input.year ?? 2025
+  const { due: DUE, returnDue: RETURN_DUE } = va760cDates(year)
+  const limit = va760cThreshold(year)
+  const money = `$${limit.toLocaleString('en-US')}`
   const line1 = r(pos(input.tax))
   const line2 = r(line1 * 0.9)
   const line3 = input.priorYearTax === null ? null : r(pos(input.priorYearTax))
@@ -72,10 +83,10 @@ export function compute760c(input: Va760cInput): Va760cResult {
   // Table) pays off earlier underpayments, oldest first, as of its due date; what is left counts toward
   // later installments. Anything still unpaid runs until May 1, 2026.
   const outstanding: { col: number; amount: number }[] = []
-  const pieces: { amount: number; paid: string }[][] = VA_760C_DUE.map(() => [])
+  const pieces: { amount: number; paid: string }[][] = DUE.map(() => [])
   let pool = 0
   let paidToDate = 0
-  const columns: Va760cColumn[] = VA_760C_DUE.map((due, i) => {
+  const columns: Va760cColumn[] = DUE.map((due, i) => {
     const withheld = withheldEach
     const overpaymentCredit = i === 0 ? pos(input.priorOverpayment) : 0
     const estimated = pos(input.estimated[i])
@@ -99,7 +110,7 @@ export function compute760c(input: Va760cInput): Va760cResult {
       paidToDate, exception1, exceptionMet: exception1 !== null && paidToDate >= exception1, pieces: [], addition: 0
     }
   })
-  for (const o of outstanding) if (o.amount > 0.004) pieces[o.col].push({ amount: o.amount, paid: VA_760C_RETURN_DUE })
+  for (const o of outstanding) if (o.amount > 0.004) pieces[o.col].push({ amount: o.amount, paid: RETURN_DUE })
   columns.forEach((c, i) => {
     if (c.exceptionMet) return
     c.pieces = pieces[i].map((p) => {
@@ -111,9 +122,9 @@ export function compute760c(input: Va760cInput): Va760cResult {
   const totalUnderpayment = columns.reduce((s, c) => s + c.underpayment, 0)
   let notRequired = false
   let reason = ''
-  if (line1 <= 150) { notRequired = true; reason = 'Your 2025 tax after credits is $150 or less.' }
-  else if (totalUnderpayment <= 150) { notRequired = true; reason = 'Your underpayments total $150 or less.' }
-  else if (columns.every((c) => c.exceptionMet || c.underpayment === 0)) { notRequired = true; reason = 'Payments by each due date covered 25%, 50%, 75% and 100% of your 2024 tax (Exception 1).' }
+  if (line1 <= limit) { notRequired = true; reason = `Your ${year} tax after credits is ${money} or less.` }
+  else if (totalUnderpayment <= limit) { notRequired = true; reason = `Your underpayments total ${money} or less.` }
+  else if (columns.every((c) => c.exceptionMet || c.underpayment === 0)) { notRequired = true; reason = `Payments by each due date covered 25%, 50%, 75% and 100% of your ${year - 1} tax (Exception 1).` }
   const addition = notRequired ? 0 : Math.round(columns.reduce((s, c) => s + c.addition, 0) * 100) / 100
   return { line1, line2, line3, line4, line5, columns, totalUnderpayment, notRequired, reason, addition }
 }
