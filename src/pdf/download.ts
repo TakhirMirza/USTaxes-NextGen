@@ -180,7 +180,9 @@ export function downloadColoradoForms(ret: TaxReturnInput, res: TaxReturnResult,
 }
 
 export function downloadMinnesotaForms(ret: TaxReturnInput, res: TaxReturnResult, mn: MnResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
-  return save(buildMnPacket(ret, res, mn, preparer).forms, '2025 Minnesota Form M1 — USTaxes NextGen', `2025-Minnesota-M1-${slug(ret)}.pdf`)
+  const y = TAX_YEAR
+  const draft = stateDraft('MN', y) ? ' (draft forms — do not file)' : ''
+  return save(buildMnPacket(ret, res, mn, preparer).forms, `${y} Minnesota Form M1${draft} — USTaxes NextGen`, `${y}-Minnesota-M1${draft ? '-draft' : ''}-${slug(ret)}.pdf`)
 }
 
 export function downloadWisconsinForms(ret: TaxReturnInput, res: TaxReturnResult, wi: WiResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {

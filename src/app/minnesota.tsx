@@ -10,13 +10,14 @@ import { Check, MoneyField, Section, TextField, usd } from './fields'
 import { ExplainItems, WithholdingItems } from './creditrows'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
+import { currentTaxYear } from '../engine/rules.ts'
 
 const LINES: [line: string, label: string][] = [
   ['1', 'Federal adjusted gross income'], ['2', 'Additions (Schedule M1M)'], ['3', 'Subtotal'], ['4', 'Deduction'], ['5', 'Dependent exemptions'],
   ['6', 'State income tax refund'], ['7', 'Subtractions (Schedule M1M)'], ['9', 'Minnesota taxable income'], ['10', 'Tax'],
   ['16', 'Nonrefundable credits (Schedule M1C)'], ['18', 'Nongame Wildlife Fund'], ['19', 'Total tax'], ['20', 'Minnesota tax withheld'],
   ['21', 'Estimated and extension payments'], ['22', 'Refundable credits (Schedule M1REF)'], ['23', 'Total payments'],
-  ['30', 'Applied to 2026'], ['24', 'Refund'], ['26', 'Amount you owe']
+  ['30', 'Applied to next year’s estimated tax'], ['24', 'Refund'], ['26', 'Amount you owe']
 ]
 const M1M: [line: string, label: string][] = [
   ['1', 'Other states’ bond interest'], ['3', 'Other additions'], ['11', 'Charitable gifts over $500 (half)'], ['12', 'Social Security subtraction'],
@@ -25,11 +26,12 @@ const M1M: [line: string, label: string][] = [
 ]
 const ALWAYS = new Set(['1', '3', '4', '9', '10', '19', '23'])
 const KEY = new Set(['9', '19', '24', '26'])
-const CODES: [string, string][] = [['', 'No'], ['11', 'Republican'], ['12', 'Democratic/Farmer-Labor'], ['14', 'Grassroots/Legalize Cannabis'], ['16', 'Libertarian'], ['17', 'Legal Marijuana Now'], ['18', 'Independence-Alliance'], ['99', 'General Campaign Fund']]
+const codes = (y: number): [string, string][] => [['', 'No'], ['11', 'Republican'], ['12', 'Democratic/Farmer-Labor'], ['14', 'Grassroots/Legalize Cannabis'], ['16', 'Libertarian'], ['17', 'Legal Marijuana Now'], ['18', y >= 2026 ? 'Forward Independence' : 'Independence-Alliance'], ['99', 'General Campaign Fund']]
 const firstName = (p: Person, fallback: string): string => p.firstName.trim().split(/\s+/)[0] || fallback
 const date = (s: string): string => (/^\d{8}$/.test(s.trim()) ? `${s.slice(0, 2)}/${s.slice(2, 4)}/${s.slice(4)}` : s)
 
 export function MinnesotaStep({ ret, set, result, preparer }: StepProps & { preparer: PreparerInfo | null }): ReactElement {
+  const Y = currentTaxYear()
   const d = ret.mn
   const mn = useMemo(() => computeMinnesota(ret, result), [ret, result])
   const [pdf, setPdf] = useState<{ busy: boolean; note: string }>({ busy: false, note: '' })
@@ -73,7 +75,7 @@ export function MinnesotaStep({ ret, set, result, preparer }: StepProps & { prep
             <div className="field" key={`c${o}`}>
               <label htmlFor={`mn-code-${o}`}><span>{names[o]}: $5 to the State Elections Campaign Fund</span></label>
               <select id={`mn-code-${o}`} className="select" value={d.campaignCode[o]} onChange={(e) => put({ campaignCode: { ...d.campaignCode, [o]: e.target.value } })}>
-                {CODES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+                {codes(Y).map(([v, label]) => <option key={v} value={v}>{label}</option>)}
               </select>
             </div>
           ))}
@@ -88,7 +90,7 @@ export function MinnesotaStep({ ret, set, result, preparer }: StepProps & { prep
         <div className="grid">
           <MoneyField label="Minnesota tax withheld on 1099s" value={d.withholding1099} onChange={(n) => put({ withholding1099: n })} />
           <WithholdingItems ret={ret} set={set} k="mn.withholding1099" setTotal={(r, n) => ({ ...r, mn: { ...r.mn, withholding1099: n } })} kinds={["1099", "W-2G", "1042-S"]} stateIdLabel="Payer’s Minnesota tax ID" incomeLabel="State income" />
-          <MoneyField label="2025 estimated and extension payments" value={d.estimatedPayments} onChange={(n) => put({ estimatedPayments: n })} />
+          <MoneyField label={`${Y} estimated and extension payments`} value={d.estimatedPayments} onChange={(n) => put({ estimatedPayments: n })} />
         </div>
       </Section>
 
@@ -127,7 +129,7 @@ export function MinnesotaStep({ ret, set, result, preparer }: StepProps & { prep
           <MoneyField label="Nonrefundable credits (Schedule M1C)" hint="Marriage credit, long-term care insurance, credit for tax paid to another state…" value={d.nonrefundableCredits} onChange={(n) => put({ nonrefundableCredits: n })} />
           <MoneyField label="Other refundable credits (Schedule M1REF)" hint="Child and dependent care, K–12 education, renter’s credit…" value={d.refundableCredits} onChange={(n) => put({ refundableCredits: n })} />
           <MoneyField label="Nongame Wildlife Fund gift" value={d.nongame} onChange={(n) => put({ nongame: n })} />
-          {L['24'] > 0 && <MoneyField label="Apply to 2026 estimated tax" value={d.creditForward} onChange={(n) => put({ creditForward: n })} />}
+          {L['24'] > 0 && <MoneyField label={`Apply to ${Y + 1} estimated tax`} value={d.creditForward} onChange={(n) => put({ creditForward: n })} />}
         </div>
         <p className="why">{mn.ref['2'] > 0 ? `Child and Working Family Credits (Schedule M1CWFC): ${usd(mn.ref['2'])}.` : 'No Child and Working Family Credits at this income.'}</p>
       </Section>
@@ -153,7 +155,7 @@ export function MinnesotaStep({ ret, set, result, preparer }: StepProps & { prep
         )}
         <div className="actions"><button type="button" className="button" onClick={makePdf} disabled={pdf.busy}>{pdf.busy ? 'Preparing PDF…' : 'Download Minnesota forms (PDF)'}</button></div>
         {pdf.note && <p className="note" role="status">{pdf.note}</p>}
-        <p className="why">Sign page 2 and mail to Minnesota Individual Income Tax, Mail Station 0010, 600 N. Robert St., St. Paul, MN 55146-0010. Minnesota’s e-File Minnesota is free for many filers. Due April 15, 2026.</p>
+        <p className="why">Sign page 2 and mail to Minnesota Individual Income Tax, Mail Station 0010, 600 N. Robert St., St. Paul, MN 55146-0010. Minnesota’s e-File Minnesota is free for many filers. Due April 15, {Y + 1}.</p>
       </Section>
     </div>
   )

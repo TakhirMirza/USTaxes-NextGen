@@ -2,12 +2,17 @@
  * Maps a computed Minnesota return onto the Minnesota Department of Revenue fillable forms (2025):
  * public/forms/2025/mnm1.pdf (Form M1), mnm1m.pdf (Schedule M1M), mnm1ref.pdf (Schedule M1REF) and
  * mnm1cwfc.pdf (Schedule M1CWFC). Blank lines stay blank, as the instructions ask; amounts are whole dollars.
+ *
+ * 2026: public/forms/2026/mnm1.pdf is Revenue's final draft of Form M1 (10/1/26) carrying the 2025 fields (the boxes
+ * did not move), and mnm1sa.pdf is the Schedule M1SA final draft (11/4/26, no fields: values are drawn at its lines).
+ * The other 2026 schedules are listed, not included, until their drafts are added.
  */
 import type { TaxReturnInput } from '../engine/model.ts'
 import type { TaxReturnResult } from '../engine/compute.ts'
 import type { MnResult } from '../engine/mn2025.ts'
 import { MN_M1M_ADDITION_LINES } from '../engine/mn2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
+import { currentTaxYear } from '../engine/rules.ts'
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const amt = (n: number | undefined, keepZero = false): string => {
@@ -148,8 +153,37 @@ export function formsM1DQC(ret: TaxReturnInput, mn: MnResult): FormFill[] {
   return forms
 }
 
+/** Schedule M1SA 2026 line positions: [page, line, top of the line number in points]; inner column for lines that feed a total. */
+const M1SA_2026: [page: number, line: string, top: number, outer: boolean][] = [
+  [0, '1', 146.6, false], [0, '2', 183.6, false], [0, '3', 207.6, false], [0, '4', 231.6, true], [0, '5', 266.6, false], [0, '6', 290.6, false],
+  [0, '7', 314.6, false], [0, '8', 338.6, false], [0, '9', 362.6, false], [0, '10', 386.6, true], [0, '11', 423.6, false], [0, '12', 447.6, false],
+  [0, '13', 471.6, false], [0, '14', 483.6, true], [0, '15', 519.6, false], [0, '16', 543.6, false], [0, '17', 567.6, false], [0, '18', 591.6, false],
+  [0, '19', 615.6, false], [0, '20', 639.6, false], [0, '21', 663.6, true], [0, '22', 699.6, true],
+  [1, '23', 99.1, false], [1, '24', 123.1, false], [1, '25', 147.1, true], [1, '26', 183.1, true], [1, '27', 207.1, true], [1, '28', 231.1, true], [1, '29', 255.1, true]
+]
+
+/** 2026 Schedule M1SA (flat final draft): the amounts drawn right-aligned on each line. */
+export function formM1SA2026(ret: TaxReturnInput, mn: MnResult): FormFill {
+  const S = mn.sa ?? {}
+  const draw: NonNullable<FormFill['draw']> = []
+  const at = (page: number, x: number, top: number, text: string, right = false, size = 10): void => { if (text) draw.push({ page, x, y: 792 - top - 9, text, size, right }) }
+  at(0, 40, 128, upper(ret.taxpayer.firstName))
+  at(0, 212, 128, upper(ret.taxpayer.lastName))
+  at(0, 457, 128, digits(ret.taxpayer.ssn))
+  for (const [page, line, top, outer] of M1SA_2026) at(page, outer ? 574 : 440, top, amt(S[line], line === '1' || line === '27' || line === '29'), true)
+  return { id: 'mnm1sa', file: 'mnm1sa.pdf', title: 'Minnesota Schedule M1SA', values: {}, pages: [0, 1], draw }
+}
+
 export function buildMnPacket(ret: TaxReturnInput, res: TaxReturnResult, mn: MnResult, preparer?: PreparerInfo | null): FormPacket {
   const forms: FormFill[] = [formM1(ret, res, mn, preparer)]
+  const year = currentTaxYear()
+  if (year >= 2026) {
+    // Only Form M1 and Schedule M1SA have 2026 drafts here; the rest of the attachments are listed.
+    if (mn.deduction.method === 'itemized' && mn.sa && ret.mn.itemized === null) forms.push(formM1SA2026(ret, mn))
+    const notIncluded = mn.attach.filter((a) => !(a.startsWith('Schedule M1SA') && forms.length > 1)).map((a) => (/^Schedule M1(M|REF|CWFC|DQC|W)\b/.test(a) ? `${a} — the ${year} draft is not in this app yet; copy the amounts from the Minnesota step` : a))
+    if (mn.deduction.method === 'itemized' && ret.mn.itemized !== null) notIncluded.push('Your Schedule M1SA (its line 29 is on Form M1 line 4)')
+    return { forms, notIncluded }
+  }
   if (mn.lines['2'] > 0 || mn.lines['7'] > 0) forms.push(formM1M(ret, mn))
   if (mn.lines['22'] > 0) forms.push(formM1REF(ret, mn))
   if (mn.ref['2'] > 0) forms.push(formM1CWFC(ret, mn))
