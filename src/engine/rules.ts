@@ -29,6 +29,15 @@ export const FEDERAL_FORMS_READY: Record<TaxYear, boolean> = { 2026: true, 2025:
 export const FEDERAL_FORMS_DRAFT: Record<TaxYear, boolean> = { 2026: true, 2025: false }
 /** Years whose full state returns (the *2025.ts state engines) apply. */
 export const STATE_RETURNS_READY: Record<TaxYear, boolean> = { 2026: false, 2025: true }
+/**
+ * States whose return is ready for a year beyond those in STATE_RETURNS_READY: each state is switched on here once its
+ * official forms (or early-release drafts) and that year's rates are in. The value says whether its forms are drafts.
+ */
+export const STATE_READY_BY_YEAR: Record<TaxYear, Record<string, { draft: boolean }>> = { 2025: {}, 2026: {} }
+/** Whether a state's return is prepared for a year (every state with income tax for 2025; one by one for 2026). */
+export const stateReady = (code: string, year: TaxYear = TAX_YEAR): boolean => STATE_RETURNS_READY[year] || !!STATE_READY_BY_YEAR[year][code]
+/** Whether that state's forms for the year are drafts (early releases), not the final forms. */
+export const stateDraft = (code: string, year: TaxYear = TAX_YEAR): boolean => !!STATE_READY_BY_YEAR[year][code]?.draft
 export const isTaxYear = (y: unknown): y is TaxYear => typeof y === 'number' && y in BY_YEAR
 type Rules = typeof Y2025
 

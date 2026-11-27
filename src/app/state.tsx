@@ -51,7 +51,7 @@ import { VermontStep } from './vermont'
 import { NorthDakotaStep } from './northdakota'
 import { MissouriStep } from './missouri'
 import { StateEstimateView } from './stateEstimate'
-import { STATE_RETURNS_READY, TAX_YEAR } from '../engine/rules.ts'
+import { stateDraft, stateReady, TAX_YEAR } from '../engine/rules.ts'
 
 const GROUPS: { label: string; support: StateInfo['support'] }[] = [
   { label: 'Prepared by this app', support: 'supported' },
@@ -66,7 +66,7 @@ export function StateStep(props: StepProps & { preparer: PreparerInfo | null }):
   const { ret, set, result } = props
   const info = stateInfo(ret.residentState)
   const addressState = stateInfo(ret.contact.state ?? '')
-  const ready = STATE_RETURNS_READY[TAX_YEAR]
+  const ready = stateReady(ret.residentState)
   // A local rate and state adjustments belong to one state, so they start over when the state changes.
   const choose = (code: string): void => set((r) => ({ ...r, residentState: code, virginia: { ...r.virginia, enabled: code === 'VA' }, stateGeneric: code === r.residentState ? r.stateGeneric : { ...r.stateGeneric, localRate: 0, adjustments: 0, otherCredits: 0 } }))
   const ltcg = result.scheduleD.longTerm
@@ -110,6 +110,10 @@ export function StateStep(props: StepProps & { preparer: PreparerInfo | null }):
         <Section title={`${info.name}: ${TAX_YEAR} return not ready yet`}>
           <p className="note is-warn">States publish their {TAX_YEAR} forms and rates from December through February. This app adds each state when its official {TAX_YEAR} forms are out. Until then, the federal return is a preview and no {info.name} figures are shown, so nothing here uses last year’s state rules by mistake.</p>
         </Section>
+      )}
+
+      {info && ready && stateDraft(info.code) && (
+        <p className="note is-warn">{info.name}’s {TAX_YEAR} forms here are its early-release drafts. They can change before the state’s final release; check the final forms before you file.</p>
       )}
 
       {ready && info?.support === 'estimate' && <StateEstimateView {...props} />}

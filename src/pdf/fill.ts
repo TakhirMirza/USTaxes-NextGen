@@ -23,6 +23,8 @@ export async function fillForm(lib: PdfLib, bytes: Uint8Array | ArrayBuffer, fil
   const form = doc.getForm()
   form.deleteXFA()
   const fields = form.getFields()
+  // pdf-lib cannot draw rich-text fields (Hawaii N-11 has one); treat them as plain text so the form still fills.
+  for (const f of fields) if (f instanceof lib.PDFTextField && f.isRichFormatted()) f.disableRichFormatting()
   for (const [key, value] of Object.entries(fill.values)) {
     const matches = findField(fields, key)
     if (matches.length !== 1) {

@@ -6,6 +6,15 @@ the browser's local storage and can be downloaded as a JSON file.
 
 **Live app:** https://takhirmirza.github.io/USTaxes-NextGen/
 
+## Audit tests (2025)
+
+`src/engine/audit2025.test.ts` runs every state with an income tax (42, with DC) through all five filing statuses and seven
+typical returns, checking that every line is a finite number, that a return never shows both an amount owed and a refund,
+that tax does not fall as wages rise, that every PDF value lands on a field of the official form, and that the filled form
+shows the engine's amount owed or refund. `src/engine/audit2025rates.test.ts` checks state tax on given taxable incomes
+against the published 2025 schedules and worksheets (26 states), and `src/engine/audit2025fed.test.ts` the federal tax,
+standard deduction, child tax credit, EIC and senior deduction against Rev. Proc. 2024-40 as amended by P.L. 119-21.
+
 ## Privacy by design
 
 Tax returns hold Social Security numbers, income and bank details. USTaxes NextGen never sends them anywhere:
