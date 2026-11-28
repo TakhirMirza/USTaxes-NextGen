@@ -1,6 +1,6 @@
 /**
  * Fills the official 2025 Nebraska Form 1040N (public/forms/2025/ne-1040n.pdf; the shared dependent name widgets were
- * split into first / last name fields) and Nebraska Schedule I (ne-1040n-schs.pdf, page 1) from a computed return.
+ * split into first / last name fields, as in the 2026 file, whose Schedule I line 49 duplicate widget was also dropped) and Nebraska Schedule I (ne-1040n-schs.pdf, page 1) from a computed return.
  * Whole dollars.
  */
 import type { TaxReturnInput } from '../engine/model.ts'
@@ -10,6 +10,17 @@ import type { NeResult } from '../engine/ne2025.ts'
 import { neCarePercent, neFederalCareDecimal } from '../engine/ne2025.ts'
 import type { FieldValue, FormFill, FormPacket, PreparerInfo } from './irs2025.ts'
 import { dependentsStatement } from './statement.ts'
+import { currentTaxYear } from '../engine/rules.ts'
+
+/** 2026 Form 1040N field for a 2025 line number: lines 52–64 moved down one (new line 52, adoption credit). */
+const y26 = (): boolean => currentTaxYear() >= 2026
+const f1040nField = (k: string): string => {
+  if (!y26()) return k
+  const m = /^(\d+)([a-z]?)$/.exec(k)
+  return m && Number(m[1]) >= 52 && Number(m[1]) <= 64 ? `${Number(m[1]) + 1}${m[2]}` : k
+}
+/** 2026 Schedule I field for a 2025 line number. */
+const SCH_I_2026: Record<string, string> = { '1': '1', '3': '3', '13': '15', '14': '16', '15': '17', '17': '19', '18': '20', '20': '22', '22': '24', '31': '34', '32': '35', '38': '41', '44': '49' }
 
 const digits = (v: string): string => v.replace(/\D/g, '')
 const upper = (s: string): string => s.trim().toUpperCase()
@@ -49,8 +60,8 @@ export function formNe1040n(ret: TaxReturnInput, res: TaxReturnResult, ne: NeRes
     v['Spouses Social Security Number2'] = s.slice(5, 9)
   }
   if (ret.ne.schoolDistrictCode.trim()) v['High School District Code'] = digits(ret.ne.schoolDistrictCode).slice(0, 7)
-  v['Is the taxpayer claiming any benefits or tax credits from a business that is, or is owned in whole or part, by a foreign adversarial company? (See instructions)'] = ret.ne.foreignAdversarial ? 'yes' : 'no'
-  if (ret.digitalAssets !== null) v['During 2025, did you receive, sell, exchange, gift, or otherwise dispose of a digital asset or a financial interest in a digital asset?'] = ret.digitalAssets ? '#0' : '#1'
+  v[y26() ? 'Is the taxpayer claiming any benefits or tax credits from a business that is a foreign adversarial company as defined by Neb. Rev. Stat. § 77-3,114?' : 'Is the taxpayer claiming any benefits or tax credits from a business that is, or is owned in whole or part, by a foreign adversarial company? (See instructions)'] = ret.ne.foreignAdversarial ? 'yes' : 'no'
+  if (ret.digitalAssets !== null) v[`During ${currentTaxYear()}, did you receive, sell, exchange, gift, or otherwise dispose of a digital asset or a financial interest in a digital asset?`] = ret.digitalAssets ? '#0' : '#1'
   v[{ single: 'Single', mfj: 'Married, filing jointly', mfs: 'Married, filing separately', hoh: 'Head of Household', qss: 'Qualifying surviving spouse (QSS)' }[fs]] = '#0'
   if (fs === 'mfs') {
     v["Spouse's SSN"] = digits(ret.spouse.ssn)
@@ -74,15 +85,15 @@ export function formNe1040n(ret: TaxReturnInput, res: TaxReturnResult, ne: NeRes
   if (ne.exemptions.c) v['4c'] = String(ne.exemptions.c)
   v['4'] = String(L['4'])
   if (L['16c']) { v['16b'] = String(L['16b']); v['16c'] = String(L['16c']) }
-  for (const k of LINES) money(k, L[k] ?? 0, ALWAYS.has(k))
+  for (const k of LINES) money(f1040nField(k), L[k] ?? 0, ALWAYS.has(k))
   if (ne.federalTaxUsed) v['If entereing federal tax, check box'] = true
   if (L['44']) { v['97'] = String(ne.qualifyingChildren); v['98'] = String(L['98']) }
   if (L['63'] > 0) {
     const dep = ret.refundDeposit
     if (dep.routingNumber && dep.accountNumber) {
-      v['64a'] = digits(dep.routingNumber).slice(0, 9)
-      v['64b'] = dep.accountType === 'savings' ? '2' : '1'
-      v['64c'] = dep.accountNumber.replace(/[^0-9A-Za-z]/g, '').slice(0, 17)
+      v[f1040nField('64a')] = digits(dep.routingNumber).slice(0, 9)
+      v[f1040nField('64b')] = dep.accountType === 'savings' ? '2' : '1'
+      v[f1040nField('64c')] = dep.accountNumber.replace(/[^0-9A-Za-z]/g, '').slice(0, 17)
     }
   }
   v['Daytime Phone'] = digits(c.phone).slice(-10)
@@ -104,12 +115,13 @@ export function formNeScheduleI(ret: TaxReturnInput, ne: NeResult): FormFill {
   v['SSN1'] = digits(ret.taxpayer.ssn).replace(/^(\d{3})(\d{2})(\d{4})$/, '$1-$2-$3')
   if (S['1']) { v['1 Interest income from all state and local obligations exempt from federal tax'] = 'OTHER STATES’ MUNICIPAL BONDS'; v['b Amount'] = String(S['1']) }
   if (S['15']) { v['a List type_2'] = 'U.S. TREASURY / SAVINGS BONDS'; v['b Amount_2'] = String(S['15']) }
-  if (S['18']) { v['a List type_3'] = 'RRB-1099-R'; v['b Amount_3'] = String(S['18']) }
+  if (S['18']) { v[y26() ? '20a List type_3' : 'a List type_3'] = 'RRB-1099-R'; v[y26() ? '20b Amount_3' : 'b Amount_3'] = String(S['18']) }
   for (const k of ['1', '3', '13', '14', '15', '17', '18', '20', '22', '31', '32', '38', '44']) {
     const n = S[k] ?? 0
-    if (n || k === '13' || k === '44') v[k] = String(n)
+    if (n || k === '13' || k === '44') v[y26() ? SCH_I_2026[k] : k] = String(n)
   }
-  return { id: 'neschi', file: 'ne-1040n-schs.pdf', title: 'Nebraska Schedule I', values: v, pages: [0] }
+  // 2026: Schedule I, Part B (adjustments decreasing federal AGI) is on its own page.
+  return { id: 'neschi', file: 'ne-1040n-schs.pdf', title: 'Nebraska Schedule I', values: v, pages: y26() ? [0, 1] : [0] }
 }
 
 const neName = (ret: TaxReturnInput): string => upper(ret.filingStatus === 'mfj' ? `${ret.taxpayer.firstName} & ${ret.spouse.firstName} ${ret.taxpayer.lastName}` : `${ret.taxpayer.firstName} ${ret.taxpayer.lastName}`)
@@ -140,7 +152,7 @@ export function formNeScheduleII(ret: TaxReturnInput, ne: NeResult): FormFill | 
   v['4_2_schII'] = String(c['4'])
   v['5_2_schII'] = String(c['5'])
   v['6_2_schII'] = String(c['6'])
-  return { id: 'neschii', file: 'ne-1040n-schs.pdf', title: 'Nebraska Schedule II', values: v, pages: [1] }
+  return { id: 'neschii', file: 'ne-1040n-schs.pdf', title: 'Nebraska Schedule II', values: v, pages: y26() ? [2] : [1] }
 }
 
 /** Form 2441N, built from the federal Form 2441 (Part III line n is federal line n − 2). */
@@ -190,7 +202,10 @@ export function formNe2441n(ret: TaxReturnInput, res: TaxReturnResult, ne: NeRes
 export function buildNePacket(ret: TaxReturnInput, res: TaxReturnResult, ne: NeResult, preparer?: PreparerInfo | null): FormPacket {
   const forms = [formNe1040n(ret, res, ne, preparer)]
   if (ne.lines['12'] + ne.lines['13'] > 0) forms.push(formNeScheduleI(ret, ne))
-  for (const x of [formNeScheduleII(ret, ne), formNe2441n(ret, res, ne)]) if (x) forms.push(x)
+  const care = y26() ? null : formNe2441n(ret, res, ne)
+  for (const x of [formNeScheduleII(ret, ne), care]) if (x) forms.push(x)
   forms.push(...dependentsStatement(ret, 3, 'Form 1040N, Dependents (continued)', 'st-ne-deps'))
-  return { forms, notIncluded: ne.attach.filter((x) => x !== 'Nebraska Schedule I') }
+  const notIncluded = ne.attach.filter((x) => x !== 'Nebraska Schedule I')
+  if (y26() && ne.care) notIncluded.push('Form 2441N (its 2026 form is not in this app yet; the refundable credit is on line 42)')
+  return { forms, notIncluded }
 }

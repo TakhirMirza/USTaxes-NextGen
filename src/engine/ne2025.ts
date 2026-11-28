@@ -1,5 +1,5 @@
 /**
- * Nebraska Form 1040N, full-year resident individual income tax return, tax year 2025.
+ * Nebraska Form 1040N, full-year resident individual income tax return, tax years 2025 and 2026.
  *
  * Source: 2025 Form 1040N, Nebraska Schedule I, the 2025 Nebraska Individual Income Tax Booklet and the 2025 Tax
  * Calculation Schedule: federal AGI less the Nebraska standard deduction ($8,600 / $17,200 / $12,600, chart for 65 or
@@ -8,9 +8,15 @@
  * 5.01% / 5.20%; 29.6% of the federal tax on early distributions; $171 personal exemption credit; child and dependent
  * care credit (25% of the federal credit above $29,000 AGI; at or below, refundable Form 2441N: expenses × federal decimal × state decimal); earned
  * income credit of 10% of the federal credit (refundable); the federal tax liability limit. Whole dollars.
+ *
+ * 2026: the 2026 Form 1040N and Schedules I–III (final, fillable), the 2026 Tax Calculation Schedule (2.46% / 3.51% /
+ * 4.55%) and Tax Table; $176 exemption credit; the standard deduction on line 6. Line and Schedule I numbers here stay
+ * the 2025 ones; src/pdf/ne2025.ts maps them to the renumbered 2026 fields (Form 1040N lines 52–64 moved down by one
+ * for the new adoption credit; Schedule I gained lines 13–14, 25 and 47–48).
  */
 import type { NeRetirementKind, Owner, TaxReturnInput } from './model.ts'
 import type { TaxReturnResult } from './compute.ts'
+import { currentTaxYear } from './rules.ts'
 
 const r = (n: number): number => Math.round(n)
 const pos = (n: number): number => Math.max(0, n)
@@ -18,16 +24,33 @@ const pos = (n: number): number => Math.max(0, n)
 export const NE_STANDARD: Record<TaxReturnInput['filingStatus'], number[]> = {
   single: [8600, 10600, 12600], mfj: [17200, 18850, 20500, 22150, 23800], qss: [17200, 18850, 20500], mfs: [8600, 10250, 11900, 13550, 15200], hoh: [12600, 14600, 16600]
 }
+/**
+ * 2026: the base amounts are printed on the 2026 Form 1040N line 6 ($8,850 / $17,700 / $8,850 / $12,950). The additions
+ * for 65 or blind ($2,050 single or head of household, $1,700 married) are the LB 1090 (2018) amounts of $1,600 / $1,300
+ * indexed with the same factor as the base amounts and rounded down to $50, as 2025's $2,000 / $1,650 were.
+ */
+export const NE_STANDARD_2026: Record<TaxReturnInput['filingStatus'], number[]> = {
+  single: [8850, 10900, 12950], mfj: [17700, 19400, 21100, 22800, 24500], qss: [17700, 19400, 21100], mfs: [8850, 10550, 12250, 13950, 15650], hoh: [12950, 15000, 17050]
+}
+/** Personal exemption credit per exemption (Form 1040N line 18): $171 for 2025, $176 for 2026. */
+export const NE_EXEMPTION_CREDIT: Record<number, number> = { 2025: 171, 2026: 176 }
+const neYear = (): number => (currentTaxYear() >= 2026 ? 2026 : 2025)
 
+/** 2026 Tax Calculation Schedule (8-460-2026): the top two brackets are both 4.55%. */
+const BRACKETS_2026: Record<'single' | 'mfj' | 'hoh', [number, number, number][]> = {
+  single: [[0, 0, 0.0246], [4130, 101.60, 0.0351], [24760, 825.71, 0.0455], [39900, 1514.58, 0.0455]],
+  mfj: [[0, 0, 0.0246], [8250, 202.95, 0.0351], [49530, 1651.88, 0.0455], [79800, 3029.16, 0.0455]],
+  hoh: [[0, 0, 0.0246], [7700, 189.42, 0.0351], [39620, 1309.81, 0.0455], [59160, 2198.88, 0.0455]]
+}
 const BRACKETS: Record<'single' | 'mfj' | 'hoh', [number, number, number][]> = {
   single: [[0, 0, 0.0246], [4030, 99.14, 0.0351], [24120, 804.30, 0.0501], [38870, 1543.28, 0.052]],
   mfj: [[0, 0, 0.0246], [8040, 197.78, 0.0351], [48250, 1609.15, 0.0501], [77730, 3086.10, 0.052]],
   hoh: [[0, 0, 0.0246], [7510, 184.75, 0.0351], [38590, 1275.66, 0.0501], [57630, 2229.56, 0.052]]
 }
 
-/** 2025 Tax Calculation Schedule. */
-export function neTax(taxable: number, fs: TaxReturnInput['filingStatus']): number {
-  const rows = BRACKETS[fs === 'mfj' || fs === 'qss' ? 'mfj' : fs === 'hoh' ? 'hoh' : 'single']
+/** Tax Calculation Schedule (2025, or 2026 when that year is chosen). */
+export function neTax(taxable: number, fs: TaxReturnInput['filingStatus'], year: number = neYear()): number {
+  const rows = (year >= 2026 ? BRACKETS_2026 : BRACKETS)[fs === 'mfj' || fs === 'qss' ? 'mfj' : fs === 'hoh' ? 'hoh' : 'single']
   const x = Math.max(0, taxable)
   let row = rows[0]
   for (const b of rows) if (x > b[0]) row = b
@@ -88,7 +111,7 @@ export function computeNebraska(ret: TaxReturnInput, res: TaxReturnResult): NeRe
 
   // ── Deductions ──
   L['5'] = agi
-  const chart = NE_STANDARD[fs]
+  const chart = (neYear() >= 2026 ? NE_STANDARD_2026 : NE_STANDARD)[fs]
   const neStandard = chart[Math.min(nBoxes, chart.length - 1)]
   L['6'] = dependent ? Math.min(neStandard, r(f['12e'])) : neStandard
   const itemizedFederally = res.deduction.used === 'itemized'
@@ -127,7 +150,7 @@ export function computeNebraska(ret: TaxReturnInput, res: TaxReturnResult): NeRe
   L['17'] = L['15'] + L['16']
 
   // ── Nonrefundable credits ──
-  L['18'] = 171 * L['4']
+  L['18'] = NE_EXEMPTION_CREDIT[neYear()] * L['4']
   // ── Schedule II (full-year residents, one state) ──
   let sch2: Record<string, number> | null = null
   if (pos(d.otherState.tax) > 0 && pos(d.otherState.agi) > 0) {
@@ -181,6 +204,7 @@ export function computeNebraska(ret: TaxReturnInput, res: TaxReturnResult): NeRe
   if (S['18'] > 0) attach.push('Your RRB forms (railroad retirement)')
   if (federalTaxUsed) issues.push('Your Nebraska tax is limited to your federal tax (line 35, federal tax box checked).')
   if (d.collegeSavings > S['20']) issues.push('The Nebraska 529 subtraction is limited to $10,000 ($5,000 married filing separately).')
+  if (L['42'] > 0 && neYear() >= 2026) issues.push('Form 2441N for 2026 is not in this app yet: copy the refundable child care credit (line 42) from the Nebraska step.')
   if (L['42'] > 0) issues.push('The refundable child care credit follows Form 2441N: qualifying expenses × federal decimal × state decimal (AGI $29,000 or less).')
   if (L['59'] > 500 && L['40'] === 0) issues.push('A balance due may mean an underpayment penalty (Form 2210N).')
 

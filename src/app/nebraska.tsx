@@ -6,6 +6,7 @@ import type { NeInput, NeRetirementKind, Owner, Person } from '../engine/model.t
 import { computeNebraska } from '../engine/ne2025.ts'
 import { buildNePacket } from '../pdf/ne2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
+import { currentTaxYear } from '../engine/rules.ts'
 import { Check, MoneyField, Section, TextField, usd } from './fields'
 import { StatementRows } from './statements'
 import type { StepProps } from './steps'
@@ -15,7 +16,7 @@ const LINES: [line: string, label: string][] = [
   ['14', 'Nebraska taxable income'], ['15', 'Nebraska income tax'], ['16', 'Tax on early distributions (29.6% of federal)'], ['18', 'Personal exemption credit ($171 each)'],
   ['19', 'Credit for tax paid to another state'], ['23', 'Child care credit (25% of federal)'], ['35', 'Tax after nonrefundable credits'], ['36', 'Nebraska tax withheld on W-2s'],
   ['37', 'Withheld on other forms'], ['40', 'Estimated payments'], ['42', 'Refundable child care credit'], ['44', 'Earned income credit (10% of federal)'],
-  ['53', 'Total payments and refundable credits'], ['58', 'Use tax'], ['59', 'Total amount due'], ['61', 'Applied to 2026'], ['62', 'Wildlife Conservation Fund'], ['63', 'Refund']
+  ['53', 'Total payments and refundable credits'], ['58', 'Use tax'], ['59', 'Total amount due'], ['61', 'Applied to next year’s estimated tax'], ['62', 'Wildlife Conservation Fund'], ['63', 'Refund']
 ]
 const ALWAYS = new Set(['5', '14', '15', '35', '53'])
 const KEY = new Set(['35', '59', '63'])
@@ -69,8 +70,8 @@ export function NebraskaStep({ ret, set, result, preparer }: StepProps & { prepa
           : <p className="why">No W-2s entered.</p>}
         <div className="grid">
           <MoneyField label="Nebraska tax withheld on 1099s and W-2Gs" hint="Line 37" value={d.withholdingOther} onChange={(n) => put({ withholdingOther: n })} />
-          <MoneyField label="2025 estimated and extension payments" hint="Line 40" value={d.estimatedPayments} onChange={(n) => put({ estimatedPayments: n })} />
-          {L['60'] > 0 && <MoneyField label="Apply to 2026 estimated tax" value={d.creditForward} onChange={(n) => put({ creditForward: n })} />}
+          <MoneyField label={`${currentTaxYear()} estimated and extension payments`} hint="Line 40" value={d.estimatedPayments} onChange={(n) => put({ estimatedPayments: n })} />
+          {L['60'] > 0 && <MoneyField label={`Apply to ${currentTaxYear() + 1} estimated tax`} value={d.creditForward} onChange={(n) => put({ creditForward: n })} />}
           {L['60'] > 0 && <MoneyField label="Wildlife Conservation Fund donation" value={d.wildlife} onChange={(n) => put({ wildlife: n })} />}
         </div>
         <div className="checks">
@@ -130,7 +131,7 @@ export function NebraskaStep({ ret, set, result, preparer }: StepProps & { prepa
         )}
         <div className="actions"><button type="button" className="button" onClick={makePdf} disabled={pdf.busy}>{pdf.busy ? 'Preparing PDF…' : 'Download Nebraska forms (PDF)'}</button></div>
         {pdf.note && <p className="note" role="status">{pdf.note}</p>}
-        <p className="why">Sign page 3. Refunds: Nebraska Department of Revenue, PO Box 98912, Lincoln NE 68509-8912; all others: PO Box 98934, Lincoln NE 68509-8934. Due April 15, 2026.</p>
+        <p className="why">Sign page 3. Refunds: Nebraska Department of Revenue, PO Box 98912, Lincoln NE 68509-8912; all others: PO Box 98934, Lincoln NE 68509-8934. Due April 15, {currentTaxYear() + 1}.</p>
       </Section>
     </div>
   )

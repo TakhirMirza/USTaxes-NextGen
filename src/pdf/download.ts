@@ -240,7 +240,8 @@ export function downloadArkansasForms(ret: TaxReturnInput, res: TaxReturnResult,
 }
 
 export function downloadNebraskaForms(ret: TaxReturnInput, res: TaxReturnResult, ne: NeResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
-  return save(buildNePacket(ret, res, ne, preparer).forms, '2025 Nebraska Form 1040N — USTaxes NextGen', `2025-Nebraska-1040N-${slug(ret)}.pdf`)
+  const y = TAX_YEAR
+  return save(buildNePacket(ret, res, ne, preparer).forms, `${y} Nebraska Form 1040N — USTaxes NextGen`, `${y}-Nebraska-1040N-${slug(ret)}.pdf`)
 }
 
 export function downloadMississippiForms(ret: TaxReturnInput, res: TaxReturnResult, ms: MsResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
