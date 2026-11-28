@@ -6,6 +6,7 @@ import type { MaHealth, MaInput, Owner, Person } from '../engine/model.ts'
 import { computeMassachusetts, MA_DONATION_LETTERS } from '../engine/ma2025.ts'
 import { buildMaPacket } from '../pdf/ma2025.ts'
 import type { PreparerInfo } from '../pdf/irs2025.ts'
+import { currentTaxYear } from '../engine/rules.ts'
 import { Check, MoneyField, NumberField, Section, TextField, usd } from './fields'
 import { SelectField } from './steps'
 import { StatementRows } from './statements'
@@ -19,7 +20,7 @@ const LINES: [line: string, label: string][] = [
   ['28b', '4% surtax'], ['28', 'Total tax'], ['29', 'Limited Income Credit'], ['30', 'Credit for tax paid to other states'], ['32', 'Tax after credits'],
   ['33', 'Voluntary contributions'], ['34', 'Use tax'], ['38', 'Massachusetts tax withheld'], ['40', 'Estimated payments'],
   ['43', 'Earned Income Credit (40%)'], ['44', 'Senior Circuit Breaker Credit'], ['46', 'Child and Family Tax Credit'], ['51', 'Total payments and credits'],
-  ['53', 'Applied to 2026'], ['55', 'Tax due'], ['54', 'Refund']
+  ['53', 'Applied to next year’s estimated tax'], ['55', 'Tax due'], ['54', 'Refund']
 ]
 const ALWAYS = new Set(['10', '19', '21', '22', '28', '32', '51'])
 const KEY = new Set(['21', '28', '54', '55'])
@@ -85,7 +86,7 @@ export function MassachusettsStep({ ret, set, result, preparer }: StepProps & { 
             <fieldset key={o} className="statement">
               <legend>{names[o]}</legend>
               <div className="grid">
-                <SelectField label="MCC coverage in 2025" value={h.coverage} onChange={(v) => putHealth(o, { coverage: v as MaHealth['coverage'] })}
+                <SelectField label={`MCC coverage in ${currentTaxYear()}`} value={h.coverage} onChange={(v) => putHealth(o, { coverage: v as MaHealth['coverage'] })}
                   options={[{ value: 'full', label: 'Full year' }, { value: 'part', label: 'Part of the year' }, { value: 'none', label: 'None' }]} />
                 {h.coverage !== 'none' && (h.plans.private || h.plans.other) && <TextField label="Insurer or program (1099-HC box 1)" autoComplete="off" value={h.insurer} onChange={(v) => putHealth(o, { insurer: v })} />}
                 {h.coverage !== 'none' && (h.plans.private || h.plans.other) && <TextField label="Subscriber number" hint="From Form MA 1099-HC or your insurance card" autoComplete="off" value={h.subscriber} onChange={(v) => putHealth(o, { subscriber: v })} />}
@@ -123,7 +124,7 @@ export function MassachusettsStep({ ret, set, result, preparer }: StepProps & { 
                   <legend>{o === 'taxpayer' ? 'You' : 'Your spouse'}</legend>
                   <div className="grid">
                     <Check label="Religious exemption" hint="Line 8a" checked={p.religious} onChange={(on) => putP({ religious: on })} />
-                    {p.religious && <Check label="Received medical care in 2025" hint="Line 8b" checked={p.receivedCare} onChange={(on) => putP({ receivedCare: on })} />}
+                    {p.religious && <Check label={`Received medical care in ${currentTaxYear()}`} hint="Line 8b" checked={p.receivedCare} onChange={(on) => putP({ receivedCare: on })} />}
                     <TextField label="Health Connector certificate of exemption number" hint="Line 9; leave blank if none" autoComplete="off" value={p.certificate} onChange={(s) => putP({ certificate: s })} />
                     <Check label="An employer offered coverage that met MCC for the whole uninsured period" hint="Line 10" checked={p.employerOffered} onChange={(on) => putP({ employerOffered: on })} />
                     {p.employerOffered && <MoneyField label="Lowest monthly premium for that coverage" hint="Your share, covering your family; 0 if free" value={p.employerPremium} onChange={(n) => putP({ employerPremium: n })} />}
@@ -152,8 +153,8 @@ export function MassachusettsStep({ ret, set, result, preparer }: StepProps & { 
         <div className="grid">
           <MoneyField label="Massachusetts tax withheld on 1099s" value={d.withholding1099} onChange={(n) => put({ withholding1099: n })} />
           <MoneyField label="Withheld on other forms" hint="62-WH, PWH, LOA" value={d.otherWithholding} onChange={(n) => put({ otherWithholding: n })} />
-          <MoneyField label="2024 overpayment applied" value={d.priorOverpayment} onChange={(n) => put({ priorOverpayment: n })} />
-          <MoneyField label="2025 estimated tax payments" value={d.estimatedPayments} onChange={(n) => put({ estimatedPayments: n })} />
+          <MoneyField label={`${currentTaxYear() - 1} overpayment applied`} value={d.priorOverpayment} onChange={(n) => put({ priorOverpayment: n })} />
+          <MoneyField label={`${currentTaxYear()} estimated tax payments`} value={d.estimatedPayments} onChange={(n) => put({ estimatedPayments: n })} />
           <MoneyField label="Paid with extension" value={d.extensionPayment} onChange={(n) => put({ extensionPayment: n })} />
         </div>
       </Section>
@@ -181,8 +182,8 @@ export function MassachusettsStep({ ret, set, result, preparer }: StepProps & { 
           <MoneyField label="Other gambling winnings" hint="Casinos, sports betting (Schedule X)" value={d.otherGambling} onChange={(n) => put({ otherGambling: n })} />
           <MoneyField label="Alimony received (taxable)" hint="Divorce before 2019" value={d.alimonyReceived} onChange={(n) => put({ alimonyReceived: n })} />
           <MoneyField label="Fees and other 5.0% income" hint="Schedule X line 4" value={d.otherIncome} onChange={(n) => put({ otherIncome: n })} />
-          <MoneyField label="Massachusetts short-term losses from 2024" hint="2024 Schedule B line 40" value={d.shortTermCarryover} onChange={(n) => put({ shortTermCarryover: n })} />
-          <MoneyField label="Massachusetts long-term losses from 2024" hint="2024 Schedule D line 23" value={d.longTermCarryover} onChange={(n) => put({ longTermCarryover: n })} />
+          <MoneyField label={`Massachusetts short-term losses from ${currentTaxYear() - 1}`} hint={`${currentTaxYear() - 1} Schedule B line 40`} value={d.shortTermCarryover} onChange={(n) => put({ shortTermCarryover: n })} />
+          <MoneyField label={`Massachusetts long-term losses from ${currentTaxYear() - 1}`} hint={`${currentTaxYear() - 1} Schedule D line 23`} value={d.longTermCarryover} onChange={(n) => put({ longTermCarryover: n })} />
         </div>
       </Section>
 
@@ -193,7 +194,7 @@ export function MassachusettsStep({ ret, set, result, preparer }: StepProps & { 
           <MoneyField label="Senior Circuit Breaker Credit (Schedule CB)" hint="Up to $2,820 for homeowners and renters 65+" value={d.circuitBreaker} onChange={(n) => put({ circuitBreaker: n })} />
           <NumberField label="Other dependents for the $440 credit" hint="Disabled, or 65 and older (children under 13 are counted for you)" max={9} value={d.extraFamilyCredit} onChange={(n) => put({ extraFamilyCredit: n })} />
           <MoneyField label="Use tax" value={d.useTax} onChange={(n) => put({ useTax: n })} />
-          {L['52'] > 0 && <MoneyField label="Apply to 2026 estimated tax" value={d.creditForward} onChange={(n) => put({ creditForward: n })} />}
+          {L['52'] > 0 && <MoneyField label={`Apply to ${currentTaxYear() + 1} estimated tax`} value={d.creditForward} onChange={(n) => put({ creditForward: n })} />}
         </div>
         <details className="more">
           <summary>Voluntary contributions (line 33)</summary>
@@ -224,7 +225,7 @@ export function MassachusettsStep({ ret, set, result, preparer }: StepProps & { 
         )}
         <div className="actions"><button type="button" className="button" onClick={makePdf} disabled={pdf.busy}>{pdf.busy ? 'Preparing PDF…' : 'Download Massachusetts forms (PDF)'}</button></div>
         {pdf.note && <p className="note" role="status">{pdf.note}</p>}
-        <p className="why">Sign page 1. Returns are due April 15, 2026. MassTaxConnect (mass.gov/masstaxconnect) offers free e-filing.</p>
+        <p className="why">Sign page 1. Returns are due April 15, {currentTaxYear() + 1}. MassTaxConnect (mass.gov/masstaxconnect) offers free e-filing.</p>
       </Section>
     </div>
   )

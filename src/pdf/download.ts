@@ -168,7 +168,9 @@ export function downloadNewJerseyForms(ret: TaxReturnInput, res: TaxReturnResult
 }
 
 export function downloadMassachusettsForms(ret: TaxReturnInput, res: TaxReturnResult, ma: MaResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {
-  return save(buildMaPacket(ret, res, ma, preparer).forms, '2025 Massachusetts Form 1 — USTaxes NextGen', `2025-Massachusetts-Form-1-${slug(ret)}.pdf`)
+  const y = TAX_YEAR
+  const draft = stateDraft('MA', y) ? ' (draft forms — do not file)' : ''
+  return save(buildMaPacket(ret, res, ma, preparer).forms, `${y} Massachusetts Form 1${draft} — USTaxes NextGen`, `${y}-Massachusetts-Form-1${draft ? '-draft' : ''}-${slug(ret)}.pdf`)
 }
 
 export function downloadArizonaForms(ret: TaxReturnInput, res: TaxReturnResult, az: AzResult, preparer?: PreparerInfo | null): Promise<{ pages: number; problems: number }> {

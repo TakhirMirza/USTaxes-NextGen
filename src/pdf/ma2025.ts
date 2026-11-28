@@ -1,5 +1,8 @@
 /**
  * Maps a computed Massachusetts return onto the 2025 Form 1 fill-in PDF (public/forms/2025/ma1.pdf).
+ * For 2026, public/forms/2026 holds DOR's early-release drafts of Form 1 and Schedules HC, X, Y, DI, B and D carrying
+ * the 2025 fields (the field names keep their 2025 wording; Form 1 page 4 from line 46 and Schedule X from line 4 were
+ * moved to the redrawn lines).
  * Amounts are whole dollars (the cents are printed); losses use the "X" box beside the line.
  */
 import type { Person, TaxReturnInput } from '../engine/model.ts'

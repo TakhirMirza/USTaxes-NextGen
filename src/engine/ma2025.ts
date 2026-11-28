@@ -1,17 +1,23 @@
 /**
- * Massachusetts Form 1, full-year resident income tax return, tax year 2025.
+ * Massachusetts Form 1, full-year resident income tax return, tax years 2025 and 2026.
  *
  * Source: 2025 Form 1 and its instructions. Part B (5.0%) income: wages, pensions (government contributory
  * pensions and Social Security are exempt), Massachusetts bank interest, business, rental and pass-through
  * income, unemployment, lottery and Schedule X; deductions for FICA/retirement (up to $2,000 each), 50% of rent
- * (up to $4,000) and Schedule Y; exemptions ($4,400 / $6,800 / $8,800, $1,000 per dependent, $700 at 65,
+ * (up to $4,000) and Schedule Y; exemptions ($4,400 / $6,800 / $8,800, $1,000 per dependent, $1,700 at 65,
  * $2,200 blind, medical from Schedule A line 4). Part A income from Schedule B (other interest and dividends at
  * 5.0%, short-term gains at 8.5%) and long-term gains from Schedule D at 5.0%, with excess exemptions applied.
  * Tax table at 5.0% under $24,000 ($50 bands, midpoint), No Tax Status, Limited Income Credit, the 4% surtax
  * over $1,083,150, the EITC at 40% of the federal credit and the $440 Child and Family Tax Credit.
+ *
+ * 2026 (DOR early-release drafts of Form 1 and Schedules HC, X, Y, DI, B and D; the surtax threshold of $1,107,750
+ * certified by DOR and on the draft Schedule 4% Surtax; TIR 26-1 for the 2026 Schedule HC penalties and poverty
+ * levels, which drop the 400–500% band; the Health Connector's 2026 affordability schedule). Schedule HC Table 4
+ * (lowest private premiums) has no 2026 figures yet, so the 2025 table is used and flagged.
  */
 import type { Owner, TaxReturnInput } from './model.ts'
 import type { TaxReturnResult } from './compute.ts'
+import { currentTaxYear } from './rules.ts'
 
 const r = (n: number): number => Math.round(n)
 const pos = (n: number): number => Math.max(0, n)
@@ -19,6 +25,10 @@ const pos = (n: number): number => Math.max(0, n)
 export const MA_RATE = 0.05
 export const MA_SHORT_TERM_RATE = 0.085
 export const MA_SURTAX = { threshold: 1083150, rate: 0.04 }
+export const MA_SURTAX_THRESHOLD: Record<number, number> = { 2025: 1083150, 2026: 1107750 }
+/** Line 2c: $1,700 for each person 65 or over (both years; the forms print × $1,700). */
+export const MA_SENIOR_EXEMPTION = 1700
+const maYear = (): number => (currentTaxYear() >= 2026 ? 2026 : 2025)
 export const MA_PERSONAL = { single: 4400, mfs: 4400, hoh: 6800, mfj: 8800, qss: 4400 } as const
 export const MA_DONATION_LETTERS = ['a', 'b', 'c', 'd', 'e', 'f'] as const
 
@@ -33,18 +43,23 @@ export function maTax(income: number): number {
 }
 
 /** Schedule HC Table 1: 150% of the federal poverty level by family size. */
-export function maFpl150(size: number): number {
-  return 22590 + 8070 * Math.max(0, size - 1)
+export function maFpl150(size: number, year: number = maYear()): number {
+  return year >= 2026 ? 23475 + 8250 * Math.max(0, size - 1) : 22590 + 8070 * Math.max(0, size - 1)
 }
 
 /** Schedule HC Table 3 (affordability) by category: rows [up to AGI, percent]; 1 single/MFS no dependents, 2 MFJ no dependents or HOH/MFS one dependent, 3 MFJ with dependents or HOH/MFS two or more. */
+const MA_AFFORD_2026: Record<1 | 2 | 3, [number, number][]> = {
+  1: [[23475, 0], [31300, 2.9], [39125, 4.2], [46950, 5.0], [54775, 7.45], [62600, 7.6], [Infinity, 8.0]],
+  2: [[31725, 0], [42300, 4.3], [52875, 6.2], [63450, 7.4], [74025, 7.45], [84600, 7.6], [Infinity, 8.0]],
+  3: [[39975, 0], [53300, 3.45], [66625, 4.95], [79950, 5.85], [93275, 7.45], [106600, 7.6], [Infinity, 8.0]]
+}
 const MA_AFFORD: Record<1 | 2 | 3, [number, number][]> = {
   1: [[22590, 0], [30120, 2.9], [37650, 4.2], [45180, 5.0], [52710, 7.45], [60240, 7.6], [Infinity, 8.0]],
   2: [[30660, 0], [40880, 4.3], [51100, 6.2], [61320, 7.4], [71540, 7.45], [81760, 7.6], [Infinity, 8.0]],
   3: [[38730, 0], [51640, 3.45], [64550, 4.95], [77460, 5.85], [90370, 7.45], [103280, 7.6], [Infinity, 8.0]]
 }
-export function maAffordablePercent(cat: 1 | 2 | 3, agi: number): number {
-  return MA_AFFORD[cat].find(([to]) => agi <= to)![1]
+export function maAffordablePercent(cat: 1 | 2 | 3, agi: number, year: number = maYear()): number {
+  return (year >= 2026 ? MA_AFFORD_2026 : MA_AFFORD)[cat].find(([to]) => agi <= to)![1]
 }
 /** Table 4 monthly premiums by region and age band (0–30, 31–34, 35–39, 40–44, 45–49, 50–54, 55+): [individual, married couple, family]. */
 const MA_PREMIUMS: Record<1 | 2 | 3, [number, number, number][]> = {
@@ -56,16 +71,23 @@ export function maPremium(region: 1 | 2 | 3, age: number, col: 0 | 1 | 2): numbe
   const band = age <= 30 ? 0 : age <= 34 ? 1 : age <= 39 ? 2 : age <= 44 ? 3 : age <= 49 ? 4 : age <= 54 ? 5 : 6
   return MA_PREMIUMS[region][band][col]
 }
-/** Table 2: 500% of the federal poverty level. */
+/** Table 2: 500% of the federal poverty level (2025). */
 export const maFpl500 = (size: number): number => 75300 + 26900 * Math.max(0, size - 1)
+/** Line 11 income limit for government-subsidized insurance: 500% FPL for 2025; 400% FPL for 2026 (TIR 26-1 drops the 400–500% band). */
+export const maSubsidizedLimit = (size: number, year: number = maYear()): number => (year >= 2026 ? 62600 + 22000 * Math.max(0, size - 1) : maFpl500(size))
 /** Table 5 column (A–F) for the family size and AGI (above 150% FPL), and Table 6 monthly penalties. */
-export function maPenaltyColumn(size: number, agi: number): 'A' | 'B' | 'C' | 'D' | 'E' | 'F' {
+export function maPenaltyColumn(size: number, agi: number, year: number = maYear()): 'A' | 'B' | 'C' | 'D' | 'E' | 'F' {
   const n = Math.max(0, size - 1)
-  const tops = [30120 + 10760 * n, 37650 + 13450 * n, 45180 + 16140 * n, 60240 + 21520 * n, 75300 + 26900 * n]
+  const tops = year >= 2026
+    ? [31300 + 11000 * n, 39125 + 13750 * n, 46950 + 16500 * n, 62600 + 22000 * n]
+    : [30120 + 10760 * n, 37650 + 13450 * n, 45180 + 16140 * n, 60240 + 21520 * n, 75300 + 26900 * n]
   const i = tops.findIndex((t) => agi <= t)
-  return (['A', 'B', 'C', 'D', 'E'] as const)[i] ?? 'F'
+  return (['A', 'B', 'C', 'D', 'E'] as const)[i] ?? (year >= 2026 ? 'E' : 'F')
 }
 export const MA_MONTHLY_PENALTY = { A: 25, B: 49, C: 73, D: 113, E: 132, F: 187 }
+/** 2026 monthly penalties (TIR 26-1): 150.1–200%, 200.1–250%, 250.1–300%, 300.1–400%, above 400% FPL. */
+export const MA_MONTHLY_PENALTY_2026 = { A: 26, B: 51, C: 76, D: 117, E: 211, F: 211 }
+export const maMonthlyPenalty = (col: keyof typeof MA_MONTHLY_PENALTY, year: number = maYear()): number => (year >= 2026 ? MA_MONTHLY_PENALTY_2026 : MA_MONTHLY_PENALTY)[col]
 
 /** No Tax Status thresholds (not available married filing separately). */
 export function maNoTaxThreshold(fs: TaxReturnInput['filingStatus'], dependents: number): number | null {
@@ -125,7 +147,7 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
   L['2bCount'] = ret.dependents.length
   L['2b'] = L['2bCount'] * 1000
   L['2cCount'] = owners.filter(older).length
-  L['2c'] = L['2cCount'] * 700
+  L['2c'] = L['2cCount'] * MA_SENIOR_EXEMPTION
   L['2dCount'] = owners.filter((o) => person(o).blind).length
   L['2d'] = L['2dCount'] * 2200
   L['2e'] = res.deduction.used === 'itemized' ? r(res.scheduleA.medical) : 0
@@ -266,7 +288,7 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
   L['24'] = D['22']
   L['28a'] = L['22'] + L['23'] + L['24']
   const surtaxBase = L['21'] + shortGain + longGain
-  L['28b'] = r(pos(surtaxBase - MA_SURTAX.threshold) * MA_SURTAX.rate)
+  L['28b'] = r(pos(surtaxBase - (MA_SURTAX_THRESHOLD[maYear()] ?? MA_SURTAX.threshold)) * MA_SURTAX.rate)
 
   // ── No Tax Status and Limited Income Credit ──
   const deps = ret.dependents.length
@@ -300,6 +322,7 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
   const hcAfford = hcAgi * maAffordablePercent(hcCat, hcAgi) / 100 / 12
   const hcOlder = Math.max(...owners.map((o) => (o === 'taxpayer' ? ret.taxpayer.age : ret.spouse.age)))
   const hcPenalty: Record<Owner, MaHcResult | null> = { taxpayer: null, spouse: null }
+  let table4From2025 = false
   for (const o of owners) {
     const h = d.health[o]
     if (h.coverage === 'full' || (h.coverage === 'part' && hcGov(o)) || hcBelowFpl) continue
@@ -314,14 +337,15 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
     x.l10 = p.employerOffered && maAffordablePercent(hcCat, hcAgi) > 0 && (p.employerPremium === 0 || p.employerPremium <= hcAfford)
     if (p.employerOffered && p.employerPremium === 0) x.l10 = true
     if (!x.l10) {
-      // Line 11: government-subsidized insurance (income at or below 500% FPL).
-      x.l11 = hcAgi <= maFpl500(hcFamily) && !p.govIneligible
+      // Line 11: government-subsidized insurance (income at or below 500% FPL; 400% for 2026).
+      x.l11 = hcAgi <= maSubsidizedLimit(hcFamily) && !p.govIneligible
       // Line 12: affordable private insurance.
       if (!x.l11) x.l12 = maPremium(d.hcRegion, hcOlder, hcCol) <= hcAfford
+      if (!x.l11 && maYear() >= 2026) table4From2025 = true
     }
     if (x.l10 || x.l11 || x.l12) {
       const col = maPenaltyColumn(hcFamily, hcAgi)
-      const monthly = MA_MONTHLY_PENALTY[col]
+      const monthly = maMonthlyPenalty(col)
       const l7 = pos(run.months - 3 * run.gaps)
       x.worksheet = { l1: hcAgi, l2: col, l3: monthly, l4: run.gaps, l5: run.months, l6: 3 * run.gaps, l7, l8: monthly * l7 }
       x.penalty = p.appeal ? 0 : monthly * l7
@@ -392,8 +416,9 @@ export function computeMassachusetts(ret: TaxReturnInput, res: TaxReturnResult):
   if (L['9'] > 0 && d.iraBasisRecovered === 0) issues.push('IRA distributions: Massachusetts never allowed a deduction for IRA contributions, so contributions you made are recovered tax-free first. Enter them on the IRA line if they are not yet recovered.')
   if (retirements.some((x) => !x.ira && x.taxableAmount > 0) && d.governmentPension === 0) issues.push('Contributory pensions from the U.S. government or Massachusetts (and its cities and towns) and military retirement are not taxed; enter them as government pensions.')
   if (f['6b'] > 0) issues.push('Social Security is not taxed in Massachusetts.')
-  if (st !== 0 || ltCurrent !== 0) issues.push('Capital gains use this year’s federal short- and long-term totals; Massachusetts loss carryovers from 2024 are entered separately. Gains on collectibles (12%) and Form 4797 property are not split out — adjust Schedules B and D if you have them.')
-  if (B['40'] < 0 || D['23'] < 0) issues.push(`Massachusetts losses to carry to 2026: short-term ${(-B['40']).toLocaleString('en-US')}, long-term ${(-D['23']).toLocaleString('en-US')}. Keep this return for next year.`)
+  if (table4From2025) issues.push('Schedule HC line 12: the 2026 Table 4 premiums are not published yet, so the 2025 premiums were used. Check the answer against the 2026 Schedule HC instructions.')
+  if (st !== 0 || ltCurrent !== 0) issues.push(`Capital gains use this year’s federal short- and long-term totals; Massachusetts loss carryovers from ${maYear() - 1} are entered separately. Gains on collectibles (12%) and Form 4797 property are not split out — adjust Schedules B and D if you have them.`)
+  if (B['40'] < 0 || D['23'] < 0) issues.push(`Massachusetts losses to carry to ${maYear() + 1}: short-term ${(-B['40']).toLocaleString('en-US')}, long-term ${(-D['23']).toLocaleString('en-US')}. Keep this return for next year.`)
   if (Y['10'] > 0 && Y['12'] > 0) issues.push('Schedule Y lines 10 and 12 cannot cover the same student loan interest.')
   if (older('taxpayer') || (joint && older('spouse'))) issues.push('Seniors who own or rent their home may qualify for the Senior Circuit Breaker Credit (up to $2,820) on Schedule CB.')
   if (Y['9c'] > 0) issues.push('Charitable deduction (Schedule Y line 9c): the federal amount without household goods or used clothing, allowed even if you do not itemize.')

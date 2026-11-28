@@ -229,3 +229,10 @@ test('NJ: dependents after the fourth go on a statement page', () => {
   assert.ok(st.draw!.some((d) => d.text === 'Kid 5') && st.draw!.some((d) => d.text === 'Kid 6'))
   assert.ok(!packet.notIncluded.some((x) => x.includes('beyond the first four')))
 })
+
+test('MA age 65 exemption is $1,700 a person (Form 1 line 2c prints × $1,700)', () => {
+  const v = ma({ filingStatus: 'mfj', taxpayer: { ...emptyReturn().taxpayer, firstName: 'A', lastName: 'B', ssn: '123456789', age: 67, age65OrOlder: true }, spouse: { ...emptyReturn().spouse, firstName: 'C', lastName: 'B', ssn: '987654321', age: 66, age65OrOlder: true }, w2s: [w2(60000)] })
+  assert.equal(v.lines['2cCount'], 2)
+  assert.equal(v.lines['2c'], 3400)
+  assert.equal(v.lines['2g'], 8800 + 3400)
+})
